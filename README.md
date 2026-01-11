@@ -1,4 +1,4 @@
-# AI Training Sandbox
+# Playwright AI Training APP
 
 A full-stack task management application built with React, TypeScript, Express, and Tailwind CSS. This project serves as a training sandbox for testing and experimenting with AI-powered development tools and Playwright automation.
 
