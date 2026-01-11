@@ -1,0 +1,206 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "AI Training Sandbox API",
+    "version": "0.2.0"
+  },
+  "servers": [
+    { "url": "http://localhost:3001" }
+  ],
+  "paths": {
+    "/api/tasks": {
+      "get": {
+        "summary": "List tasks",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "flaky",
+            "schema": { "type": "string" },
+            "description": "Enable flaky mode"
+          },
+          {
+            "in": "query",
+            "name": "lab_api_flaky",
+            "schema": { "type": "string" },
+            "description": "Force flaky mode from lab"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of tasks",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Task" } }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create task",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TaskInput" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created task",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Task" } }
+            }
+          },
+          "400": { "description": "Validation error" }
+        }
+      }
+    },
+    "/api/tasks/{id}": {
+      "put": {
+        "summary": "Update task",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/TaskInput" } }
+          }
+        },
+        "responses": {
+          "200": { "description": "Updated task", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Task" } } } },
+          "400": { "description": "Validation error" },
+          "404": { "description": "Not found" }
+        }
+      },
+      "delete": {
+        "summary": "Delete task",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "204": { "description": "Deleted" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/users": {
+      "get": {
+        "summary": "List users",
+        "responses": {
+          "200": {
+            "description": "List of users",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/User" } }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create user",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/UserInput" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created user",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } }
+          },
+          "400": { "description": "Validation error" }
+        }
+      }
+    },
+    "/api/lab/state": {
+      "get": {
+        "summary": "Get lab state",
+        "responses": {
+          "200": {
+            "description": "Current lab flags",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LabState" } } }
+          }
+        }
+      },
+      "post": {
+        "summary": "Set lab state",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/LabState" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated lab flags",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LabState" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Task": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "status": { "type": "string", "enum": ["todo", "in-progress", "done"] },
+          "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+          "dueDate": { "type": "string", "format": "date-time", "nullable": true },
+          "assigneeId": { "type": "string", "nullable": true }
+        },
+        "required": ["id", "title", "status", "priority"]
+      },
+      "TaskInput": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "status": { "type": "string", "enum": ["todo", "in-progress", "done"] },
+          "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+          "dueDate": { "type": "string", "format": "date-time" },
+          "assigneeId": { "type": "string" }
+        },
+        "required": ["title"]
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "email": { "type": "string" },
+          "role": { "type": "string", "enum": ["admin", "editor", "viewer"] },
+          "avatar": { "type": "string", "nullable": true }
+        },
+        "required": ["id", "name", "email", "role"]
+      },
+      "UserInput": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "email": { "type": "string" },
+          "role": { "type": "string", "enum": ["admin", "editor", "viewer"] },
+          "avatar": { "type": "string" }
+        },
+        "required": ["name", "email"]
+      },
+      "LabState": {
+        "type": "object",
+        "properties": {
+          "chaos": { "type": "boolean" },
+          "a11y": { "type": "boolean" },
+          "apiFlaky": { "type": "boolean" }
+        },
+        "required": ["chaos", "a11y", "apiFlaky"]
+      }
+    }
+  }
+}
