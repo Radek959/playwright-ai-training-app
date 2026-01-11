@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLab } from "../context/LabContext";
+import { getTestId } from "../utils/testIds";
 
 type WizardStep = 1 | 2 | 3;
 
@@ -91,7 +92,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
   const stepId = refactorSelectors ? `wizard-step-${step}-v2` : `wizard-step-${step}`;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" data-testid="task-wizard-overlay">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" data-testid={getTestId("task-wizard-overlay")}>
       <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
         {/* Progress Bar */}
         <div className="flex gap-2 mb-6">
@@ -101,7 +102,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
               className={`h-2 flex-1 rounded ${
                 s <= step ? "bg-blue-600" : "bg-gray-200"
               }`}
-              data-testid={`progress-step-${s}`}
+              data-testid={getTestId(`progress-step-${s}`)}
             />
           ))}
         </div>
@@ -114,7 +115,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
               <div>
                 <label className="block text-sm font-semibold mb-1">Typ zadania</label>
                 <select
-                  data-testid={refactorSelectors ? "task-type-select-v2" : "task-type-select"}
+                  data-testid={getTestId("task-type-select")}
                   className="w-full border rounded px-3 py-2"
                   value={draft.taskType || "feature"}
                   onChange={(e) => setDraft({ ...draft, taskType: e.target.value as any })}
@@ -129,7 +130,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
               <div>
                 <label className="block text-sm font-semibold mb-1">Tytuł zadania *</label>
                 <input
-                  data-testid={refactorSelectors ? "task-title-input-v2" : "task-title-input"}
+                  data-testid={getTestId("task-title-input")}
                   className="w-full border rounded px-3 py-2"
                   value={draft.title || ""}
                   onChange={(e) => setDraft({ ...draft, title: e.target.value })}
@@ -141,7 +142,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
               <div>
                 <label className="block text-sm font-semibold mb-1">Opis</label>
                 <textarea
-                  data-testid="task-description-input"
+                  data-testid={getTestId("task-description-input")}
                   className="w-full border rounded px-3 py-2 h-24"
                   value={draft.description || ""}
                   onChange={(e) => setDraft({ ...draft, description: e.target.value })}
@@ -152,7 +153,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
               <div>
                 <label className="block text-sm font-semibold mb-1">Priorytet *</label>
                 <select
-                  data-testid="task-priority-select"
+                  data-testid={getTestId("task-priority-select")}
                   className="w-full border rounded px-3 py-2"
                   value={draft.priority || ""}
                   onChange={(e) => setDraft({ ...draft, priority: e.target.value })}
@@ -166,7 +167,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
               </div>
 
               {draft.priority === "high" && (
-                <div className="bg-yellow-50 border border-yellow-300 rounded p-3 text-sm" data-testid="high-priority-warning">
+                <div className="bg-yellow-50 border border-yellow-300 rounded p-3 text-sm" data-testid={getTestId("high-priority-warning")}>
                   ⚠️ Zadania High priority powinny być ukończone w ciągu 24h
                 </div>
               )}
@@ -180,7 +181,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
               <div>
                 <label className="block text-sm font-semibold mb-1">Przypisz do *</label>
                 <select
-                  data-testid="task-assignee-select"
+                  data-testid={getTestId("task-assignee-select")}
                   className="w-full border rounded px-3 py-2"
                   value={draft.assignedTo || ""}
                   onChange={(e) => setDraft({ ...draft, assignedTo: e.target.value })}
@@ -202,7 +203,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                 <input
                   type="number"
                   min="1"
-                  data-testid="task-hours-input"
+                  data-testid={getTestId("task-hours-input")}
                   className="w-full border rounded px-3 py-2"
                   value={draft.estimatedHours || ""}
                   onChange={(e) => setDraft({ ...draft, estimatedHours: Number(e.target.value) })}
@@ -214,7 +215,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                 <label className="block text-sm font-semibold mb-1">Data końcowa</label>
                 <input
                   type="date"
-                  data-testid="task-due-date-input"
+                  data-testid={getTestId("task-due-date-input")}
                   className="w-full border rounded px-3 py-2"
                   value={draft.dueDate || ""}
                   onChange={(e) => setDraft({ ...draft, dueDate: e.target.value })}
@@ -223,13 +224,13 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
 
               {/* Conditional: Severity dla Bug */}
               {draft.taskType === "bug" && (
-                <div data-testid="severity-field">
+                <div data-testid={getTestId("severity-field")}>
                   <label className="block text-sm font-semibold mb-1">Severity *</label>
                   <select
                     className="w-full border rounded px-3 py-2"
                     value={draft.severity || ""}
                     onChange={(e) => setDraft({ ...draft, severity: e.target.value })}
-                    data-testid="task-severity-select"
+                    data-testid={getTestId("task-severity-select")}
                   >
                     <option value="">Wybierz...</option>
                     <option value="critical">Critical</option>
@@ -247,7 +248,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                     type="checkbox"
                     checked={draft.requiresApproval || false}
                     onChange={(e) => setDraft({ ...draft, requiresApproval: e.target.checked })}
-                    data-testid="requires-approval-checkbox"
+                    data-testid={getTestId("requires-approval-checkbox")}
                   />
                   <span className="text-sm">Wymaga zatwierdzenia managera</span>
                 </label>
@@ -255,13 +256,13 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
 
               {/* Conditional: Approver */}
               {draft.requiresApproval && (
-                <div data-testid="approver-field">
+                <div data-testid={getTestId("approver-field")}>
                   <label className="block text-sm font-semibold mb-1">Zatwierdzający</label>
                   <select
                     className="w-full border rounded px-3 py-2"
                     value={draft.approver || ""}
                     onChange={(e) => setDraft({ ...draft, approver: e.target.value })}
-                    data-testid="task-approver-select"
+                    data-testid={getTestId("task-approver-select")}
                   >
                     <option value="">Wybierz...</option>
                     <option value="manager-a">Manager A</option>
@@ -278,7 +279,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                   placeholder="backend, urgent, api"
                   value={draft.tags?.join(", ") || ""}
                   onChange={(e) => setDraft({ ...draft, tags: e.target.value.split(",").map(t => t.trim()).filter(Boolean) })}
-                  data-testid="task-tags-input"
+                  data-testid={getTestId("task-tags-input")}
                 />
               </div>
 
@@ -289,7 +290,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                   placeholder="task-123, task-456"
                   value={draft.dependencies?.join(", ") || ""}
                   onChange={(e) => setDraft({ ...draft, dependencies: e.target.value.split(",").map(t => t.trim()).filter(Boolean) })}
-                  data-testid="task-dependencies-input"
+                  data-testid={getTestId("task-dependencies-input")}
                 />
                 <p className="text-xs text-gray-600 mt-1">
                   Dostępne zadania: {existingTasks.map(t => t.id).join(", ") || "brak"}
@@ -302,7 +303,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
             <div className="space-y-4">
               <h2 className="text-2xl font-bold mb-4">Krok 3: Podsumowanie</h2>
               
-              <div className="bg-gray-50 rounded p-4 space-y-3" data-testid="wizard-summary">
+              <div className="bg-gray-50 rounded p-4 space-y-3" data-testid={getTestId("wizard-summary")}>
                 <div>
                   <span className="font-semibold">Typ:</span>{" "}
                   <span className="text-gray-700">{draft.taskType}</span>
@@ -369,7 +370,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
             onClick={prevStep}
             disabled={step === 1}
             className="px-4 py-2 border rounded disabled:opacity-50 disabled:cursor-not-allowed"
-            data-testid="wizard-prev-btn"
+            data-testid={getTestId("wizard-prev-btn")}
           >
             ← Wstecz
           </button>
@@ -378,7 +379,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
             type="button"
             onClick={onClose}
             className="px-4 py-2 text-gray-600 hover:text-gray-800"
-            data-testid="wizard-cancel-btn"
+            data-testid={getTestId("wizard-cancel-btn")}
           >
             Anuluj
           </button>
@@ -388,7 +389,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
               type="button"
               onClick={nextStep}
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-              data-testid="wizard-next-btn"
+              data-testid={getTestId("wizard-next-btn")}
             >
               Dalej →
             </button>
@@ -397,7 +398,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
               type="button"
               onClick={submit}
               className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-              data-testid="wizard-submit-btn"
+              data-testid={getTestId("wizard-submit-btn")}
             >
               ✓ Utwórz zadanie
             </button>

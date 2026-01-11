@@ -7,6 +7,7 @@ import { TaskTable } from "../components/TaskTable";
 import { TaskSearch } from "../components/TaskSearch";
 import { TaskGridItem } from "../components/TaskGridItem";
 import { useLab } from "../context/LabContext";
+import { getTestId } from "../utils/testIds";
 
 type Task = {
   id: string;
@@ -226,7 +227,7 @@ export default function Tasks() {
           {!mobileBreakingChange && (
             <button
               onClick={() => setShowWizard(true)}
-              data-testid="open-wizard-btn"
+              data-testid={getTestId("open-wizard-btn")}
               className="flex items-center gap-2 px-4 md:px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:shadow-lg transition-all duration-200 font-medium min-h-[44px] whitespace-nowrap"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -241,7 +242,7 @@ export default function Tasks() {
           {mobileBreakingChange && (
             <button
               onClick={() => setShowWizard(true)}
-              data-testid="open-wizard-btn"
+              data-testid={getTestId("open-wizard-btn")}
               className="hidden md:flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:shadow-lg transition-all duration-200 font-medium min-h-[44px]"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -263,7 +264,7 @@ export default function Tasks() {
           <button
             key={tab}
             id={`tab-${tab}`}
-            data-testid={`tab-${tab}`}
+            data-testid={getTestId(`tab-${tab}`)}
             onClick={() => setActiveTab(tab)}
             className={`px-4 md:px-6 py-3 border-b-2 transition-all font-medium whitespace-nowrap min-h-[44px] ${
               activeTab === tab
@@ -281,7 +282,7 @@ export default function Tasks() {
       </div>
 
       {/* Tab Content */}
-      <div data-testid={`tab-content-${activeTab}`}>
+      <div data-testid={getTestId(`tab-content-${activeTab}`)}>
         {/* Active Tab */}
         {activeTab === "active" && (
           <div className="space-y-4 md:space-y-6">
@@ -293,7 +294,7 @@ export default function Tasks() {
                   {(["all", "my-tasks", "unassigned"] as FilterMode[]).map((mode) => (
                     <button
                       key={mode}
-                      data-testid={`filter-${mode}`}
+                      data-testid={getTestId(`filter-${mode}`)}
                       onClick={() => {
                         setFilterMode(mode);
                         setPage(1);
@@ -343,7 +344,7 @@ export default function Tasks() {
                   
                   <button
                     onClick={() => setShowQuickForm(!showQuickForm)}
-                    data-testid="toggle-quick-form-btn"
+                    data-testid={getTestId("toggle-quick-form-btn")}
                     className={`${hiddenOnMobile ? "hidden md:flex" : "flex"} items-center px-3 md:px-4 py-2 bg-gray-100 text-xs md:text-sm rounded-lg hover:bg-gray-200 transition-colors font-medium text-gray-700 min-h-[44px] whitespace-nowrap`}
                   >
                     {showQuickForm ? "Hide" : "Quick"} Add
@@ -542,7 +543,7 @@ export default function Tasks() {
       {mobileBreakingChange && (
         <button
           onClick={() => setShowWizard(true)}
-          data-testid="open-wizard-btn"
+          data-testid={getTestId("open-wizard-btn")}
           className="md:hidden fixed bottom-20 right-4 w-14 h-14 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-full shadow-2xl hover:shadow-3xl transition-all duration-200 flex items-center justify-center z-40"
           aria-label="Add new task"
         >

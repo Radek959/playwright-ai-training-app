@@ -4,6 +4,7 @@ import Tasks from "./routes/Tasks";
 import Users from "./routes/Users";
 import Dashboard from "./routes/Dashboard";
 import { useLab } from "./context/LabContext";
+import { getTestId } from "./utils/testIds";
 
 const navLinkClass = (isActive: boolean) =>
   `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 min-h-[44px] ${
@@ -56,7 +57,7 @@ export default function App() {
         <div 
           className="fixed inset-0 bg-black/50 z-40 md:hidden"
           onClick={() => setMobileMenuOpen(false)}
-          data-testid="mobile-overlay"
+          data-testid={getTestId("mobile-overlay")}
         />
       )}
 
@@ -68,7 +69,7 @@ export default function App() {
           ${sidebarCollapsed ? "md:w-20" : "md:w-64"}
           w-64 bg-white shadow-2xl transition-all duration-300 flex flex-col border-r border-gray-200
         `}
-        data-testid="sidebar"
+        data-testid={getTestId("sidebar")}
       >
         {/* Logo */}
         <div className="p-6 border-b border-gray-200 flex items-center justify-between">
@@ -88,7 +89,7 @@ export default function App() {
           <button
             onClick={() => setMobileMenuOpen(false)}
             className="md:hidden p-2 hover:bg-gray-100 rounded-lg"
-            data-testid="close-mobile-menu"
+            data-testid={getTestId("close-mobile-menu")}
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -117,7 +118,7 @@ export default function App() {
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
             className="w-full flex items-center justify-center gap-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors min-h-[44px]"
-            data-testid="sidebar-toggle"
+            data-testid={getTestId("sidebar-toggle")}
           >
             <svg 
               className={`w-5 h-5 transition-transform ${sidebarCollapsed ? "rotate-180" : ""}`} 
@@ -140,7 +141,7 @@ export default function App() {
             <button
               onClick={() => setMobileMenuOpen(true)}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              data-testid="open-mobile-menu"
+              data-testid={getTestId("open-mobile-menu")}
               aria-label="Open menu"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -200,7 +201,7 @@ export default function App() {
                       ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white"
                       : "text-gray-600 hover:bg-gray-100"
                   }`}
-                  data-testid={`bottom-nav-${item.label.toLowerCase()}`}
+                  data-testid={getTestId(`bottom-nav-${item.label.toLowerCase()}`)}
                 >
                   {item.icon}
                   <span className="text-xs font-medium mt-1">{item.label}</span>

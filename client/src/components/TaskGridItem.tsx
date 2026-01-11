@@ -1,4 +1,5 @@
 import { UserAvatar } from "./UserAvatar";
+import { getTestId } from "../utils/testIds";
 
 type Task = {
   id: string;
@@ -33,7 +34,7 @@ export function TaskGridItem({ task, onClick }: Props) {
     <div
       className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer group border border-gray-200"
       onClick={onClick}
-      data-testid={`task-grid-item-${task.id}`}
+      data-testid={getTestId(`task-grid-item-${task.id}`)}
     >
       {/* Cover Image */}
       <div className="relative h-40 bg-gradient-to-br from-indigo-100 to-purple-100 overflow-hidden">
@@ -42,7 +43,7 @@ export function TaskGridItem({ task, onClick }: Props) {
             src={task.coverImage}
             alt={task.title}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            data-testid="task-cover-image"
+            data-testid={getTestId("task-cover-image")}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-400">

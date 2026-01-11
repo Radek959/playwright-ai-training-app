@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { getTestId } from "../utils/testIds";
 
 type Props = {
   title: string;
@@ -15,7 +16,7 @@ export function StatCard({ title, value, icon, trend, className = "" }: Props) {
   return (
     <div 
       className={`bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300 p-6 border border-gray-100 ${className}`}
-      data-testid="stat-card"
+      data-testid={getTestId("stat-card")}
     >
       <div className="flex items-start justify-between">
         <div className="flex-1">

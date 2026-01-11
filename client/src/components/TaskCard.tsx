@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useLab } from "../context/LabContext";
+import { getTestId } from "../utils/testIds";
 
 type Task = {
   id: string;
@@ -30,12 +31,12 @@ export function TaskCard({
 
   const ids = useMemo(
     () => ({
-      container: refactorSelectors ? `task-${task.id}-${randomToken()}` : `task-${task.id}`,
-      deleteBtn: refactorSelectors ? `del-${task.id}-${randomToken()}` : `delete-${task.id}`,
-      editBtn: refactorSelectors ? `edit-${task.id}-${randomToken()}` : `edit-${task.id}`,
-      dataTest: refactorSelectors ? `task-card-${randomToken()}` : `task-card-${task.id}`
+      container: getTestId(`task-${task.id}`),
+      deleteBtn: getTestId(`delete-${task.id}`),
+      editBtn: getTestId(`edit-${task.id}`),
+      dataTest: getTestId(`task-card-${task.id}`)
     }),
-    [refactorSelectors, task.id]
+    [task.id]
   );
 
   const handleDelete = async () => {
