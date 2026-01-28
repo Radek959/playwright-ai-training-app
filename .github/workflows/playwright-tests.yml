@@ -1,0 +1,146 @@
+# GitHub Actions Workflow dla automatyzacji testów Playwright
+# Uruchamiane na push i pull request do gałęzi main
+
+name: Playwright Tests
+
+# Definicja triggerów - kiedy workflow ma się uruchamiać
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# Definicja zadań (jobs) które będą wykonywane
+jobs:
+  test:
+    # Timeout dla całego job'a - 60 minut
+    timeout-minutes: 60
+    
+    # System operacyjny na którym będą uruchamiane testy
+    runs-on: ubuntu-latest
+    
+    # Kroki wykonywane sekwencyjnie
+    steps:
+    # Krok 1: Pobranie kodu źródłowego z repozytorium
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # Krok 2: Konfiguracja Node.js z cache dla npm
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: 'npm'
+
+    # Krok 3: Instalacja zależności w katalogu głównym
+    # To zainstaluje zależności root oraz wykona postinstall script
+    # który automatycznie zainstaluje zależności w client i server
+    - name: Install dependencies (Root)
+      run: npm ci
+
+    # Krok 4: Instalacja zależności przeglądarek Playwright
+    # --with-deps instaluje też systemowe zależności Ubuntu
+    - name: Install Playwright browsers
+      run: npx playwright install --with-deps
+
+    # Krok 5: Instalacja wait-on do sprawdzania dostępności serwisów
+    # Potrzebne do oczekiwania na gotowość frontend
+    - name: Install wait-on
+      run: npm install -g wait-on
+
+    # Krok 6: Uruchomienie backend serwera w tle
+    # Serwer Express zostanie uruchomiony na porcie 3001
+    - name: Start backend server
+      run: |
+        cd server
+        npm run dev &
+        echo "Backend server started in background"
+      env:
+        NODE_ENV: test
+
+    # Krok 7: Oczekiwanie na gotowość backend API
+    # Sprawdzamy czy backend odpowiada na porcie 3001
+    - name: Wait for backend to be ready
+      run: wait-on http://localhost:3001 --timeout 30000
+
+    # Krok 8: Uruchomienie frontend aplikacji w tle
+    # Vite dev server zostanie uruchomiony na porcie 5173
+    - name: Start frontend application
+      run: |
+        cd client
+        npm run dev &
+        echo "Frontend application started in background"
+      env:
+        NODE_ENV: test
+
+    # Krok 9: Oczekiwanie na gotowość frontend aplikacji
+    # Sprawdzamy czy frontend jest dostępny pod http://localhost:5173
+    - name: Wait for frontend to be ready
+      run: wait-on http://localhost:5173 --timeout 60000
+
+    # Krok 10: Uruchomienie testów Playwright
+    # Testy będą uruchomione z konfiguracją CI
+    - name: Run Playwright tests
+      run: npx playwright test
+      env:
+        CI: true
+
+    # Krok 11: Upload artefaktów - raport Playwright
+    # Ten krok wykona się zawsze, nawet gdy testy się nie powiodą
+    # Raport będzie dostępny przez 30 dni
+    - name: Upload Playwright Report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: playwright-report
+        path: playwright-report/
+        retention-days: 30
+
+    # Krok 12: Upload artefaktów - test results (opcjonalnie)
+    # Dodatkowe artefakty z wynikami testów
+    - name: Upload Test Results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: test-results/
+        retention-days: 30
+
+    # Krok 13: Upload trace files w przypadku niepowodzenia
+    # Trace files pomagają w debugowaniu niepowiodłych testów
+    - name: Upload Trace Files
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: playwright-traces
+        path: test-results/*/trace.zip
+        retention-days: 10
+
+  # Opcjonalny job do analizy wyników testów
+  # Uruchamia się tylko jeśli główny job test się zakończy
+  test-summary:
+    needs: test
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+    - name: Test Summary
+      run: |
+        echo "## Test Execution Summary 📊" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ needs.test.result }}" == "success" ]; then
+          echo "✅ All Playwright tests passed successfully!" >> $GITHUB_STEP_SUMMARY
+        elif [ "${{ needs.test.result }}" == "failure" ]; then
+          echo "❌ Some Playwright tests failed. Check the artifacts for details." >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⚠️ Test execution was cancelled or encountered an error." >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "📋 **Available Artifacts:**" >> $GITHUB_STEP_SUMMARY
+        echo "- Playwright HTML Report" >> $GITHUB_STEP_SUMMARY
+        echo "- Test Results" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ needs.test.result }}" == "failure" ]; then
+          echo "- Trace Files (for debugging)" >> $GITHUB_STEP_SUMMARY
+        fi
