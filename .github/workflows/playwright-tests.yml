@@ -25,18 +25,31 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # Krok 2: Konfiguracja Node.js z cache dla npm
+    # Krok 2: Konfiguracja Node.js
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: 20
-        cache: 'npm'
 
-    # Krok 3: Instalacja zależności w katalogu głównym
+    # Krok 3: Cache node_modules dla lepszej wydajności
+    # Cache bazuje na zawartości package.json w każdym folderze
+    - name: Cache node_modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.npm
+          node_modules
+          client/node_modules
+          server/node_modules
+        key: ${{ runner.os }}-node-${{ hashFiles('**/package.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+
+    # Krok 4: Instalacja zależności w katalogu głównym
     # To zainstaluje zależności root oraz wykona postinstall script
     # który automatycznie zainstaluje zależności w client i server
     - name: Install dependencies (Root)
-      run: npm ci
+      run: npm install
 
     # Krok 4: Instalacja zależności przeglądarek Playwright
     # --with-deps instaluje też systemowe zależności Ubuntu
