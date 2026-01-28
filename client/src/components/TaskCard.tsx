@@ -28,6 +28,11 @@ export function TaskCard({
 }) {
   const { a11y, setLastError } = useLab();
   const refactorSelectors = import.meta.env.VITE_REFACTOR_SELECTORS === "true";
+  const editLabel = refactorSelectors ? "Update task" : "Edit";
+  const deleteLabel = refactorSelectors ? "Remove task" : "Usuń";
+  const editAriaLabel = refactorSelectors ? "Update task" : "Edytuj zadanie";
+  const deleteAriaLabel = refactorSelectors ? "Remove task" : "Usuń zadanie";
+  const actionsLabel = refactorSelectors ? "Manage" : "Actions";
 
   const ids = useMemo(
     () => ({
@@ -78,6 +83,9 @@ export function TaskCard({
           onEdit={() => onEdit(task)}
           onDelete={handleDelete}
           a11y={a11y}
+          editLabel={editLabel}
+          deleteLabel={deleteLabel}
+          summaryLabel={actionsLabel}
         />
       ) : (
         <div className="flex gap-2">
@@ -87,9 +95,9 @@ export function TaskCard({
             type={a11y ? undefined : "button"}
             className={a11y ? "text-sm underline cursor-pointer" : "bg-slate-100 px-3 py-1 rounded"}
             onClick={() => onEdit(task)}
-            aria-label={a11y ? undefined : "Edytuj zadanie"}
+            aria-label={a11y ? undefined : editAriaLabel}
           >
-            Edit
+            {editLabel}
           </EditElement>
 
           <DeleteElement
@@ -100,9 +108,9 @@ export function TaskCard({
             }
             type={a11y ? undefined : "button"}
             onClick={handleDelete}
-            aria-label={a11y ? undefined : "Usuń zadanie"}
+            aria-label={a11y ? undefined : deleteAriaLabel}
           >
-            Usuń
+            {deleteLabel}
           </DeleteElement>
         </div>
       )}
@@ -128,19 +136,25 @@ function DropdownActions({
   deleteId,
   onEdit,
   onDelete,
-  a11y
+  a11y,
+  editLabel,
+  deleteLabel,
+  summaryLabel
 }: {
   editId: string;
   deleteId: string;
   onEdit: () => void;
   onDelete: () => void;
   a11y: boolean;
+  editLabel: string;
+  deleteLabel: string;
+  summaryLabel: string;
 }) {
   const ButtonTag: any = a11y ? "span" : "button";
   return (
     <div className="relative">
       <details className="border rounded px-3 py-1 bg-slate-50 cursor-pointer select-none">
-        <summary className="font-semibold text-sm">Actions</summary>
+        <summary className="font-semibold text-sm">{summaryLabel}</summary>
         <div className="mt-2 flex flex-col gap-2">
           <ButtonTag
             id={editId}
@@ -153,7 +167,7 @@ function DropdownActions({
               onEdit();
             }}
           >
-            Edit
+            {editLabel}
           </ButtonTag>
           <ButtonTag
             id={deleteId}
@@ -166,7 +180,7 @@ function DropdownActions({
               onDelete();
             }}
           >
-            Delete
+            {deleteLabel}
           </ButtonTag>
         </div>
       </details>

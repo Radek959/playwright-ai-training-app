@@ -18,6 +18,7 @@ export function TaskForm({ onCreated }: Props) {
   const [dueDate, setDueDate] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
   const [users, setUsers] = useState<User[]>([]);
+  const submitLabel = refactorSelectors ? "Create Task" : "Dodaj zadanie";
 
   useEffect(() => {
     const loadUsers = async () => {
@@ -154,8 +155,9 @@ export function TaskForm({ onCreated }: Props) {
             ? "bg-indigo-700 text-white px-3 py-1 rounded hover:bg-indigo-800"
             : "bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
         }
+        aria-label={submitLabel}
       >
-        Dodaj zadanie
+        {submitLabel}
       </button>
     </form>
   );

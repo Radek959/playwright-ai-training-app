@@ -54,6 +54,7 @@ export default function Tasks() {
   const layoutRefactor = import.meta.env.VITE_REFACTOR_LAYOUT === "true";
   const mobileBreakingChange = import.meta.env.VITE_MOBILE_BREAKING_CHANGE === "true";
   const hiddenOnMobile = import.meta.env.VITE_HIDDEN_ON_MOBILE === "true";
+  const refactorSelectors = import.meta.env.VITE_REFACTOR_SELECTORS === "true";
   
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -63,6 +64,8 @@ export default function Tasks() {
   const [page, setPage] = useState<number>(1);
   const pageSize = 5;
   const [editing, setEditing] = useState<Task | null>(null);
+  const primaryCtaLabel = refactorSelectors ? "Create Work Item" : "New Task";
+  const primaryCtaShortLabel = refactorSelectors ? "Create" : "New";
   
   // New state for advanced UI
   const [activeTab, setActiveTab] = useState<TabView>("active");
@@ -233,8 +236,8 @@ export default function Tasks() {
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              <span className="hidden sm:inline">New Task</span>
-              <span className="sm:hidden">New</span>
+              <span className="hidden sm:inline">{primaryCtaLabel}</span>
+              <span className="sm:hidden">{primaryCtaShortLabel}</span>
             </button>
           )}
           
@@ -248,7 +251,7 @@ export default function Tasks() {
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              New Task
+              {primaryCtaLabel}
             </button>
           )}
         </div>
@@ -347,7 +350,7 @@ export default function Tasks() {
                     data-testid={getTestId("toggle-quick-form-btn")}
                     className={`${hiddenOnMobile ? "hidden md:flex" : "flex"} items-center px-3 md:px-4 py-2 bg-gray-100 text-xs md:text-sm rounded-lg hover:bg-gray-200 transition-colors font-medium text-gray-700 min-h-[44px] whitespace-nowrap`}
                   >
-                    {showQuickForm ? "Hide" : "Quick"} Add
+                    {refactorSelectors ? (showQuickForm ? "Close inline form" : "Inline add") : `${showQuickForm ? "Hide" : "Quick"} Add`}
                   </button>
                 </div>
               </div>
