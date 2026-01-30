@@ -29,8 +29,6 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '20'
-        # Opcjonalnie: cache zależności npm dla szybszych buildów
-        cache: 'npm'
 
     # Krok 3: Instaluje zależności w folderze głównym
     - name: Install root dependencies
