@@ -32,17 +32,17 @@ jobs:
 
     # Krok 3: Instaluje zależności w folderze głównym
     - name: Install root dependencies
-      run: npm ci
+      run: npm install
 
     # Krok 4: Instaluje zależności w folderze client (frontend Vite)
     - name: Install client dependencies
       working-directory: ./client
-      run: npm ci
+      run: npm install
 
     # Krok 5: Instaluje zależności w folderze server (backend Express)
     - name: Install server dependencies
       working-directory: ./server
-      run: npm ci
+      run: npm install
 
     # Krok 6: Instaluje przeglądarki Playwright wraz z zależnościami systemowymi
     # Flaga --with-deps instaluje wszystkie wymagane biblioteki systemowe (np. libgbm, libgtk, etc.)
