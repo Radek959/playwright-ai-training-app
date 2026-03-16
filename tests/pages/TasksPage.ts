@@ -154,6 +154,11 @@ export class TasksPage {
         return this.taskSearchResultTitle;
     }
 
+    async getTaskCardLocatorByTitle(titleHeading: string) {
+        return this.page.locator('[data-testid^="task-card-"]')
+                        .filter({ has: this.page.getByRole('heading', { name: titleHeading }) });
+    }
+
     async getTotalTaskCount() {
         const isTableVisible = await this.page.getByTestId('table-info').isVisible();
         if (!isTableVisible) {
@@ -164,6 +169,10 @@ export class TasksPage {
         const counterText = await this.page.getByTestId('table-info').innerText();
         const extractedCount = counterText.match(/\d+/);
         return extractedCount ? parseInt(extractedCount[0]) : 0;
+    }
+
+    async changeDateFormat(date: string, format: string) {
+        return new Date(date).toLocaleDateString(format);
     }
 
 }
