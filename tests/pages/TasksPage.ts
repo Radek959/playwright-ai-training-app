@@ -7,7 +7,7 @@ export interface TaskDetails {
     status?: string; // change to enum
     priority?: string; // change to enum
     dueDate?: string;
-    assignee?: string; // change to enum
+    assignee?: string; 
     hours?: string;
     tags?: string;
 }
@@ -33,14 +33,19 @@ export class TasksPage {
     readonly wizardDueDateInput: Locator;
     readonly wizardTagsInput: Locator;
 
-    readonly quickAddForm: Locator;
-    readonly titleInput: Locator;
-    readonly descriptionInput: Locator;
-    readonly statusSelect: Locator;
-    readonly prioritySelect: Locator;
-    readonly dueDateInput: Locator;
-    readonly assigneeSelect: Locator;
-    readonly addTaskButton: Locator;
+    readonly quickAddFormButton: Locator;
+    readonly quickAddFormTitleInput: Locator;
+    readonly quickAddFormDescriptionInput: Locator;
+    readonly quickAddFormStatusSelect: Locator;
+    readonly quickAddFormPrioritySelect: Locator;
+    readonly quickAddFormDueDateInput: Locator;
+    readonly quickAddFormAssigneeSelect: Locator;
+    readonly quickAddFormAddTaskButton: Locator;
+
+    readonly taskSearchInput: Locator;
+    readonly taskSearchClearButton: Locator;
+    readonly taskSearchResult: Locator;
+    readonly taskSearchResultTitle: Locator;
 
     constructor( private page: Page) {
         this.titlePage = this.page.getByRole('heading', { name: 'Tasks' });
@@ -65,18 +70,30 @@ export class TasksPage {
         this.wizardTagsInput = this.page.getByTestId('task-tags-input');
 
         // quick add form locators
-        this.quickAddForm = this.page.getByTestId('toggle-quick-form-btn');
-        this.titleInput = this.page.getByRole('textbox').nth(1);
-        this.descriptionInput = this.page.locator('textarea');
-        this.statusSelect = this.page.getByRole('combobox').nth(2);
-        this.prioritySelect = this.page.getByRole('combobox').nth(3);
-        this.dueDateInput = this.page.locator('input[type="date"]');
-        this.assigneeSelect = this.page.getByRole('combobox').nth(4);
-        this.addTaskButton = this.page.getByTestId('add-task-button');
+        this.quickAddFormButton = this.page.getByTestId('toggle-quick-form-btn');
+        this.quickAddFormTitleInput = this.page.getByRole('textbox').nth(1);
+        this.quickAddFormDescriptionInput = this.page.locator('textarea');
+        this.quickAddFormStatusSelect = this.page.getByRole('combobox').nth(2);
+        this.quickAddFormPrioritySelect = this.page.getByRole('combobox').nth(3);
+        this.quickAddFormDueDateInput = this.page.locator('input[type="date"]');
+        this.quickAddFormAssigneeSelect = this.page.getByRole('combobox').nth(4);
+        this.quickAddFormAddTaskButton = this.page.getByTestId('add-task-button');
+
+        // search locators
+        this.taskSearchInput = this.page.getByTestId('task-search-input');
+        this.taskSearchClearButton = this.page.getByTestId('search-clear-btn');
+        this.taskSearchResult = this.page.getByTestId('search-result-t1');
+        this.taskSearchResultTitle = this.taskSearchResult.locator('div').first();
+
+        // filter locators
     }
 
     async navigateToPage(url: string) {
         await this.page.goto(url);
+    }
+
+    async navigateToTasksTab(tabName: string) {
+        await this.page.getByTestId(`tab-${tabName}`).click();
     }
 
     async openTaskWizard() {
@@ -118,18 +135,35 @@ export class TasksPage {
     }
 
     async toggleQuickAddForm() {
-        await this.quickAddForm.click();
+        await this.quickAddFormButton.click();
     }
 
     async quickAddTask(taskDetails: TaskDetails) {
-        if (taskDetails.title ) await this.titleInput.fill(taskDetails.title);
-        if (taskDetails.description ) await this.descriptionInput.fill(taskDetails.description);
-        if (taskDetails.status ) await this.statusSelect.selectOption(taskDetails.status);
-        if (taskDetails.priority ) await this.prioritySelect.selectOption(taskDetails.priority);
-        if (taskDetails.dueDate ) await this.dueDateInput.fill(taskDetails.dueDate);
-        if (taskDetails.assignee ) await this.assigneeSelect.selectOption(taskDetails.assignee);
-        await this.addTaskButton.click();
-        
+        if (taskDetails.title ) await this.quickAddFormTitleInput.fill(taskDetails.title);
+        if (taskDetails.description ) await this.quickAddFormDescriptionInput.fill(taskDetails.description);
+        if (taskDetails.status ) await this.quickAddFormStatusSelect.selectOption(taskDetails.status);
+        if (taskDetails.priority ) await this.quickAddFormPrioritySelect.selectOption(taskDetails.priority);
+        if (taskDetails.dueDate ) await this.quickAddFormDueDateInput.fill(taskDetails.dueDate);
+        if (taskDetails.assignee ) await this.quickAddFormAssigneeSelect.selectOption(taskDetails.assignee);
+        await this.quickAddFormAddTaskButton.click();
+    }
+
+    async findTaskByText(taskText: string) {
+        await this.taskSearchInput.fill(taskText);
+        await this.taskSearchResult.waitFor({ state: "visible"});
+        return this.taskSearchResultTitle;
+    }
+
+    async getTotalTaskCount() {
+        const isTableVisible = await this.page.getByTestId('table-info').isVisible();
+        if (!isTableVisible) {
+            await this.navigateToTasksTab('table');
+            await this.page.getByTestId('table-info').waitFor({ state: 'visible' });
+        }
+
+        const counterText = await this.page.getByTestId('table-info').innerText();
+        const extractedCount = counterText.match(/\d+/);
+        return extractedCount ? parseInt(extractedCount[0]) : 0;
     }
 
 }
