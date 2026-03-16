@@ -33,6 +33,11 @@ test.describe( 'testing task section', () => {
     // search
     // filter
 
+    //add checking for all fields not only title
+    //correctly assign task to user
+    //no owner, article with taskadta.title > owner is not visible
+    // new task is visible on the top of the list
+
     test.describe( 'testing wizard task creator', () => {
         test.beforeEach(async ({ page }) => {
             await tasksPage.openTaskWizard();
@@ -87,15 +92,60 @@ test.describe( 'testing task section', () => {
         });
 
         test('should add task using quick add form with valid data', async ({ page }) => {
-        //arrange
-        await expect(page.getByText(taskData.quickFormFullDataTask.title)).not.toBeVisible();
+            //arrange
+            await expect(page.getByText(taskData.quickFormFullDataTask.title)).not.toBeVisible();
 
-        //act
-        await tasksPage.quickAddTask(taskData.quickFormFullDataTask);
+            //act
+            await tasksPage.quickAddTask(taskData.quickFormFullDataTask);
 
-        //assert
-        await expect(page.getByText(taskData.quickFormFullDataTask.title)).toBeVisible();
-    });
+            //assert
+            await expect(page.getByText(taskData.quickFormFullDataTask.title)).toBeVisible();
+        });
+
+        test('should be cleared after adding new task', async ({ page }) => {
+            // arrange
+            await expect(tasksPage.quickAddFormTitleInput).toHaveValue('');
+            await expect(tasksPage.quickAddFormDescriptionInput).toHaveValue('');
+            // act
+            await tasksPage.quickAddTask(taskData.quickFormClearedTask);
+            // assert
+            await expect(tasksPage.quickAddFormTitleInput).toHaveValue('');
+            await expect(tasksPage.quickAddFormDescriptionInput).toHaveValue('');
+            await expect(tasksPage.quickAddFormStatusSelect).toHaveValue('todo');  // "To Do" was invalid
+            await expect(tasksPage.quickAddFormPrioritySelect).toHaveValue('medium'); // "Medium" was invalid
+            await expect(tasksPage.quickAddFormDueDateInput).toHaveValue('');
+            await expect(tasksPage.quickAddFormAssigneeSelect).toHaveValue('');
+        });
+
+        test('should add multiple tasks using quick add form', async ({ page }) => {
+            //arrange
+            const initialCount = await tasksPage.getTotalTaskCount();
+            await tasksPage.navigateToTasksTab('active');
+
+            for (const task of [taskData.quickFormLoopTasks.quickFormDataFirst, taskData.quickFormLoopTasks.quickFormDataSecond, taskData.quickFormLoopTasks.quickFormDataThird]) {
+                await expect(page.getByRole('heading', {name: task.title})).not.toBeVisible();
+
+                //act
+                await tasksPage.quickAddTask(task);
+
+                //assert
+                await expect(page.getByRole('heading', {name: task.title})).toBeVisible();
+            }
+            const finalCount = await tasksPage.getTotalTaskCount()
+            await expect(finalCount).toBe(initialCount + taskData.quickFormLoopTasks.iterations);
+        });       
+
+        test('should spam 100 tasks', async ({ page }) => {
+            const iterations = 100;
+            const initialCount = await tasksPage.getTotalTaskCount();
+            await tasksPage.navigateToTasksTab('active');
+
+            for (let i = 1; i <= iterations; i++) {
+                await tasksPage.quickAddTask({title: `Spam Task ${i}`});
+            }
+            const finalCount = await tasksPage.getTotalTaskCount()
+            await expect(finalCount).toBe(initialCount + iterations);
+        });
 
     });
 
@@ -131,8 +181,7 @@ test.describe( 'testing task section', () => {
             // arrange
             await page.getByTestId('tab-table').click();
 
-            const counterInfo = await page.getByTestId('table-info').innerText();
-            const initialCount = parseInt(counterInfo.match(/\d+/)?.[0] || '0');
+            const initialCount = await tasksPage.getTotalTaskCount();
 
             await expect(page.getByTestId(`cell-${taskId}-title`)).toBeVisible();
             
