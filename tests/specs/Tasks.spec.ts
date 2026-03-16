@@ -32,8 +32,7 @@ test.describe( 'testing task section', () => {
 
     // search
     // filter
-
-    //add checking for all fields not only title
+    
     //correctly assign task to user
     //no owner, article with taskadta.title > owner is not visible
     // new task is visible on the top of the list
@@ -62,7 +61,8 @@ test.describe( 'testing task section', () => {
             await expect(page.getByText('Wybierz priorytet')).toBeVisible();
         });        
 
-        test('should navigate through task wizard steps correctly', async ({ page }) => {
+        test('should navigate through task wizard steps correctly and create task', async ({ page }) => {
+            // act
             await expect(tasksPage.wizardStep1Heading).toBeVisible();
             await tasksPage.completeTaskWizardStep1(taskData.wizardFullDataTask);
 
@@ -70,19 +70,41 @@ test.describe( 'testing task section', () => {
             await tasksPage.completeTaskWizardStep2(taskData.wizardFullDataTask);
 
             await expect(tasksPage.wizardStep3Heading).toBeVisible();
-
             await tasksPage.submitTaskWizard();
-            await expect(page.getByRole('heading', { name: taskData.wizardFullDataTask.title })).toBeVisible();
+
+            // assert
+            const taskCard = await tasksPage.getTaskCardLocatorByTitle(taskData.wizardFullDataTask.title);
+
+            await expect(taskCard.getByRole('heading', { name: taskData.wizardFullDataTask.title })).toBeVisible();
+            await expect(taskCard.getByText(taskData.wizardFullDataTask.description)).toBeVisible();
+            await expect(taskCard.getByText('todo')).toBeVisible();
+            await expect(taskCard.getByText(`P: ${taskData.wizardFullDataTask.priority}`)).toBeVisible();
+            await expect(taskCard.getByText(`Due: ${ await tasksPage.changeDateFormat(taskData.wizardFullDataTask.dueDate, 'en-US')}`)).toBeVisible(); //on playwright ui i have format MM/DD/YYYY but on personal browser i have DD.MM.YYYY
+            // await expect(page.getByText(`Owner: ${taskData.wizardFullDataTask.assignee}`)).toBeVisible();
         });
 
         test('should create task with only required data', async ({ page }) => {
+            // act
             await tasksPage.createTaskUsingWizard(taskData.requiredOnlyDataTask);
-            await expect(page.getByRole('heading', { name: taskData.requiredOnlyDataTask.title })).toBeVisible();
+            // assert
+            const taskCard = await tasksPage.getTaskCardLocatorByTitle(taskData.requiredOnlyDataTask.title);
+
+            await expect(taskCard.getByRole('heading', { name: taskData.requiredOnlyDataTask.title })).toBeVisible();
+            await expect(taskCard.getByText('todo')).toBeVisible();
+            await expect(taskCard.getByText(`P: ${taskData.requiredOnlyDataTask.priority}`)).toBeVisible();
         });
 
         test('should create task with full data', async ({ page }) => {
+            // act
             await tasksPage.createTaskUsingWizard(taskData.wizardFullDataTask);
-            await expect(page.getByRole('heading', { name: taskData.wizardFullDataTask.title })).toBeVisible();
+            // assert
+            const taskCard = await tasksPage.getTaskCardLocatorByTitle(taskData.wizardFullDataTask.title);
+
+            await expect(taskCard.getByRole('heading', { name: taskData.wizardFullDataTask.title })).toBeVisible();
+            await expect(taskCard.getByText(taskData.wizardFullDataTask.description)).toBeVisible();
+            await expect(taskCard.getByText('todo')).toBeVisible();
+            await expect(taskCard.getByText(`P: ${taskData.wizardFullDataTask.priority}`)).toBeVisible();
+            await expect(taskCard.getByText(`Due: ${ await tasksPage.changeDateFormat(taskData.wizardFullDataTask.dueDate, 'en-US')}`)).toBeVisible();
         });
     });
 
@@ -98,8 +120,25 @@ test.describe( 'testing task section', () => {
             //act
             await tasksPage.quickAddTask(taskData.quickFormFullDataTask);
 
-            //assert
-            await expect(page.getByText(taskData.quickFormFullDataTask.title)).toBeVisible();
+            // assert
+            const taskCard = await tasksPage.getTaskCardLocatorByTitle(taskData.quickFormFullDataTask.title);
+
+            await expect(taskCard.getByRole('heading', { name: taskData.quickFormFullDataTask.title })).toBeVisible();
+            await expect(taskCard.getByText(taskData.quickFormFullDataTask.description)).toBeVisible();
+            await expect(taskCard.getByText(taskData.quickFormFullDataTask.status.toLowerCase().replace(' ', '-'))).toBeVisible();
+            await expect(taskCard.getByText(`P: ${taskData.quickFormFullDataTask.priority}`)).toBeVisible();
+            await expect(taskCard.getByText(`Due: ${ await tasksPage.changeDateFormat(taskData.quickFormFullDataTask.dueDate, 'en-US')}`)).toBeVisible();
+        });
+
+        test('should create task with only required data using quick add form', async ({ page }) => {
+            // act
+            await tasksPage.quickAddTask(taskData.quickFormRequiredDataTask);
+            // assert
+            const taskCard = await tasksPage.getTaskCardLocatorByTitle(taskData.quickFormRequiredDataTask.title);
+
+            await expect(taskCard.getByRole('heading', { name: taskData.quickFormRequiredDataTask.title })).toBeVisible();
+            await expect(taskCard.getByText('todo')).toBeVisible();
+            await expect(taskCard.getByText('P: medium')).toBeVisible();
         });
 
         test('should be cleared after adding new task', async ({ page }) => {
@@ -136,13 +175,16 @@ test.describe( 'testing task section', () => {
         });       
 
         test('should spam 100 tasks', async ({ page }) => {
+            // arrange
             const iterations = 100;
             const initialCount = await tasksPage.getTotalTaskCount();
             await tasksPage.navigateToTasksTab('active');
 
+            // act
             for (let i = 1; i <= iterations; i++) {
                 await tasksPage.quickAddTask({title: `Spam Task ${i}`});
             }
+            // assert
             const finalCount = await tasksPage.getTotalTaskCount()
             await expect(finalCount).toBe(initialCount + iterations);
         });
@@ -156,7 +198,7 @@ test.describe( 'testing task section', () => {
             await tasksPage.toggleQuickAddForm();
             await tasksPage.quickAddTask(taskData.deletionTask);
 
-            const taskCard = page.locator('[data-testid^="task-card-"]').filter({ hasText: taskData.deletionTask.title });
+            const taskCard = await tasksPage.getTaskCardLocatorByTitle(taskData.deletionTask.title);
             
             const fullTestId = await taskCard.getAttribute('data-testid'); 
             if (!fullTestId) throw new Error('Task card does not have a data-testid attribute');
