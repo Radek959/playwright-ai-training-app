@@ -5,8 +5,9 @@ import { userData } from "../data/UserData";
 
 let dashboardPage: DashboardPage;
 const mockResponse: TaskDetails[] = [
-                    taskData.wizardFullDataTask,
-                    taskData.quickFormFullDataTask
+                    taskData.todoTask,
+                    taskData.inProgressTask,
+                    taskData.doneTask
                 ];
 
 test.describe( 'dashboard should display tasks correctly', () => {
@@ -25,9 +26,8 @@ test.describe( 'dashboard should display tasks correctly', () => {
             });
     
             await dashboardPage.navigateToPage();
-            await expect(dashboardPage.totalTasksStatCard.getByText( String(mockResponse.length), { exact: true })).toBeVisible();
+            await expect(dashboardPage.totalTasksStatCard.locator('p' , {hasText: String(mockResponse.length)})).toBeVisible();
         });
-
     });
 
     // when mocking api with in progress status, in progress stat card increases and doesnt increase when task is todo
@@ -44,12 +44,43 @@ test.describe( 'dashboard should display tasks correctly', () => {
                 });
 
                 await dashboardPage.navigateToPage();
-                await expect(dashboardPage.inProgressStatCard.getByText( '1', { exact: true })).toBeVisible();
+                await expect(dashboardPage.inProgressStatCard.locator('p' , {hasText: '1'})).toBeVisible();
+            });
+
+            test('should not increase for todo and done tasks in stats card', async ({ page }) => {
+                
+                await page.route('**/api/tasks', async (route) => {
+                    await route.fulfill({
+                        status: 201,
+                        contentType: 'application/json',
+                        json: [taskData.todoTask, taskData.doneTask]
+                    });
+                });
+
+                await dashboardPage.navigateToPage();
+                await expect(dashboardPage.inProgressStatCard.locator('p' , {hasText: '0'})).toBeVisible();
             });
         });
 
     // high priority tasks increases with mocked api response
     // completion increases in percentages
+
+    test.describe( 'should display completion stat card correctly', () => { 
+            test('should correctly calculate completion in stats card', async ({ page }) => {
+                
+                await page.route('**/api/tasks', async (route) => {
+                    await route.fulfill({
+                        status: 201,
+                        contentType: 'application/json',
+                        json: mockResponse
+                    });
+                });
+
+                await dashboardPage.navigateToPage();
+                await expect(dashboardPage.completionStatCard.locator('p' , {hasText: '33%'})).toBeVisible();
+            });
+
+        });
     // task status Breakdown todo in progress done
     // priority Breakdown low medium high
 
@@ -66,7 +97,7 @@ test.describe( 'dashboard should display tasks correctly', () => {
             });
 
             await dashboardPage.navigateToPage();
-            await expect(dashboardPage.teamOverviewCard.getByText( '1 Active Members', { exact: false })).toBeVisible();
+            await expect(dashboardPage.teamOverviewCard.locator('span' , {hasText: '1 Active Members'})).toBeVisible();
         });
     });
 });

@@ -50,6 +50,16 @@ export const taskData = {
         description: 'Detailed description',
         status: 'in-progress'
     } satisfies TaskDetails,
+    doneTask: {
+        title: 'Complete Task',
+        description: 'Detailed description',
+        status: 'done'
+    } satisfies TaskDetails,
+    todoTask: {
+        title: 'Complete Task',
+        description: 'Detailed description',
+        status: 'todo'
+    } satisfies TaskDetails,
     postTask: {
         title: 'Create Task with POST request',
         description: 'Detailed description',
