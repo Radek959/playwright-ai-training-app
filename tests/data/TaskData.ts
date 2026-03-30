@@ -1,12 +1,29 @@
-export const taskData = {
-    url: 'http://localhost:5173/tasks', 
+export interface TaskDetails {
+    type?: TaskType; 
+    title?: string;
+    description?: string;
+    status?: TaskStatus; 
+    priority?: TaskPriority; 
+    dueDate?: string;
+    assignee?: string; 
+    hours?: string;
+    tags?: string;
+}
 
-    emptyTask: {},
+export type TaskType = 'feature' | 'research' | 'bug';
+export type TaskStatus = 'todo' | 'in-progress' | 'done';
+export type TaskPriority = 'low' | 'medium' | 'high';
+
+export const taskData = {
+    urlClient: 'http://localhost:5173/tasks', 
+    urlApi: 'http://localhost:3001/api',
+
+    emptyTask: {} as TaskDetails,
     requiredOnlyDataTask: {
         title: 'Simple Task',
-        priority: 'Medium',
+        priority: 'medium',
         assignee: 'u2'
-    },
+    } satisfies TaskDetails,
     wizardFullDataTask: {
         type: 'research',
         title: 'Complete Wizard Task',
@@ -16,59 +33,72 @@ export const taskData = {
         hours: '5',
         dueDate: '2026-12-31',
         tags: 'urgent'
-    },
+    } satisfies TaskDetails,
     quickFormRequiredDataTask: {
         title: 'Required Data Task'
-    },
+    } satisfies TaskDetails,
     quickFormFullDataTask: {
         title: 'Complete Task',
         description: 'Detailed description',
-        status: 'In Progress',
-        priority: 'High',
+        status: 'in-progress',
+        priority: 'high',
         dueDate: '2026-12-31',
         assignee: 'u1'
-    },
+    } satisfies TaskDetails,
+    inProgressTask: {
+        title: 'Complete Task',
+        description: 'Detailed description',
+        status: 'in-progress'
+    } satisfies TaskDetails,
+    postTask: {
+        title: 'Create Task with POST request',
+        description: 'Detailed description',
+        status: 'in-progress',
+        priority: 'high',
+        dueDate: '2026-12-31',
+        assignee: 'u3'
+    } satisfies TaskDetails,
     quickFormClearedTask: {
         title: 'Cleared Task',
         description: 'Submit this task and check if form was cleared',
-        status: 'To Do',
-        priority: 'Low',
+        status: 'todo',
+        priority: 'low',
         dueDate: '2026-03-30',
         assignee: 'u2'
-    },
+    } satisfies TaskDetails,
     quickFormLoopTasks :{
         iterations: 3,
         quickFormDataFirst: {
             title: 'First Task',
             description: 'Quite detailed description of first task with some vague information',
-            status: 'In Progress',
-            priority: 'Medium',
+            status: 'in-progress',
+            priority: 'medium',
             dueDate: '2026-10-11',
             assignee: 'u1'
-        },
+        } satisfies TaskDetails,
         quickFormDataSecond: {
             title: 'Second Task',
             description: 'Very detailed description of second task which tests if quick form can handle muliple tasks added one after another',
-            status: 'In Progress',
-            priority: 'Low',
+            status: 'in-progress',
+            priority: 'low',
             dueDate: '2026-12-22',
             assignee: 'u2'
-        },
+        } satisfies TaskDetails,
         quickFormDataThird: {
             title: 'Third Task',
             description: 'Extremely detailed description of third task totally different from first and second',
-            status: 'To Do',
-            priority: 'High',
+            status: 'todo',
+            priority: 'high',
             dueDate: '2026-12-01',
             assignee: 'u3'
-        },
+        } satisfies TaskDetails,
     },
     deletionTask: {
         title: 'Task to be Deleted',
         description: 'Add task. Delete task.',
-        status: 'To Do',
-        priority: 'Low',
+        status: 'todo',
+        priority: 'low',
         dueDate: '2026-03-12',
         assignee: 'u2'
-    },
+    } satisfies TaskDetails,
 }
