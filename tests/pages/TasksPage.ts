@@ -1,16 +1,5 @@
-import { Page, Locator } from "@playwright/test";
-
-export interface TaskDetails {
-    type?: string; // change to enum
-    title?: string;
-    description?: string;
-    status?: string; // change to enum
-    priority?: string; // change to enum
-    dueDate?: string;
-    assignee?: string; 
-    hours?: string;
-    tags?: string;
-}
+import { Page, Locator, APIRequestContext } from "@playwright/test";
+import { TaskDetails, taskData } from "../data/TaskData";
 
 export class TasksPage {
     readonly titlePage: Locator;
@@ -27,7 +16,7 @@ export class TasksPage {
     readonly wizardTypeSelect: Locator;
     readonly wizardTitleInput: Locator;
     readonly wizardDescriptionInput: Locator;
-    readonly wizartPrioritySelect: Locator;
+    readonly wizardPrioritySelect: Locator;
     readonly wizardAssigneeSelect: Locator;
     readonly wizardHoursInput: Locator;
     readonly wizardDueDateInput: Locator;
@@ -63,7 +52,7 @@ export class TasksPage {
         this.wizardTypeSelect = this.page.getByTestId('task-type-select');
         this.wizardTitleInput = this.page.getByTestId('task-title-input');
         this.wizardDescriptionInput = this.page.getByTestId('task-description-input');
-        this.wizartPrioritySelect = this.page.getByTestId('task-priority-select');
+        this.wizardPrioritySelect = this.page.getByTestId('task-priority-select');
         this.wizardAssigneeSelect = this.page.getByTestId('task-assignee-select');
         this.wizardHoursInput = this.page.getByTestId('task-hours-input');
         this.wizardDueDateInput = this.page.getByTestId('task-due-date-input');
@@ -71,9 +60,9 @@ export class TasksPage {
 
         // quick add form locators
         this.quickAddFormButton = this.page.getByTestId('toggle-quick-form-btn');
-        this.quickAddFormTitleInput = this.page.getByRole('textbox').nth(1);
+        this.quickAddFormTitleInput = this.page.getByRole('textbox').nth(1); // todo - add test id
         this.quickAddFormDescriptionInput = this.page.locator('textarea');
-        this.quickAddFormStatusSelect = this.page.getByRole('combobox').nth(2);
+        this.quickAddFormStatusSelect = this.page.getByRole('combobox').nth(2); //
         this.quickAddFormPrioritySelect = this.page.getByRole('combobox').nth(3);
         this.quickAddFormDueDateInput = this.page.locator('input[type="date"]');
         this.quickAddFormAssigneeSelect = this.page.getByRole('combobox').nth(4);
@@ -92,7 +81,7 @@ export class TasksPage {
         await this.page.goto(url);
     }
 
-    async navigateToTasksTab(tabName: string) {
+    async navigateToTasksTab(tabName: string) { // przyjmij tylko konkretne nazwy
         await this.page.getByTestId(`tab-${tabName}`).click();
     }
 
@@ -116,7 +105,7 @@ export class TasksPage {
         if (taskDetails.type) await this.wizardTypeSelect.selectOption(taskDetails.type);
         if (taskDetails.title) await this.wizardTitleInput.fill(taskDetails.title);
         if (taskDetails.description) await this.wizardDescriptionInput.fill(taskDetails.description);
-        if (taskDetails.priority) await this.wizartPrioritySelect.selectOption(taskDetails.priority);
+        if (taskDetails.priority) await this.wizardPrioritySelect.selectOption(taskDetails.priority);
         await this.wizardNextButton.click();
     }
 
@@ -153,7 +142,7 @@ export class TasksPage {
         await this.taskSearchResult.waitFor({ state: "visible"});
         return this.taskSearchResultTitle;
     }
-
+    
     async getTaskCardLocatorByTitle(titleHeading: string) {
         return this.page.locator('[data-testid^="task-card-"]')
                         .filter({ has: this.page.getByRole('heading', { name: titleHeading }) });
@@ -171,8 +160,14 @@ export class TasksPage {
         return extractedCount ? parseInt(extractedCount[0]) : 0;
     }
 
+    async getTotalTaskCountUsingApi(request: APIRequestContext) {
+        const getTasksRequest = await request.get(`${taskData.urlApi}/tasks`);
+        const responseTasksTable = await getTasksRequest.json() as TaskDetails[];
+        return responseTasksTable.length;
+    }
+
     async changeDateFormat(date: string, format: string) {
         return new Date(date).toLocaleDateString(format);
     }
-
+    
 }

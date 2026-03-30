@@ -8,10 +8,16 @@ test.describe( 'testing task section', () => {
 
     test.beforeEach(async ({ page }) => {
         tasksPage = new TasksPage(page);
-        await page.goto(taskData.url);
+        await page.goto(taskData.urlClient);
     });
 
+    // no information about type, manager or hours of task
+    // in table view owners of task are not pinned (by default for each of task we have "brak")
+    // in table view and users creator we have polish text, the rest of app is in english
+    // for bug severity is minor major critical but when submitting we lose this information
+
     // create
+    // task wizard correct step 1, bad step 2
 
     // edit
     // edit task details
@@ -20,11 +26,6 @@ test.describe( 'testing task section', () => {
     // change task assignee
     // change task due date
 
-    // no information about type, manager or hours of task
-    // in table view owners of task are not pinned (by default for each of task we have "brak")
-    // in table view and users creator we have polish text, the rest of app is in english
-    // for bug severity is minor major critical but when submitting we lose this information
-
     // research requires hours
     //  bug requires severity
 
@@ -32,7 +33,15 @@ test.describe( 'testing task section', () => {
 
     // search
     // filter
-    
+    // adding new task with low priority and choosing low priority in filter should display this task in filtered results
+    // adding new task with low priority and choosing high priority in filter should not display this task in filtered results
+
+    // test validation
+    // max lengthh of title and description
+    // estimated hours being text or negative number
+    // due date in the past or very far in the future
+
+
     //correctly assign task to user
     //no owner, article with taskadta.title > owner is not visible
     // new task is visible on the top of the list
@@ -77,10 +86,10 @@ test.describe( 'testing task section', () => {
 
             await expect(taskCard.getByRole('heading', { name: taskData.wizardFullDataTask.title })).toBeVisible();
             await expect(taskCard.getByText(taskData.wizardFullDataTask.description)).toBeVisible();
-            await expect(taskCard.getByText('todo')).toBeVisible();
+            await expect(taskCard.getByText('todo')).toBeVisible();  
             await expect(taskCard.getByText(`P: ${taskData.wizardFullDataTask.priority}`)).toBeVisible();
             await expect(taskCard.getByText(`Due: ${ await tasksPage.changeDateFormat(taskData.wizardFullDataTask.dueDate, 'en-US')}`)).toBeVisible(); //on playwright ui i have format MM/DD/YYYY but on personal browser i have DD.MM.YYYY
-            // await expect(page.getByText(`Owner: ${taskData.wizardFullDataTask.assignee}`)).toBeVisible();
+            // await expect(page.getByText(`Owner: ${taskData.wizardFullDataTask.assignee}`)).toBeVisible(); // add dictionary or use mock
         });
 
         test('should create task with only required data', async ({ page }) => {
@@ -113,6 +122,7 @@ test.describe( 'testing task section', () => {
             await tasksPage.toggleQuickAddForm();
         });
 
+        // add invalid data version
         test('should add task using quick add form with valid data', async ({ page }) => {
             //arrange
             await expect(page.getByText(taskData.quickFormFullDataTask.title)).not.toBeVisible();
@@ -138,7 +148,7 @@ test.describe( 'testing task section', () => {
 
             await expect(taskCard.getByRole('heading', { name: taskData.quickFormRequiredDataTask.title })).toBeVisible();
             await expect(taskCard.getByText('todo')).toBeVisible();
-            await expect(taskCard.getByText('P: medium')).toBeVisible();
+            await expect(taskCard.getByText(`P: medium`)).toBeVisible();
         });
 
         test('should be cleared after adding new task', async ({ page }) => {
@@ -150,8 +160,8 @@ test.describe( 'testing task section', () => {
             // assert
             await expect(tasksPage.quickAddFormTitleInput).toHaveValue('');
             await expect(tasksPage.quickAddFormDescriptionInput).toHaveValue('');
-            await expect(tasksPage.quickAddFormStatusSelect).toHaveValue('todo');  // "To Do" was invalid
-            await expect(tasksPage.quickAddFormPrioritySelect).toHaveValue('medium'); // "Medium" was invalid
+            await expect(tasksPage.quickAddFormStatusSelect).toHaveValue('todo');  
+            await expect(tasksPage.quickAddFormPrioritySelect).toHaveValue('medium'); 
             await expect(tasksPage.quickAddFormDueDateInput).toHaveValue('');
             await expect(tasksPage.quickAddFormAssigneeSelect).toHaveValue('');
         });
@@ -171,33 +181,37 @@ test.describe( 'testing task section', () => {
                 await expect(page.getByRole('heading', {name: task.title})).toBeVisible();
             }
             const finalCount = await tasksPage.getTotalTaskCount()
-            await expect(finalCount).toBe(initialCount + taskData.quickFormLoopTasks.iterations);
+            expect(finalCount).toBe(initialCount + taskData.quickFormLoopTasks.iterations);
         });       
 
-        test('should spam 100 tasks', async ({ page }) => {
+        test('should spam 100 tasks using api request', async ({ request }) => {
             // arrange
-            const iterations = 100;
-            const initialCount = await tasksPage.getTotalTaskCount();
-            await tasksPage.navigateToTasksTab('active');
+            const iterations = 1000;
+            const initialCount = await tasksPage.getTotalTaskCountUsingApi(request);
 
             // act
             for (let i = 1; i <= iterations; i++) {
-                await tasksPage.quickAddTask({title: `Spam Task ${i}`});
+                const response = await request.post(`${taskData.urlApi}/tasks`, {
+                    data: taskData.postTask
+                });
+                expect(response.status()).toBe(201);
+                // add expect 201 response
             }
             // assert
-            const finalCount = await tasksPage.getTotalTaskCount()
-            await expect(finalCount).toBe(initialCount + iterations);
+            const finalTasks = await tasksPage.getTotalTaskCountUsingApi(request);
+            expect(finalTasks).toBe(initialCount + iterations);
         });
-
+        
     });
 
-    test.describe('deletion', () => {
+    test.describe('testing deletion', () => {
         let taskId: string;
 
         test.beforeEach(async ({ page }) => {
             await tasksPage.toggleQuickAddForm();
             await tasksPage.quickAddTask(taskData.deletionTask);
 
+            // zmockowac dodanie nowego taska
             const taskCard = await tasksPage.getTaskCardLocatorByTitle(taskData.deletionTask.title);
             
             const fullTestId = await taskCard.getAttribute('data-testid'); 
