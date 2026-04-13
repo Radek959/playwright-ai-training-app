@@ -16,7 +16,6 @@ export type TaskPriority = 'low' | 'medium' | 'high';
 
 export const taskData = {
     urlClient: 'http://localhost:5173/tasks', 
-    urlApi: 'http://localhost:3001/api',
 
     emptyTask: {} as TaskDetails,
     requiredOnlyDataTask: {
@@ -111,4 +110,11 @@ export const taskData = {
         dueDate: '2026-03-12',
         assignee: 'u2'
     } satisfies TaskDetails,
+    apiTask: {
+        title: 'Task created via API',
+        description: 'Created during API test',
+        status: 'todo',
+        priority: 'low',
+        assigneeId: 'u2'
+    }
 }
