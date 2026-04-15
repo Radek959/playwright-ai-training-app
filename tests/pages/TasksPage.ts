@@ -1,5 +1,6 @@
 import { Page, Locator, APIRequestContext } from "@playwright/test";
 import { TaskDetails, taskData } from "../data/TaskData";
+import { helperUrls } from "../utils/helpers";
 
 export class TasksPage {
     readonly titlePage: Locator;
@@ -161,7 +162,7 @@ export class TasksPage {
     }
 
     async getTotalTaskCountUsingApi(request: APIRequestContext) {
-        const getTasksRequest = await request.get(`${taskData.urlApi}/tasks`);
+        const getTasksRequest = await request.get(`${helperUrls.api}/tasks`);
         const responseTasksTable = await getTasksRequest.json() as TaskDetails[];
         return responseTasksTable.length;
     }
