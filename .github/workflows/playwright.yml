@@ -49,10 +49,6 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: |
-            package-lock.json
-            client/package-lock.json
-            server/package-lock.json
 
       # ----------------------------------------------------------
       # KROK 3 – Zainstaluj wszystkie zależności
