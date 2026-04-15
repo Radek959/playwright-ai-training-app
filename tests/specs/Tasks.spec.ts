@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { TasksPage } from "../pages/TasksPage";
 import { taskData } from "../data/TaskData";    
+import { helperUrls } from "../utils/helpers";
 
 let tasksPage: TasksPage;
 
@@ -191,7 +192,7 @@ test.describe( 'testing task section', () => {
 
             // act
             for (let i = 1; i <= iterations; i++) {
-                const response = await request.post(`${taskData.urlApi}/tasks`, {
+                const response = await request.post(`${helperUrls.api}/tasks`, {
                     data: taskData.postTask
                 });
                 expect(response.status()).toBe(201);
