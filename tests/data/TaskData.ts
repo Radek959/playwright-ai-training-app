@@ -75,9 +75,8 @@ export const taskData = {
         dueDate: '2026-03-30',
         assignee: 'u2'
     } satisfies TaskDetails,
-    quickFormLoopTasks :{
-        iterations: 3,
-        quickFormDataFirst: {
+    quickFormLoopTasks :[
+        {
             title: 'First Task',
             description: 'Quite detailed description of first task with some vague information',
             status: 'in-progress',
@@ -85,7 +84,7 @@ export const taskData = {
             dueDate: '2026-10-11',
             assignee: 'u1'
         } satisfies TaskDetails,
-        quickFormDataSecond: {
+        {
             title: 'Second Task',
             description: 'Very detailed description of second task which tests if quick form can handle muliple tasks added one after another',
             status: 'in-progress',
@@ -93,7 +92,7 @@ export const taskData = {
             dueDate: '2026-12-22',
             assignee: 'u2'
         } satisfies TaskDetails,
-        quickFormDataThird: {
+        {
             title: 'Third Task',
             description: 'Extremely detailed description of third task totally different from first and second',
             status: 'todo',
@@ -101,7 +100,7 @@ export const taskData = {
             dueDate: '2026-12-01',
             assignee: 'u3'
         } satisfies TaskDetails,
-    },
+    ],
     deletionTask: {
         title: 'Task to be Deleted',
         description: 'Add task. Delete task.',
