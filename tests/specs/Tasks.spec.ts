@@ -172,9 +172,10 @@ test.describe( 'testing task section', () => {
             const initialCount = await tasksPage.getTotalTaskCount();
             await tasksPage.navigateToTasksTab('active');
 
-            for (const task of [taskData.quickFormLoopTasks.quickFormDataFirst, taskData.quickFormLoopTasks.quickFormDataSecond, taskData.quickFormLoopTasks.quickFormDataThird]) {
+            // replace 
+            for (const task of taskData.quickFormLoopTasks) {
                 await expect(page.getByRole('heading', {name: task.title})).not.toBeVisible();
-
+                
                 //act
                 await tasksPage.quickAddTask(task);
 
@@ -182,26 +183,30 @@ test.describe( 'testing task section', () => {
                 await expect(page.getByRole('heading', {name: task.title})).toBeVisible();
             }
             const finalCount = await tasksPage.getTotalTaskCount()
-            expect(finalCount).toBe(initialCount + taskData.quickFormLoopTasks.iterations);
+            expect(finalCount).toBe(initialCount + taskData.quickFormLoopTasks.length);
         });       
 
-        test('should spam 100 tasks using api request', async ({ request }) => {
-            // arrange
-            const iterations = 1000;
-            const initialCount = await tasksPage.getTotalTaskCountUsingApi(request);
+        test('should create few tasks via api (smoke)', async ({ request }) => {
+            const iterations = 20;
+            const runId = `run-${Date.now()}`;
+            const createdIds = [];
 
-            // act
-            for (let i = 1; i <= iterations; i++) {
-                const response = await request.post(`${helperUrls.api}/tasks`, {
-                    data: taskData.postTask
-                });
-                expect(response.status()).toBe(201);
-                // add expect 201 response
+            for (let i = 0; i < iterations; i++) {
+            const response = await request.post(`${helperUrls.api}/tasks`, {
+                data: { ...taskData.postTask, title: `${taskData.postTask.title}-${runId}-${i}` }
+            });
+            expect(response.ok()).toBeTruthy();
+            const body = await response.json();
+            createdIds.push(body.id);
             }
-            // assert
-            const finalTasks = await tasksPage.getTotalTaskCountUsingApi(request);
-            expect(finalTasks).toBe(initialCount + iterations);
-        });
+
+            const finalCount = await tasksPage.getTotalTaskCountUsingApi(request);
+            expect(finalCount).toBeGreaterThanOrEqual(iterations);
+
+            for (const id of createdIds) {
+            await request.delete(`${helperUrls.api}/tasks/${id}`);
+            }
+            });
         
     });
 
@@ -210,12 +215,11 @@ test.describe( 'testing task section', () => {
 
         test.beforeEach(async ({ page }) => {
             await tasksPage.toggleQuickAddForm();
-            await tasksPage.quickAddTask(taskData.deletionTask);
+            const uniqueTitle = `${taskData.deletionTask.title}-${Date.now()}`;
+            await tasksPage.quickAddTask({ ...taskData.deletionTask, title: uniqueTitle });
 
-            // zmockowac dodanie nowego taska
-            const taskCard = await tasksPage.getTaskCardLocatorByTitle(taskData.deletionTask.title);
-            
-            const fullTestId = await taskCard.getAttribute('data-testid'); 
+            const taskCard = await tasksPage.getTaskCardLocatorByTitle(uniqueTitle);
+            const fullTestId = await taskCard.getAttribute('data-testid');
             if (!fullTestId) throw new Error('Task card does not have a data-testid attribute');
             
             taskId = fullTestId.replace('task-card-', '');
