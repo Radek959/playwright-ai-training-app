@@ -1,5 +1,7 @@
 import { faker } from '@faker-js/faker';
 import { UserDetails } from '../data/UserData';
+import test, { Page } from '@playwright/test';
+import { TaskDetails } from '../data/TaskData';
 
 export const helperUrls = {
     api: 'http://localhost:3001/api',
@@ -16,3 +18,23 @@ export const getFakeUser = (): UserDetails => {
         avatar: faker.image.avatar(),
     };
 };
+
+async function mockTasks(page: Page, tasks: TaskDetails[]) {
+    await page.route('**/api/tasks', async (route) => {
+        await route.fulfill({ 
+            status: 201, 
+            contentType: 'application/json', 
+            json: tasks });
+    });
+}
+
+async function mockUsers(page: Page, users: UserDetails[]) {
+    await page.route('**/api/users', async (route) => {
+        await route.fulfill({ 
+            status: 201, 
+            contentType: 'application/json', 
+            json: users });
+    });
+}
+
+export { mockTasks, mockUsers };
