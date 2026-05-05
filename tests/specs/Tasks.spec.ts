@@ -85,10 +85,10 @@ test.describe( 'testing task section', () => {
             // assert
             const taskCard = await tasksPage.getTaskCardLocatorByTitle(taskData.wizardFullDataTask.title);
 
-            await expect(taskCard.getByRole('heading', { name: taskData.wizardFullDataTask.title })).toBeVisible();
-            await expect(taskCard.getByText(taskData.wizardFullDataTask.description)).toBeVisible();
+            await expect(taskCard.getByRole('heading', { name: taskData.wizardFullDataTask.title }).first()).toBeVisible();
+            await expect(taskCard.getByText(taskData.wizardFullDataTask.description).first()).toBeVisible();
             await expect(taskCard.getByText('todo')).toBeVisible();  
-            await expect(taskCard.getByText(`P: ${taskData.wizardFullDataTask.priority}`)).toBeVisible();
+            await expect(taskCard.getByText(`P: ${taskData.wizardFullDataTask.priority}`).first()).toBeVisible();
             await expect(taskCard.getByText(`Due: ${ await tasksPage.changeDateFormat(taskData.wizardFullDataTask.dueDate, 'en-US')}`)).toBeVisible(); //on playwright ui i have format MM/DD/YYYY but on personal browser i have DD.MM.YYYY
             // await expect(page.getByText(`Owner: ${taskData.wizardFullDataTask.assignee}`)).toBeVisible(); // add dictionary or use mock
         });
@@ -99,9 +99,9 @@ test.describe( 'testing task section', () => {
             // assert
             const taskCard = await tasksPage.getTaskCardLocatorByTitle(taskData.requiredOnlyDataTask.title);
 
-            await expect(taskCard.getByRole('heading', { name: taskData.requiredOnlyDataTask.title })).toBeVisible();
-            await expect(taskCard.getByText('todo')).toBeVisible();
-            await expect(taskCard.getByText(`P: ${taskData.requiredOnlyDataTask.priority}`)).toBeVisible();
+            await expect(taskCard.getByRole('heading', { name: taskData.requiredOnlyDataTask.title }).first()).toBeVisible();
+            await expect(taskCard.getByText('todo').first()).toBeVisible();
+            await expect(taskCard.getByText(`P: ${taskData.requiredOnlyDataTask.priority}`).first()).toBeVisible();
         });
 
         test('should create task with full data', async ({ page }) => {

@@ -146,7 +146,7 @@ export class TasksPage {
     
     async getTaskCardLocatorByTitle(titleHeading: string) {
         return this.page.locator('[data-testid^="task-card-"]')
-                        .filter({ has: this.page.getByRole('heading', { name: titleHeading }) });
+                        .filter({ has: this.page.getByRole('heading', { name: titleHeading }).first() });
     }
 
     async getTotalTaskCount() {
