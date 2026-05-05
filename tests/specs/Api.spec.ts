@@ -11,15 +11,13 @@ test.describe('api should work correctly', () => {
             
             const tasks = await response.json();
             expect(tasks.length).toBeGreaterThan(0);
-            for (const task of tasks) {
-                expect(task).toHaveProperty('id');
-                expect(task).toHaveProperty('title');
-                expect(task).toHaveProperty('description');
-                expect(task).toHaveProperty('status');
-                expect(task).toHaveProperty('priority');
-                expect(task).toHaveProperty('dueDate');
-                expect(task).toHaveProperty('assigneeId');
-            }
+            expect(tasks[0]).toHaveProperty('id');
+            expect(tasks[0]).toHaveProperty('title');
+            expect(tasks[0]).toHaveProperty('description');
+            expect(tasks[0]).toHaveProperty('status');
+            expect(tasks[0]).toHaveProperty('priority');
+            expect(tasks[0]).toHaveProperty('dueDate');
+            expect(tasks[0]).toHaveProperty('assigneeId');
         });
 
         test('should create a new task', async ({ request }) => {

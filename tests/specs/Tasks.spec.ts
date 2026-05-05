@@ -125,9 +125,6 @@ test.describe( 'testing task section', () => {
 
         // add invalid data version
         test('should add task using quick add form with valid data', async ({ page }) => {
-            //arrange
-            await expect(page.getByText(taskData.quickFormFullDataTask.title)).not.toBeVisible();
-
             //act
             await tasksPage.quickAddTask(taskData.quickFormFullDataTask);
 

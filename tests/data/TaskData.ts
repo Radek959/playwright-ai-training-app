@@ -37,7 +37,7 @@ export const taskData = {
         title: 'Required Data Task'
     } satisfies TaskDetails,
     quickFormFullDataTask: {
-        title: 'Complete Task',
+        title: 'Complete Task in quick form',
         description: 'Detailed description',
         status: 'in-progress',
         priority: 'high',
@@ -45,17 +45,17 @@ export const taskData = {
         assignee: 'u1'
     } satisfies TaskDetails,
     inProgressTask: {
-        title: 'Complete Task',
+        title: 'Complete Task in progress',
         description: 'Detailed description',
         status: 'in-progress'
     } satisfies TaskDetails,
     doneTask: {
-        title: 'Complete Task',
+        title: 'Complete Task done',
         description: 'Detailed description',
         status: 'done'
     } satisfies TaskDetails,
     todoTask: {
-        title: 'Complete Task',
+        title: 'Complete Task todo',
         description: 'Detailed description',
         status: 'todo'
     } satisfies TaskDetails,
