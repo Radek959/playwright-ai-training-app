@@ -144,9 +144,9 @@ test.describe( 'testing task section', () => {
             // assert
             const taskCard = await tasksPage.getTaskCardLocatorByTitle(taskData.quickFormRequiredDataTask.title);
 
-            await expect(taskCard.getByRole('heading', { name: taskData.quickFormRequiredDataTask.title })).toBeVisible();
-            await expect(taskCard.getByText('todo')).toBeVisible();
-            await expect(taskCard.getByText(`P: medium`)).toBeVisible();
+            await expect(taskCard.getByRole('heading', { name: taskData.quickFormRequiredDataTask.title }).first()).toBeVisible();
+            await expect(taskCard.getByText('todo').first()).toBeVisible();
+            await expect(taskCard.getByText(`P: medium`).first()).toBeVisible();
         });
 
         test('should be cleared after adding new task', async ({ page }) => {
