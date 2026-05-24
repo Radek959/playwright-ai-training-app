@@ -1,11 +1,11 @@
 export interface TaskDetails {
-    type?: TaskType; 
+    type?: TaskType;
     title?: string;
     description?: string;
-    status?: TaskStatus; 
-    priority?: TaskPriority; 
+    status?: TaskStatus;
+    priority?: TaskPriority;
     dueDate?: string;
-    assignee?: string; 
+    assignee?: string;
     hours?: string;
     tags?: string;
 }

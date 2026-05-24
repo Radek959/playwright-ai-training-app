@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { userData } from "../data/UserData";
 import { getFakeUser } from "../utils/helpers";
 
-test.describe("Users page", () => {
+test.describe("testing users section", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(userData.urlClient);
   });

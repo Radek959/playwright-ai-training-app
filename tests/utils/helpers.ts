@@ -19,7 +19,7 @@ export const getFakeUser = (): UserDetails => {
     };
 };
 
-async function mockTasks(page: Page, tasks: TaskDetails[]) {
+export async function mockTasks(page: Page, tasks: TaskDetails[]) {
     await page.route('**/api/tasks', async (route) => {
         await route.fulfill({ 
             status: 201, 
@@ -28,7 +28,7 @@ async function mockTasks(page: Page, tasks: TaskDetails[]) {
     });
 }
 
-async function mockUsers(page: Page, users: UserDetails[]) {
+export async function mockUsers(page: Page, users: UserDetails[]) {
     await page.route('**/api/users', async (route) => {
         await route.fulfill({ 
             status: 201, 
@@ -37,4 +37,6 @@ async function mockUsers(page: Page, users: UserDetails[]) {
     });
 }
 
-export { mockTasks, mockUsers };
+export const createUniqueTitle = (baseTitle: string): string => {
+    return `${baseTitle}-${Date.now()}`;
+};

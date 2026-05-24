@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { TasksPage } from "../pages/TasksPage";
-import { taskData } from "../data/TaskData";    
-import { helperUrls } from "../utils/helpers";
+import { taskData } from "../data/TaskData";
+import { helperUrls, createUniqueTitle } from "../utils/helpers";
 
 let tasksPage: TasksPage;
 
@@ -73,48 +73,50 @@ test.describe( 'testing task section', () => {
 
         test('should navigate through task wizard steps correctly and create task', async ({ page }) => {
             // act
+            const uniqueTask = { ...taskData.wizardFullDataTask, title: createUniqueTitle(taskData.wizardFullDataTask.title) };
             await expect(tasksPage.wizardStep1Heading).toBeVisible();
-            await tasksPage.completeTaskWizardStep1(taskData.wizardFullDataTask);
+            await tasksPage.completeTaskWizardStep1(uniqueTask);
 
             await expect(tasksPage.wizardStep2Heading).toBeVisible();
-            await tasksPage.completeTaskWizardStep2(taskData.wizardFullDataTask);
+            await tasksPage.completeTaskWizardStep2(uniqueTask);
 
             await expect(tasksPage.wizardStep3Heading).toBeVisible();
             await tasksPage.submitTaskWizard();
 
             // assert
-            const taskCard = await tasksPage.getTaskCardLocatorByTitle(taskData.wizardFullDataTask.title);
+            const taskCard = await tasksPage.getTaskCardLocatorByTitle(uniqueTask.title);
 
-            await expect(taskCard.getByRole('heading', { name: taskData.wizardFullDataTask.title }).first()).toBeVisible();
-            await expect(taskCard.getByText(taskData.wizardFullDataTask.description).first()).toBeVisible();
-            await expect(taskCard.getByText('todo')).toBeVisible();  
-            await expect(taskCard.getByText(`P: ${taskData.wizardFullDataTask.priority}`).first()).toBeVisible();
-            await expect(taskCard.getByText(`Due: ${ await tasksPage.changeDateFormat(taskData.wizardFullDataTask.dueDate, 'en-US')}`)).toBeVisible(); //on playwright ui i have format MM/DD/YYYY but on personal browser i have DD.MM.YYYY
-            // await expect(page.getByText(`Owner: ${taskData.wizardFullDataTask.assignee}`)).toBeVisible(); // add dictionary or use mock
+            await expect(taskCard.getByRole('heading', { name: uniqueTask.title })).toBeVisible();
+            await expect(taskCard.getByText(uniqueTask.description)).toBeVisible();
+            await expect(taskCard.getByText('todo')).toBeVisible();
+            await expect(taskCard.getByText(`P: ${uniqueTask.priority}`)).toBeVisible();
+            await expect(taskCard.getByText(`Due: ${ await tasksPage.changeDateFormat(uniqueTask.dueDate, 'en-US')}`)).toBeVisible();
         });
 
         test('should create task with only required data', async ({ page }) => {
             // act
-            await tasksPage.createTaskUsingWizard(taskData.requiredOnlyDataTask);
+            const uniqueTask = { ...taskData.requiredOnlyDataTask, title: createUniqueTitle(taskData.requiredOnlyDataTask.title) };
+            await tasksPage.createTaskUsingWizard(uniqueTask);
             // assert
-            const taskCard = await tasksPage.getTaskCardLocatorByTitle(taskData.requiredOnlyDataTask.title);
+            const taskCard = await tasksPage.getTaskCardLocatorByTitle(uniqueTask.title);
 
-            await expect(taskCard.getByRole('heading', { name: taskData.requiredOnlyDataTask.title }).first()).toBeVisible();
-            await expect(taskCard.getByText('todo').first()).toBeVisible();
-            await expect(taskCard.getByText(`P: ${taskData.requiredOnlyDataTask.priority}`).first()).toBeVisible();
+            await expect(taskCard.getByRole('heading', { name: uniqueTask.title })).toBeVisible();
+            await expect(taskCard.getByText('todo')).toBeVisible();
+            await expect(taskCard.getByText(`P: ${uniqueTask.priority}`)).toBeVisible();
         });
 
         test('should create task with full data', async ({ page }) => {
             // act
-            await tasksPage.createTaskUsingWizard(taskData.wizardFullDataTask);
+            const uniqueTask = { ...taskData.wizardFullDataTask, title: createUniqueTitle(taskData.wizardFullDataTask.title) };
+            await tasksPage.createTaskUsingWizard(uniqueTask);
             // assert
-            const taskCard = await tasksPage.getTaskCardLocatorByTitle(taskData.wizardFullDataTask.title);
+            const taskCard = await tasksPage.getTaskCardLocatorByTitle(uniqueTask.title);
 
-            await expect(taskCard.getByRole('heading', { name: taskData.wizardFullDataTask.title })).toBeVisible();
-            await expect(taskCard.getByText(taskData.wizardFullDataTask.description)).toBeVisible();
+            await expect(taskCard.getByRole('heading', { name: uniqueTask.title })).toBeVisible();
+            await expect(taskCard.getByText(uniqueTask.description)).toBeVisible();
             await expect(taskCard.getByText('todo')).toBeVisible();
-            await expect(taskCard.getByText(`P: ${taskData.wizardFullDataTask.priority}`)).toBeVisible();
-            await expect(taskCard.getByText(`Due: ${ await tasksPage.changeDateFormat(taskData.wizardFullDataTask.dueDate, 'en-US')}`)).toBeVisible();
+            await expect(taskCard.getByText(`P: ${uniqueTask.priority}`)).toBeVisible();
+            await expect(taskCard.getByText(`Due: ${ await tasksPage.changeDateFormat(uniqueTask.dueDate, 'en-US')}`)).toBeVisible();
         });
     });
 
@@ -126,27 +128,29 @@ test.describe( 'testing task section', () => {
         // add invalid data version
         test('should add task using quick add form with valid data', async ({ page }) => {
             //act
-            await tasksPage.quickAddTask(taskData.quickFormFullDataTask);
+            const uniqueTask = { ...taskData.quickFormFullDataTask, title: createUniqueTitle(taskData.quickFormFullDataTask.title) };
+            await tasksPage.quickAddTask(uniqueTask);
 
             // assert
-            const taskCard = await tasksPage.getTaskCardLocatorByTitle(taskData.quickFormFullDataTask.title);
+            const taskCard = await tasksPage.getTaskCardLocatorByTitle(uniqueTask.title);
 
-            await expect(taskCard.getByRole('heading', { name: taskData.quickFormFullDataTask.title })).toBeVisible();
-            await expect(taskCard.getByText(taskData.quickFormFullDataTask.description)).toBeVisible();
-            await expect(taskCard.getByText(taskData.quickFormFullDataTask.status.toLowerCase().replace(' ', '-'))).toBeVisible();
-            await expect(taskCard.getByText(`P: ${taskData.quickFormFullDataTask.priority}`)).toBeVisible();
-            await expect(taskCard.getByText(`Due: ${ await tasksPage.changeDateFormat(taskData.quickFormFullDataTask.dueDate, 'en-US')}`)).toBeVisible();
+            await expect(taskCard.getByRole('heading', { name: uniqueTask.title })).toBeVisible();
+            await expect(taskCard.getByText(uniqueTask.description)).toBeVisible();
+            await expect(taskCard.getByText(uniqueTask.status.toLowerCase().replace(' ', '-'))).toBeVisible();
+            await expect(taskCard.getByText(`P: ${uniqueTask.priority}`)).toBeVisible();
+            await expect(taskCard.getByText(`Due: ${ await tasksPage.changeDateFormat(uniqueTask.dueDate, 'en-US')}`)).toBeVisible();
         });
 
         test('should create task with only required data using quick add form', async ({ page }) => {
             // act
-            await tasksPage.quickAddTask(taskData.quickFormRequiredDataTask);
+            const uniqueTask = { ...taskData.quickFormRequiredDataTask, title: createUniqueTitle(taskData.quickFormRequiredDataTask.title) };
+            await tasksPage.quickAddTask(uniqueTask);
             // assert
-            const taskCard = await tasksPage.getTaskCardLocatorByTitle(taskData.quickFormRequiredDataTask.title);
+            const taskCard = await tasksPage.getTaskCardLocatorByTitle(uniqueTask.title);
 
-            await expect(taskCard.getByRole('heading', { name: taskData.quickFormRequiredDataTask.title }).first()).toBeVisible();
-            await expect(taskCard.getByText('todo').first()).toBeVisible();
-            await expect(taskCard.getByText(`P: medium`).first()).toBeVisible();
+            await expect(taskCard.getByRole('heading', { name: uniqueTask.title })).toBeVisible();
+            await expect(taskCard.getByText('todo')).toBeVisible();
+            await expect(taskCard.getByText(`P: medium`)).toBeVisible();
         });
 
         test('should be cleared after adding new task', async ({ page }) => {
@@ -154,12 +158,13 @@ test.describe( 'testing task section', () => {
             await expect(tasksPage.quickAddFormTitleInput).toHaveValue('');
             await expect(tasksPage.quickAddFormDescriptionInput).toHaveValue('');
             // act
-            await tasksPage.quickAddTask(taskData.quickFormClearedTask);
+            const uniqueTask = { ...taskData.quickFormClearedTask, title: createUniqueTitle(taskData.quickFormClearedTask.title) };
+            await tasksPage.quickAddTask(uniqueTask);
             // assert
             await expect(tasksPage.quickAddFormTitleInput).toHaveValue('');
             await expect(tasksPage.quickAddFormDescriptionInput).toHaveValue('');
-            await expect(tasksPage.quickAddFormStatusSelect).toHaveValue('todo');  
-            await expect(tasksPage.quickAddFormPrioritySelect).toHaveValue('medium'); 
+            await expect(tasksPage.quickAddFormStatusSelect).toHaveValue('todo');
+            await expect(tasksPage.quickAddFormPrioritySelect).toHaveValue('medium');
             await expect(tasksPage.quickAddFormDueDateInput).toHaveValue('');
             await expect(tasksPage.quickAddFormAssigneeSelect).toHaveValue('');
         });
@@ -169,15 +174,16 @@ test.describe( 'testing task section', () => {
             const initialCount = await tasksPage.getTotalTaskCount();
             await tasksPage.navigateToTasksTab('active');
 
-            // replace 
+            // replace
             for (const task of taskData.quickFormLoopTasks) {
-                await expect(page.getByRole('heading', {name: task.title})).not.toBeVisible();
-                
+                const uniqueTask = { ...task, title: createUniqueTitle(task.title) };
+                await expect(page.getByRole('heading', {name: uniqueTask.title})).not.toBeVisible();
+
                 //act
-                await tasksPage.quickAddTask(task);
+                await tasksPage.quickAddTask(uniqueTask);
 
                 //assert
-                await expect(page.getByRole('heading', {name: task.title})).toBeVisible();
+                await expect(page.getByRole('heading', {name: uniqueTask.title})).toBeVisible();
             }
             const finalCount = await tasksPage.getTotalTaskCount()
             expect(finalCount).toBe(initialCount + taskData.quickFormLoopTasks.length);
