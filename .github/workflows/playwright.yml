@@ -1,0 +1,140 @@
+# ============================================================
+#  Playwright E2E Test Workflow
+#  Uruchamia pełny stos aplikacji (backend + frontend) w CI
+#  i wykonuje testy Playwright na każdy push / PR do main.
+# ============================================================
+
+name: Playwright Tests
+
+# ----------------------------------------------------------
+# TRIGGER: uruchom workflow przy push lub PR do gałęzi main
+# ----------------------------------------------------------
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    # Uruchom na świeżej maszynie Ubuntu
+    runs-on: ubuntu-latest
+
+    # Bezpieczny limit czasu – zabezpieczenie przed wieszaniem się procesu
+    timeout-minutes: 30
+
+    # Ustaw CI=true, żeby playwright.config.ts włączył tryb CI:
+    #   - forbidOnly: blokuje przypadkowe test.only w kodzie
+    #   - retries: 2 ponowne próby przy niepowodzeniu
+    #   - workers: 1 (sekwencyjne wykonanie, stabilność)
+    env:
+      CI: true
+
+    steps:
+      # ----------------------------------------------------------
+      # KROK 1 – Pobierz kod źródłowy repozytorium
+      # ----------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ----------------------------------------------------------
+      # KROK 2 – Skonfiguruj Node.js 20 LTS
+      #   cache-dependency-path obejmuje lock-fajle wszystkich
+      #   pakietów w monorepo, co przyspiesza kolejne uruchomienia.
+      # ----------------------------------------------------------
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # ----------------------------------------------------------
+      # KROK 3 – Zainstaluj wszystkie zależności
+      #   Skrypt "postinstall" w głównym package.json automatycznie
+      #   uruchamia `npm --prefix server install` oraz
+      #   `npm --prefix client install`, więc jeden `npm install`
+      #   instaluje zależności całego monorepo.
+      # ----------------------------------------------------------
+      - name: Install all dependencies (root + client + server)
+        run: npm install
+
+      # ----------------------------------------------------------
+      # KROK 4 – Zainstaluj przeglądarki Playwright
+      #   --with-deps instaluje również systemowe biblioteki
+      #   wymagane przez Chromium / Firefox / WebKit na Linuksie.
+      # ----------------------------------------------------------
+      - name: Get Playwright version
+        id: playwright-version
+        run: echo "PLAYWRIGHT_VERSION=$(node -e "console.log(require('./package-lock.json').packages['node_modules/@playwright/test'].version)")" >> $GITHUB_ENV
+
+      # 2. Cache dla binariów przeglądarek
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ env.PLAYWRIGHT_VERSION }}
+
+      # 3. Zainstaluj systemowe zależności (zawsze wymagane na Ubuntu)
+      # Instaluje tylko binarne paczki systemowe, bez pobierania 160+ przeglądarek
+      - name: Install Playwright system dependencies
+        run: npx playwright install-deps
+
+      # 4. Zainstaluj przeglądarki TYLKO jeśli nie ma ich w cache
+      # Możesz dodać 'chromium' na końcu, aby ograniczyć się do jednej przeglądarki
+      - name: Install Playwright Browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install chromium firefox webkit
+
+      # ----------------------------------------------------------
+      # KROK 5 – Uruchom backend (Express) w tle
+      #   Serwer startuje przez `tsx watch src/index.ts` (skrypt dev).
+      #   Nasłuchuje na porcie 3001 (process.env.PORT || 3001).
+      #   Znak & oddaje sterowanie do kolejnego kroku.
+      # ----------------------------------------------------------
+      - name: Start backend server (port 3001)
+        run: npm --prefix server run dev &
+
+      # ----------------------------------------------------------
+      # KROK 6 – Uruchom frontend (Vite) w tle
+      #   Serwer deweloperski Vite startuje na porcie 5173.
+      #   Znak & oddaje sterowanie do kolejnego kroku.
+      # ----------------------------------------------------------
+      - name: Start frontend dev server (port 5173)
+        run: npm --prefix client run dev &
+
+      # ----------------------------------------------------------
+      # KROK 7 – Poczekaj na gotowość obu serwerów
+      #   wait-on sprawdza dostępność endpointów HTTP przed
+      #   uruchomieniem testów. Timeout 60 s – jeśli serwery
+      #   nie odpowiedzą w tym czasie, workflow kończy się błędem.
+      #   tcp:3001   → sprawdza, czy port backendu jest otwarty
+      #   http://... → sprawdza odpowiedź HTTP frontendu (Vite)
+      # ----------------------------------------------------------
+      - name: Wait for servers to be ready
+        run: npx wait-on tcp:3001 http://localhost:5173 --timeout 60000
+
+      # ----------------------------------------------------------
+      # KROK 8 – Uruchom testy Playwright
+      #   npx playwright test korzysta z playwright.config.ts:
+      #     testDir: ./tests/specs
+      #     projects: chromium, firefox, webkit
+      #   Zmienna CI=true (z env powyżej) aktywuje tryb CI.
+      # ----------------------------------------------------------
+      - name: Run Playwright tests
+        run: npx playwright test
+
+      # ----------------------------------------------------------
+      # KROK 9 – Zapisz raport HTML jako artefakt
+      #   if: always() gwarantuje zapis raportu nawet gdy testy
+      #   upadną – umożliwia later analizę błędów.
+      #   Raport dostępny jest 30 dni w zakładce Actions > Artifacts.
+      # ----------------------------------------------------------
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
