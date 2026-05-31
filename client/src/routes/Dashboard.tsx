@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLab } from "../context/LabContext";
 import { StatCard } from "../components/StatCard";
 import { UserAvatar } from "../components/UserAvatar";
+import { getTestId } from "../utils/testIds";
 
 type Task = {
   id: string;
@@ -138,7 +139,10 @@ export default function Dashboard() {
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         {/* Status Distribution */}
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 md:p-6">
+        <div
+          className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 md:p-6"
+          data-testid={getTestId("task-status-distribution")}
+        >
           <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-4 md:mb-6">Task Status Distribution</h2>
           <div className="space-y-4">
             {[
@@ -146,7 +150,10 @@ export default function Dashboard() {
               { label: "In Progress", value: totals.statusCount["in-progress"] || 0, color: "bg-blue-500", percentage: totalTasks > 0 ? Math.round(((totals.statusCount["in-progress"] || 0) / totalTasks) * 100) : 0 },
               { label: "Done", value: totals.statusCount["done"] || 0, color: "bg-green-500", percentage: totalTasks > 0 ? Math.round(((totals.statusCount["done"] || 0) / totalTasks) * 100) : 0 }
             ].map((item) => (
-              <div key={item.label}>
+              <div
+                key={item.label}
+                data-testid={getTestId(`status-row-${item.label.toLowerCase().replace(/\s+/g, "-")}`)}
+              >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-gray-700">{item.label}</span>
                   <span className="text-sm font-bold text-gray-900">{item.value} ({item.percentage}%)</span>
@@ -187,10 +194,18 @@ export default function Dashboard() {
       </div>
 
       {/* Team Overview */}
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 md:p-6">
+      <div
+        className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 md:p-6"
+        data-testid={getTestId("team-overview")}
+      >
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-2">
           <h2 className="text-lg md:text-xl font-bold text-gray-900">Team Overview</h2>
-          <span className="text-xs md:text-sm font-medium text-gray-600">{users.length} Active Members</span>
+          <span
+            className="text-xs md:text-sm font-medium text-gray-600"
+            data-testid={getTestId("active-members-count")}
+          >
+            {users.length} Active Members
+          </span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
           {users.slice(0, 4).map((user) => (
