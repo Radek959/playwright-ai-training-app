@@ -7,6 +7,7 @@ import { TaskTable } from "../components/TaskTable";
 import { TaskSearch } from "../components/TaskSearch";
 import { TaskGridItem } from "../components/TaskGridItem";
 import { useAppError } from "../context/AppErrorContext";
+import { isArchived } from "../utils/taskArchive";
 import type { Task, TaskUpdateInput, TaskWithAssignee, User } from "../types";
 
 function normalizeTask(raw: Partial<Task>): Task {
@@ -28,17 +29,6 @@ function normalizeTask(raw: Partial<Task>): Task {
     requiresApproval: raw.requiresApproval,
     approver: raw.approver
   };
-}
-
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-
-function isArchived(task: Task): boolean {
-  if (task.status !== "done") return false;
-  const referenceDate = task.completedAt ?? task.dueDate;
-  if (!referenceDate) return false;
-  const time = new Date(referenceDate).getTime();
-  if (Number.isNaN(time)) return false;
-  return Date.now() - time > THIRTY_DAYS_MS;
 }
 
 async function extractErrorMessage(res: Response, fallback: string): Promise<string> {
@@ -64,7 +54,7 @@ export default function Tasks() {
   const [users, setUsers] = useState<User[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
-  const [search, setSearch] = useState<string>("");
+  const [search, _setSearch] = useState<string>("");
   const [page, setPage] = useState<number>(1);
   const pageSize = 5;
   const [editing, setEditing] = useState<Task | null>(null);
@@ -236,7 +226,7 @@ export default function Tasks() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Tasks</h1>
-            <p className="text-sm md:text-base text-gray-600 mt-1">Manage and track your team's work</p>
+            <p className="text-sm md:text-base text-gray-600 mt-1">Manage and track your team&apos;s work</p>
           </div>
 
           <button

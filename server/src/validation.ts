@@ -1,4 +1,5 @@
 import { Task, TaskPriority, TaskSeverity, TaskStatus, TaskType, User, UserRole } from "./data.js";
+import { defaultIfUndefined } from "./requestUtils.js";
 
 export type ValidationError = { field: string; message: string };
 
@@ -29,11 +30,12 @@ export const TASK_UPDATE_FIELDS: readonly string[] = [
 
 // Fields where an explicit `null` means "clear this value" rather than
 // "invalid input". Required fields (title/status/priority) are deliberately
-// excluded, as are array fields (send [] to clear those instead).
+// excluded, as are array fields (send [] to clear those instead). completedAt
+// is also excluded: it is derived from status (see resolveCompletedAt), so
+// `null` there is invalid input rather than a value to clear.
 export const NULLABLE_TASK_FIELDS: ReadonlySet<string> = new Set([
   "description",
   "dueDate",
-  "completedAt",
   "assigneeId",
   "taskType",
   "estimatedHours",
@@ -50,6 +52,31 @@ const isValidDate = (value: unknown): boolean => {
   if (typeof value !== "string") return false;
   return !Number.isNaN(new Date(value).getTime());
 };
+
+/**
+ * Builds the candidate object for POST /api/tasks from a raw request body.
+ * Defaults are applied only when a field is `undefined`; an explicit `null`
+ * is passed through so validateTaskFields rejects it instead of it silently
+ * becoming the default.
+ */
+export function buildTaskCreateCandidate(body: Record<string, unknown>): Record<string, unknown> {
+  return {
+    title: body.title,
+    description: body.description,
+    status: defaultIfUndefined(body.status, "todo" satisfies TaskStatus),
+    priority: defaultIfUndefined(body.priority, "medium" satisfies TaskPriority),
+    dueDate: body.dueDate,
+    completedAt: body.completedAt,
+    assigneeId: body.assigneeId,
+    taskType: body.taskType,
+    estimatedHours: body.estimatedHours,
+    tags: defaultIfUndefined(body.tags, [] as string[]),
+    dependencies: defaultIfUndefined(body.dependencies, [] as string[]),
+    severity: body.severity,
+    requiresApproval: defaultIfUndefined(body.requiresApproval, false),
+    approver: body.approver
+  };
+}
 
 /**
  * Validates a task candidate coming straight from request JSON. `candidate`
@@ -139,8 +166,10 @@ export function validateTaskFields(
     }
   }
 
-  if (candidate.completedAt !== undefined && candidate.completedAt !== null) {
-    if (!isValidDate(candidate.completedAt)) {
+  if (candidate.completedAt !== undefined) {
+    if (candidate.completedAt === null) {
+      errors.push({ field: "completedAt", message: "completedAt cannot be null" });
+    } else if (!isValidDate(candidate.completedAt)) {
       errors.push({ field: "completedAt", message: "invalid completedAt" });
     }
   }
@@ -172,6 +201,21 @@ export function validateTaskFields(
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Builds the candidate object for POST /api/users from a raw request body.
+ * Defaults are applied only when a field is `undefined`; an explicit `null`
+ * is passed through so validateUserFields rejects it instead of it silently
+ * becoming the default.
+ */
+export function buildUserCreateCandidate(body: Record<string, unknown>): Record<string, unknown> {
+  return {
+    name: body.name,
+    email: body.email,
+    role: defaultIfUndefined(body.role, "viewer" satisfies UserRole),
+    avatar: body.avatar
+  };
+}
 
 export function validateUserFields(
   candidate: Record<string, unknown>,

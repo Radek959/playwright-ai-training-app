@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { users, User, tasks } from "../data.js";
-import { validateUserFields } from "../validation.js";
+import { buildUserCreateCandidate, validateUserFields } from "../validation.js";
 
 export const usersRouter = Router();
 
@@ -20,12 +20,7 @@ usersRouter.post("/", (req, res) => {
     });
   }
   const body = req.body;
-  const candidate: Record<string, unknown> = {
-    name: body.name,
-    email: body.email,
-    role: body.role ?? "viewer",
-    avatar: body.avatar
-  };
+  const candidate = buildUserCreateCandidate(body);
 
   const errors = validateUserFields(candidate, { users });
   if (errors.length > 0) {

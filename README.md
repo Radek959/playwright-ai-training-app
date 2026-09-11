@@ -60,9 +60,11 @@ Check out the free [Playwright Starter Pack](https://starter.rwasik.pl/) with us
 
 Before running the application, make sure you have installed:
 
-* Node.js
-* npm
+* **Node.js 22.x** (LTS) — the officially supported version, pinned in [`.nvmrc`](./.nvmrc) and `engines.node`
+* npm (bundled with Node.js)
 * Git
+
+If you use [nvm](https://github.com/nvm-sh/nvm), run `nvm use` in the repository root to pick up the pinned version automatically.
 
 ---
 
@@ -81,7 +83,7 @@ Install dependencies:
 npm install
 ```
 
-The root installation automatically installs dependencies required by both the client and server.
+A single `npm install` at the repository root installs the root tooling and then automatically installs the dependencies for both `client/` and `server/` (via the `postinstall` script). You do not need to run `npm install` separately inside `client/` or `server/`.
 
 ---
 
@@ -186,12 +188,44 @@ npm run install:all
 
 Installs dependencies for both parts of the application.
 
+```bash
+npm run build
+```
+
+Builds both the server and the client for production.
+
+```bash
+npm run lint
+```
+
+Runs ESLint against both `client/src` and `server/src`.
+
+```bash
+npm run typecheck
+```
+
+Runs the TypeScript compiler (no emit) for both the client and the server.
+
+```bash
+npm run test
+```
+
+Runs the server's Vitest unit test suite (business-logic and validation functions only — no React component tests, no Playwright/browser tests).
+
+```bash
+npm run check
+```
+
+Runs `lint`, `typecheck`, `test` and `build` in sequence. This is the command CI runs to validate the application.
+
 ### Client
 
 ```bash
 npm run dev
 npm run build
 npm run preview
+npm run lint
+npm run typecheck
 ```
 
 ### Server
@@ -200,7 +234,26 @@ npm run preview
 npm run dev
 npm run build
 npm start
+npm run typecheck
+npm run test
 ```
+
+---
+
+## Continuous Integration
+
+Every push and pull request targeting `main` runs the [`CI` workflow](./.github/workflows/ci.yml), which:
+
+1. checks out the repository;
+2. sets up Node.js using the version pinned in `.nvmrc`;
+3. runs `npm install` (the same install path participants use locally);
+4. verifies that `npm install` did not modify any of the three committed lockfiles;
+5. runs `npm run check` (lint, typecheck, unit tests, build);
+6. starts the application with `npm run dev`;
+7. waits for the backend (`http://localhost:3001/api/health`) and the frontend (`http://localhost:5173`) to become available, failing the build if either does not start;
+8. stops the application processes.
+
+This workflow intentionally does not run Playwright or install browsers — end-to-end tests are written by participants during the training and are not part of this baseline.
 
 ---
 

@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { tasks, users, Task } from "../data.js";
-import { NULLABLE_TASK_FIELDS, TASK_UPDATE_FIELDS, ValidationError, validateTaskFields } from "../validation.js";
+import {
+  NULLABLE_TASK_FIELDS,
+  TASK_UPDATE_FIELDS,
+  ValidationError,
+  buildTaskCreateCandidate,
+  validateTaskFields
+} from "../validation.js";
+import { applyAllowedUpdate, resolveCompletedAt } from "../taskLifecycle.js";
 
 export const tasksRouter = Router();
 
@@ -42,21 +49,7 @@ tasksRouter.post("/", (req, res) => {
     return res.status(400).json(badBodyResponse());
   }
   const body = req.body;
-  const candidate: Record<string, unknown> = {
-    title: body.title,
-    description: body.description,
-    status: body.status ?? "todo",
-    priority: body.priority ?? "medium",
-    dueDate: body.dueDate,
-    assigneeId: body.assigneeId,
-    taskType: body.taskType,
-    estimatedHours: body.estimatedHours,
-    tags: body.tags ?? [],
-    dependencies: body.dependencies ?? [],
-    severity: body.severity,
-    requiresApproval: body.requiresApproval ?? false,
-    approver: body.approver
-  };
+  const candidate = buildTaskCreateCandidate(body);
 
   const errors = validateTaskFields(candidate, { users, tasks });
   if (errors.length > 0) {
@@ -64,7 +57,7 @@ tasksRouter.post("/", (req, res) => {
   }
 
   const status = candidate.status as Task["status"];
-  const completedAt = status === "done" ? (body.completedAt as string | undefined) ?? new Date().toISOString() : undefined;
+  const completedAt = resolveCompletedAt(status, candidate.completedAt as string | undefined);
 
   const task: Task = {
     id: randomUUID(),
@@ -97,53 +90,18 @@ tasksRouter.put("/:id", (req, res) => {
   }
   const patch = req.body;
 
-  // Only an explicit allow-list of fields may be updated. "id" always gets
-  // its own message; anything else outside TaskUpdateInput is rejected too,
-  // so a stray/unknown key never silently mutates the stored task.
-  const fieldErrors: ValidationError[] = [];
-  for (const key of Object.keys(patch)) {
-    if (key === "id") {
-      fieldErrors.push({ field: "id", message: "id cannot be updated" });
-    } else if (!TASK_UPDATE_FIELDS.includes(key)) {
-      fieldErrors.push({ field: key, message: `${key} is not an updatable field` });
-    }
+  const updateResult = applyAllowedUpdate(existing, patch, TASK_UPDATE_FIELDS, NULLABLE_TASK_FIELDS);
+  if (!updateResult.ok) {
+    return res.status(400).json({ error: "Validation failed", details: updateResult.errors });
   }
-  if (fieldErrors.length > 0) {
-    return res.status(400).json({ error: "Validation failed", details: fieldErrors });
-  }
-
-  // Merge onto a copy of the existing task. An explicit `null` on a
-  // nullable field clears it (deletes the key); any other field with
-  // `null` is a validation error, not a silent no-op.
-  const merged: Record<string, unknown> = { ...existing };
-  for (const key of TASK_UPDATE_FIELDS) {
-    if (!(key in patch)) continue;
-    const value = patch[key];
-    if (value === null) {
-      if (!NULLABLE_TASK_FIELDS.has(key)) {
-        fieldErrors.push({ field: key, message: `${key} cannot be null` });
-        continue;
-      }
-      delete merged[key];
-    } else {
-      merged[key] = value;
-    }
-  }
-  if (fieldErrors.length > 0) {
-    return res.status(400).json({ error: "Validation failed", details: fieldErrors });
-  }
+  const merged = updateResult.merged;
 
   const errors = validateTaskFields(merged, { users, tasks, taskId: existing.id });
   if (errors.length > 0) {
     return res.status(400).json({ error: "Validation failed", details: errors });
   }
 
-  let completedAt = merged.completedAt as string | undefined;
-  if (merged.status === "done" && !completedAt) {
-    completedAt = new Date().toISOString();
-  } else if (merged.status !== "done") {
-    completedAt = undefined;
-  }
+  const completedAt = resolveCompletedAt(merged.status as Task["status"], merged.completedAt as string | undefined);
 
   const updated: Task = {
     ...(merged as Task),
