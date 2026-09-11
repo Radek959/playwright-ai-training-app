@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLab } from "../context/LabContext";
+import { useAppError } from "../context/AppErrorContext";
 import { StatCard } from "../components/StatCard";
 import { UserAvatar } from "../components/UserAvatar";
 
@@ -18,33 +18,25 @@ type User = {
   avatarUrl?: string;
 };
 
-const apiV2EnabledDash = import.meta.env.VITE_API_VERSION_2 === "true";
-
 function normalizeTask(raw: any): Task {
   return {
     id: raw.id,
-    title: raw.title ?? raw.name ?? "",
-    description: raw.description ?? raw.content ?? "",
+    title: raw.title ?? "",
+    description: raw.description ?? "",
     status: raw.status ?? "todo",
     priority: raw.priority ?? "medium"
   };
 }
 
 export default function Dashboard() {
-  const { apiFlaky, setLastError } = useLab();
-  const apiV2 = apiV2EnabledDash;
+  const { setError, clearError } = useAppError();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-
-  const endpointTasks = useMemo(
-    () => (apiFlaky ? "/api/tasks?lab_api_flaky=true" : "/api/tasks"),
-    [apiFlaky]
-  );
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [tRes, uRes] = await Promise.all([fetch(endpointTasks), fetch("/api/users")]);
+        const [tRes, uRes] = await Promise.all([fetch("/api/tasks"), fetch("/api/users")]);
         if (!tRes.ok) throw new Error(`Tasks HTTP ${tRes.status}`);
         if (!uRes.ok) throw new Error(`Users HTTP ${uRes.status}`);
         const tData = await tRes.json();
@@ -52,12 +44,13 @@ export default function Dashboard() {
         if (!Array.isArray(tData) || !Array.isArray(uData)) throw new Error("Unexpected payload");
         setTasks(tData.map(normalizeTask));
         setUsers(uData);
+        clearError();
       } catch (err) {
-        setLastError(err instanceof Error ? err.message : "Dashboard load failed");
+        setError(err instanceof Error ? err.message : "Dashboard load failed");
       }
     };
     load();
-  }, [endpointTasks, setLastError]);
+  }, [setError, clearError]);
 
   const totals = useMemo(() => {
     const statusCount = { todo: 0, "in-progress": 0, done: 0 } as Record<string, number>;
@@ -81,11 +74,6 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Dashboard</h1>
           <p className="text-sm md:text-base text-gray-600">Welcome back! Here's what's happening today.</p>
-        </div>
-        <div className="px-4 py-2 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-200 w-full sm:w-auto text-center">
-          <span className="text-xs md:text-sm font-medium text-indigo-700">
-            Version: {apiV2 ? "2.0 (Refactored)" : "1.0"}
-          </span>
         </div>
       </div>
 

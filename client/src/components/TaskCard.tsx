@@ -1,6 +1,5 @@
 import { useMemo } from "react";
-import { useLab } from "../context/LabContext";
-import { getTestId } from "../utils/testIds";
+import { useAppError } from "../context/AppErrorContext";
 
 type Task = {
   id: string;
@@ -13,33 +12,23 @@ type Task = {
   assigneeName?: string;
 };
 
-const randomToken = () => Math.random().toString(36).slice(2, 8);
-
 export function TaskCard({
   task,
   onDelete,
-  onEdit,
-  layoutRefactor
+  onEdit
 }: {
   task: Task;
   onDelete: (id: string) => void | Promise<void>;
   onEdit: (task: Task) => void;
-  layoutRefactor?: boolean;
 }) {
-  const { a11y, setLastError } = useLab();
-  const refactorSelectors = import.meta.env.VITE_REFACTOR_SELECTORS === "true";
-  const editLabel = refactorSelectors ? "Update task" : "Edit";
-  const deleteLabel = refactorSelectors ? "Remove task" : "Usuń";
-  const editAriaLabel = refactorSelectors ? "Update task" : "Edytuj zadanie";
-  const deleteAriaLabel = refactorSelectors ? "Remove task" : "Usuń zadanie";
-  const actionsLabel = refactorSelectors ? "Manage" : "Actions";
+  const { setError, clearError } = useAppError();
 
   const ids = useMemo(
     () => ({
-      container: getTestId(`task-${task.id}`),
-      deleteBtn: getTestId(`delete-${task.id}`),
-      editBtn: getTestId(`edit-${task.id}`),
-      dataTest: getTestId(`task-card-${task.id}`)
+      container: `task-${task.id}`,
+      deleteBtn: `delete-${task.id}`,
+      editBtn: `edit-${task.id}`,
+      dataTest: `task-card-${task.id}`
     }),
     [task.id]
   );
@@ -47,23 +36,17 @@ export function TaskCard({
   const handleDelete = async () => {
     try {
       await onDelete(task.id);
+      clearError();
     } catch (err) {
-      setLastError(err instanceof Error ? err.message : "Delete failed");
+      setError(err instanceof Error ? err.message : "Delete failed");
     }
   };
-
-  const DeleteElement: any = a11y ? "span" : "button";
-  const EditElement: any = a11y ? "span" : "button";
 
   return (
     <article
       id={ids.container}
       data-testid={ids.dataTest}
-      className={
-        layoutRefactor
-          ? "border rounded p-4 bg-white flex flex-col gap-3"
-          : "border rounded p-4 flex justify-between items-start bg-white"
-      }
+      className="border rounded p-4 flex justify-between items-start bg-white"
     >
       <div className="space-y-1 flex-1">
         <h3 className="font-semibold text-lg">{task.title}</h3>
@@ -76,44 +59,27 @@ export function TaskCard({
         </div>
       </div>
 
-      {layoutRefactor ? (
-        <DropdownActions
-          editId={ids.editBtn}
-          deleteId={ids.deleteBtn}
-          onEdit={() => onEdit(task)}
-          onDelete={handleDelete}
-          a11y={a11y}
-          editLabel={editLabel}
-          deleteLabel={deleteLabel}
-          summaryLabel={actionsLabel}
-        />
-      ) : (
-        <div className="flex gap-2">
-          <EditElement
-            id={ids.editBtn}
-            role={a11y ? "button" : undefined}
-            type={a11y ? undefined : "button"}
-            className={a11y ? "text-sm underline cursor-pointer" : "bg-slate-100 px-3 py-1 rounded"}
-            onClick={() => onEdit(task)}
-            aria-label={a11y ? undefined : editAriaLabel}
-          >
-            {editLabel}
-          </EditElement>
+      <div className="flex gap-2">
+        <button
+          id={ids.editBtn}
+          type="button"
+          className="bg-slate-100 px-3 py-1 rounded"
+          onClick={() => onEdit(task)}
+          aria-label="Edytuj zadanie"
+        >
+          Edit
+        </button>
 
-          <DeleteElement
-            id={ids.deleteBtn}
-            role={a11y ? "button" : undefined}
-            className={
-              a11y ? "text-sm underline cursor-pointer" : "bg-red-500 text-white px-3 py-1 rounded"
-            }
-            type={a11y ? undefined : "button"}
-            onClick={handleDelete}
-            aria-label={a11y ? undefined : deleteAriaLabel}
-          >
-            {deleteLabel}
-          </DeleteElement>
-        </div>
-      )}
+        <button
+          id={ids.deleteBtn}
+          className="bg-red-500 text-white px-3 py-1 rounded"
+          type="button"
+          onClick={handleDelete}
+          aria-label="Usuń zadanie"
+        >
+          Usuń
+        </button>
+      </div>
     </article>
   );
 }
@@ -129,61 +95,4 @@ function Badge({ label, tone }: { label: string; tone: "green" | "blue" | "gray"
     slate: "bg-slate-100 text-slate-700"
   } as const;
   return <span className={`px-2 py-0.5 rounded text-[11px] ${toneMap[tone]}`}>{label}</span>;
-}
-
-function DropdownActions({
-  editId,
-  deleteId,
-  onEdit,
-  onDelete,
-  a11y,
-  editLabel,
-  deleteLabel,
-  summaryLabel
-}: {
-  editId: string;
-  deleteId: string;
-  onEdit: () => void;
-  onDelete: () => void;
-  a11y: boolean;
-  editLabel: string;
-  deleteLabel: string;
-  summaryLabel: string;
-}) {
-  const ButtonTag: any = a11y ? "span" : "button";
-  return (
-    <div className="relative">
-      <details className="border rounded px-3 py-1 bg-slate-50 cursor-pointer select-none">
-        <summary className="font-semibold text-sm">{summaryLabel}</summary>
-        <div className="mt-2 flex flex-col gap-2">
-          <ButtonTag
-            id={editId}
-            role={a11y ? "button" : undefined}
-            className={a11y ? "text-sm underline" : "text-sm text-slate-700 text-left"}
-            type={a11y ? undefined : "button"}
-            onClick={(e: any) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onEdit();
-            }}
-          >
-            {editLabel}
-          </ButtonTag>
-          <ButtonTag
-            id={deleteId}
-            role={a11y ? "button" : undefined}
-            className={a11y ? "text-sm underline" : "text-sm text-red-600 text-left"}
-            type={a11y ? undefined : "button"}
-            onClick={(e: any) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onDelete();
-            }}
-          >
-            {deleteLabel}
-          </ButtonTag>
-        </div>
-      </details>
-    </div>
-  );
 }

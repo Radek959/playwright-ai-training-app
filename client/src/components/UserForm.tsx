@@ -1,12 +1,12 @@
 import { FormEvent, useState } from "react";
-import { useLab } from "../context/LabContext";
+import { useAppError } from "../context/AppErrorContext";
 
 type Props = {
   onCreated: (user: any) => void;
 };
 
 export function UserForm({ onCreated }: Props) {
-  const { apiFlaky, setLastError } = useLab();
+  const { setError, clearError } = useAppError();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("viewer");
@@ -15,7 +15,7 @@ export function UserForm({ onCreated }: Props) {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch(apiFlaky ? "/api/users?lab_api_flaky=true" : "/api/users", {
+      const res = await fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, role, avatar })
@@ -27,8 +27,9 @@ export function UserForm({ onCreated }: Props) {
       setEmail("");
       setRole("viewer");
       setAvatar("");
+      clearError();
     } catch (err) {
-      setLastError(err instanceof Error ? err.message : "Create error");
+      setError(err instanceof Error ? err.message : "Create error");
     }
   };
 

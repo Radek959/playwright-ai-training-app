@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { useLab } from "../context/LabContext";
+import { useAppError } from "../context/AppErrorContext";
 
 type User = { id: string; name: string };
 
@@ -8,9 +8,7 @@ type Props = {
 };
 
 export function TaskForm({ onCreated }: Props) {
-  const { apiFlaky, setLastError } = useLab();
-  const refactorSelectors = import.meta.env.VITE_REFACTOR_SELECTORS === "true";
-  const apiV2 = import.meta.env.VITE_API_VERSION_2 === "true";
+  const { setError, clearError } = useAppError();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("todo");
@@ -18,49 +16,39 @@ export function TaskForm({ onCreated }: Props) {
   const [dueDate, setDueDate] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
   const [users, setUsers] = useState<User[]>([]);
-  const submitLabel = refactorSelectors ? "Create Task" : "Dodaj zadanie";
+  const submitLabel = "Dodaj zadanie";
 
   useEffect(() => {
     const loadUsers = async () => {
       try {
-        const res = await fetch(apiFlaky ? "/api/users?lab_api_flaky=true" : "/api/users");
+        const res = await fetch("/api/users");
         if (!res.ok) throw new Error(`Users HTTP ${res.status}`);
         const data = await res.json();
-        if (Array.isArray(data)) setUsers(data);
+        if (Array.isArray(data)) {
+          setUsers(data);
+          clearError();
+        }
       } catch (err) {
-        setLastError(err instanceof Error ? err.message : "Users fetch error");
+        setError(err instanceof Error ? err.message : "Users fetch error");
       }
     };
     loadUsers();
-  }, [apiFlaky, setLastError]);
+  }, [setError, clearError]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch(apiFlaky ? "/api/tasks?lab_api_flaky=true" : "/api/tasks", {
+      const res = await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          apiV2
-            ? {
-                name: title,
-                content: description,
-                status,
-                priority,
-                dueDate,
-                assigneeId,
-                title, // keep backward compat
-                description
-              }
-            : { title, description, status, priority, dueDate, assigneeId }
-        )
+        body: JSON.stringify({ title, description, status, priority, dueDate, assigneeId })
       });
       if (!res.ok) throw new Error(`Create failed: ${res.status}`);
       const data = await res.json();
       const normalized = {
         id: data.id,
-        title: data.title ?? data.name,
-        description: data.description ?? data.content,
+        title: data.title,
+        description: data.description,
         status: data.status ?? "todo",
         priority: data.priority ?? "medium",
         dueDate: data.dueDate,
@@ -73,8 +61,9 @@ export function TaskForm({ onCreated }: Props) {
       setPriority("medium");
       setDueDate("");
       setAssigneeId("");
+      clearError();
     } catch (err) {
-      setLastError(err instanceof Error ? err.message : "Create error");
+      setError(err instanceof Error ? err.message : "Create error");
     }
   };
 
@@ -149,12 +138,8 @@ export function TaskForm({ onCreated }: Props) {
       </div>
       <button
         type="submit"
-        data-testid={refactorSelectors ? "submit-new-task" : "add-task-button"}
-        className={
-          refactorSelectors
-            ? "bg-indigo-700 text-white px-3 py-1 rounded hover:bg-indigo-800"
-            : "bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
-        }
+        data-testid="add-task-button"
+        className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
         aria-label={submitLabel}
       >
         {submitLabel}

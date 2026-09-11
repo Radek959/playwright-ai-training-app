@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useLab } from "../context/LabContext";
 
 type Task = {
   id: string;
@@ -23,7 +22,6 @@ type Props = {
 };
 
 export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
-  const { a11y } = useLab();
   const hostRef = useRef<HTMLDivElement | null>(null);
   const shadowRoot = useRef<ShadowRoot | null>(null);
   const [ready, setReady] = useState(false);
@@ -38,7 +36,7 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
   useEffect(() => {
     if (!hostRef.current) {
       const host = document.createElement("div");
-      host.setAttribute("data-lab-modal-host", "true");
+      host.setAttribute("data-modal-host", "true");
       hostRef.current = host;
       document.body.appendChild(host);
       shadowRoot.current = host.attachShadow({ mode: "open" });
@@ -95,26 +93,24 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
       </div>
     );
 
-    const ButtonTag: any = a11y ? "span" : "button";
-
     return createPortal(
       <div style={{}}>
         <style>{`
           *, *::before, *::after { box-sizing: border-box; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
           h1, h2, h3, label, span, button, input, select, textarea { color: #0f172a; }
-          .lab-modal-title { font-size: 26px; font-weight: 800; margin-bottom: 8px; }
-          .lab-subgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
-          .lab-input { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; font-size: 14px; transition: border 120ms ease, box-shadow 120ms ease; background: #fff; }
-          .lab-input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15); }
-          .lab-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #334155; }
-          .lab-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
-          .lab-btn { border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 14px; font-size: 14px; cursor: pointer; transition: all 140ms ease; }
-          .lab-btn.secondary { background: #fff; color: #0f172a; }
-          .lab-btn.secondary:hover { background: #f1f5f9; }
-          .lab-btn.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
-          .lab-btn.primary:hover { background: #1d4ed8; }
-          .lab-close { color: #64748b; font-size: 14px; }
-          .lab-close:hover { color: #0f172a; }
+          .modal-title { font-size: 26px; font-weight: 800; margin-bottom: 8px; }
+          .modal-subgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+          .modal-input { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; font-size: 14px; transition: border 120ms ease, box-shadow 120ms ease; background: #fff; }
+          .modal-input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15); }
+          .modal-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #334155; }
+          .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+          .modal-btn { border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 14px; font-size: 14px; cursor: pointer; transition: all 140ms ease; }
+          .modal-btn.secondary { background: #fff; color: #0f172a; }
+          .modal-btn.secondary:hover { background: #f1f5f9; }
+          .modal-btn.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+          .modal-btn.primary:hover { background: #1d4ed8; }
+          .modal-close { color: #64748b; font-size: 14px; }
+          .modal-close:hover { color: #0f172a; }
         `}</style>
         <div style={{ position: "relative" }}>
           <div style={{}}>
@@ -127,21 +123,21 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
                         <div style={cardStyle}>
                           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <h2 className="lab-modal-title">Edytuj zadanie</h2>
+                              <h2 className="modal-title">Edytuj zadanie</h2>
                             </div>
-                            <div className="lab-subgrid">
+                            <div className="modal-subgrid">
                               <label>
-                                <span className="lab-label">Tytuł</span>
+                                <span className="modal-label">Tytuł</span>
                                 <input
-                                  className="lab-input"
+                                  className="modal-input"
                                   value={title}
                                   onChange={(e) => setTitle(e.target.value)}
                                 />
                               </label>
                               <label>
-                                <span className="lab-label">Priorytet</span>
+                                <span className="modal-label">Priorytet</span>
                                 <select
-                                  className="lab-input"
+                                  className="modal-input"
                                   value={priority}
                                   onChange={(e) => setPriority(e.target.value as Task["priority"])}
                                 >
@@ -153,20 +149,20 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
                             </div>
 
                             <label>
-                              <span className="lab-label">Opis</span>
+                              <span className="modal-label">Opis</span>
                               <textarea
-                                className="lab-input"
+                                className="modal-input"
                                 rows={3}
                                 value={description}
                                 onChange={(e) => setDescription(e.target.value)}
                               />
                             </label>
 
-                            <div className="lab-subgrid">
+                            <div className="modal-subgrid">
                               <label>
-                                <span className="lab-label">Status</span>
+                                <span className="modal-label">Status</span>
                                 <select
-                                  className="lab-input"
+                                  className="modal-input"
                                   value={status}
                                   onChange={(e) => setStatus(e.target.value as Task["status"])}
                                 >
@@ -176,18 +172,18 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
                                 </select>
                               </label>
                               <label>
-                                <span className="lab-label">Due date</span>
+                                <span className="modal-label">Due date</span>
                                 <input
                                   type="date"
-                                  className="lab-input"
+                                  className="modal-input"
                                   value={dueDate}
                                   onChange={(e) => setDueDate(e.target.value)}
                                 />
                               </label>
                               <label>
-                                <span className="lab-label">Assignee</span>
+                                <span className="modal-label">Assignee</span>
                                 <select
-                                  className="lab-input"
+                                  className="modal-input"
                                   value={assigneeId}
                                   onChange={(e) => setAssigneeId(e.target.value)}
                                 >
@@ -201,15 +197,16 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
                               </label>
                             </div>
 
-                            <div className="lab-actions">
-                              <ButtonTag
+                            <div className="modal-actions">
+                              <button
+                                type="button"
                                 onClick={onClose}
-                                role={a11y ? "button" : undefined}
-                                className={a11y ? "text-sm underline cursor-pointer" : "lab-btn secondary"}
+                                className="modal-btn secondary"
                               >
                                 Anuluj
-                              </ButtonTag>
-                              <ButtonTag
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => onSave({
                                   title,
                                   description,
@@ -218,11 +215,10 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
                                   dueDate: dueDate ? new Date(dueDate).toISOString() : undefined,
                                   assigneeId
                                 })}
-                                role={a11y ? "button" : undefined}
-                                className={a11y ? "text-sm underline cursor-pointer" : "lab-btn primary"}
+                                className="modal-btn primary"
                               >
                                 Zapisz
-                              </ButtonTag>
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -237,7 +233,7 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
       </div>,
       shadowRoot.current
     );
-  }, [open, task, a11y, ready, title, description, status, priority, dueDate, assigneeId, users, onClose, onSave]);
+  }, [open, task, ready, title, description, status, priority, dueDate, assigneeId, users, onClose, onSave]);
 
   return content;
 }

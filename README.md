@@ -67,7 +67,7 @@ npm run dev
 ```
 
 This will start:
-- **Backend server** on `http://localhost:3000`
+- **Backend server** on `http://localhost:3001`
 - **Frontend client** on `http://localhost:5173`
 
 ### Run Separately
@@ -82,32 +82,11 @@ npm run dev:server
 npm run dev:client
 ```
 
-## Configuration
-
-The client application uses environment variables for feature flags. Create or modify the `.env` file in the `client` directory:
-
-```env
-# Change data-testid and element IDs (simulates refactoring)
-VITE_REFACTOR_SELECTORS=false
-
-# Change layout from list to grid + add action dropdown
-VITE_REFACTOR_LAYOUT=false
-
-# Change API field names (title→name, description→content)
-VITE_API_VERSION_2=false
-
-# Enable API flakiness for testing error handling
-VITE_API_FLAKY=false
-
-# Hide labels on mobile devices
-VITE_HIDDEN_ON_MOBILE=false
-```
-
 ## API Documentation
 
 Once the server is running, you can access the Swagger API documentation at:
 ```
-http://localhost:3000/api-docs
+http://localhost:3001/api-docs
 ```
 
 ## Project Structure

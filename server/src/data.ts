@@ -90,12 +90,11 @@ export const users: User[] = [
     role: "editor",
     avatarUrl: `${BASE_URL}/images/avatar-2.jpg`
   },
-  { 
-    id: "u3", 
-    name: "Charlie Davis", 
-    email: "charlie@example.com", 
-    role: "editor",
-    avatarUrl: `${BASE_URL}/images/broken-avatar.jpg` // Intentionally broken for testing
+  {
+    id: "u3",
+    name: "Charlie Davis",
+    email: "charlie@example.com",
+    role: "editor"
   },
   { 
     id: "u4", 
@@ -105,15 +104,3 @@ export const users: User[] = [
     avatarUrl: `${BASE_URL}/images/avatar-4.jpg`
   }
 ];
-
-export type LabState = {
-  chaos: boolean;
-  a11y: boolean;
-  apiFlaky: boolean;
-};
-
-export const labState: LabState = {
-  chaos: false,
-  a11y: false,
-  apiFlaky: false
-};

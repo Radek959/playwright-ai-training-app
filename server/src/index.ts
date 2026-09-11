@@ -6,7 +6,6 @@ import swaggerUi from "swagger-ui-express";
 import swaggerDoc from "./swagger.json" assert { type: "json" };
 import { tasksRouter } from "./routes/tasks.js";
 import { usersRouter } from "./routes/users.js";
-import { labRouter } from "./routes/lab.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,7 +21,6 @@ app.use("/images", express.static(path.join(__dirname, "../public/images")));
 
 app.use("/api/tasks", tasksRouter);
 app.use("/api/users", usersRouter);
-app.use("/api/lab", labRouter);
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDoc));
 
 app.get("/api/health", (_req, res) => {
