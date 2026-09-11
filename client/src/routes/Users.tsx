@@ -81,12 +81,16 @@ export default function Users() {
           <table className="w-full">
             <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
               <tr>
-                <th className="text-left px-6 py-4 text-sm font-semibold text-gray-900">User</th>
-                <th className="text-left px-6 py-4 text-sm font-semibold text-gray-900">
+                <th scope="col" className="text-left px-6 py-4 text-sm font-semibold text-gray-900">
+                  User
+                </th>
+                <th scope="col" className="text-left px-6 py-4 text-sm font-semibold text-gray-900">
                   Email
                 </th>
-                <th className="text-left px-6 py-4 text-sm font-semibold text-gray-900">Role</th>
-                <th className="text-left px-6 py-4 text-sm font-semibold text-gray-900">
+                <th scope="col" className="text-left px-6 py-4 text-sm font-semibold text-gray-900">
+                  Role
+                </th>
+                <th scope="col" className="text-left px-6 py-4 text-sm font-semibold text-gray-900">
                   Status
                 </th>
               </tr>
@@ -123,7 +127,7 @@ export default function Users() {
                   </td>
                   <td className="px-6 py-4">
                     <span className="inline-flex items-center gap-1 text-sm text-green-600">
-                      <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                      <span className="w-2 h-2 bg-green-500 rounded-full" aria-hidden="true"></span>
                       Active
                     </span>
                   </td>

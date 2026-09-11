@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { TaskCard } from "../components/TaskCard";
 import { TaskForm } from "../components/TaskForm";
 import { TaskEditModal } from "../components/TaskEditModal";
@@ -47,6 +47,15 @@ async function extractErrorMessage(res: Response, fallback: string): Promise<str
 type TabView = "active" | "archived" | "analytics" | "table" | "grid";
 type AssigneeFilter = "all" | "unassigned" | string;
 
+const TAB_ORDER: TabView[] = ["active", "grid", "table", "archived", "analytics"];
+const TAB_LABELS: Record<TabView, string> = {
+  active: "Active",
+  grid: "Grid View",
+  table: "Table",
+  archived: "Archive",
+  analytics: "Analytics"
+};
+
 export default function Tasks() {
   const { setError, clearError } = useAppError();
 
@@ -66,6 +75,36 @@ export default function Tasks() {
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
   const [showWizard, setShowWizard] = useState(false);
   const [showQuickForm, setShowQuickForm] = useState(false);
+  const tabRefs = useRef<Record<TabView, HTMLButtonElement | null>>({
+    active: null,
+    grid: null,
+    table: null,
+    archived: null,
+    analytics: null
+  });
+
+  const focusTab = (tab: TabView) => {
+    tabRefs.current[tab]?.focus();
+  };
+
+  const handleTabKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let nextIndex: number | null = null;
+    if (e.key === "ArrowRight") {
+      nextIndex = (index + 1) % TAB_ORDER.length;
+    } else if (e.key === "ArrowLeft") {
+      nextIndex = (index - 1 + TAB_ORDER.length) % TAB_ORDER.length;
+    } else if (e.key === "Home") {
+      nextIndex = 0;
+    } else if (e.key === "End") {
+      nextIndex = TAB_ORDER.length - 1;
+    }
+    if (nextIndex !== null) {
+      e.preventDefault();
+      const nextTab = TAB_ORDER[nextIndex];
+      setActiveTab(nextTab);
+      focusTab(nextTab);
+    }
+  };
 
   const endpoint = "/api/tasks";
 
@@ -199,7 +238,7 @@ export default function Tasks() {
       setTasks((prev) => prev.filter((t) => !deletedIds.includes(t.id)));
     }
     if (failedIds.length > 0) {
-      setError(`Nie udało się usunąć ${failedIds.length} z ${ids.length} zadań`);
+      setError(`Failed to delete ${failedIds.length} of ${ids.length} tasks`);
     } else {
       clearError();
     }
@@ -232,9 +271,9 @@ export default function Tasks() {
           <button
             onClick={() => setShowWizard(true)}
             data-testid="open-wizard-btn"
-            className="flex items-center gap-2 px-4 md:px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:shadow-lg transition-all duration-200 font-medium min-h-[44px] whitespace-nowrap"
+            className="flex items-center gap-2 px-4 md:px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:shadow-lg transition-all duration-200 font-medium min-h-[44px] whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-800"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             <span className="hidden sm:inline">{primaryCtaLabel}</span>
@@ -248,30 +287,40 @@ export default function Tasks() {
       </div>
 
       {/* Main Tabs */}
-      <div className="border-b border-gray-200 flex gap-1 overflow-x-auto">
-        {(["active", "grid", "table", "archived", "analytics"] as TabView[]).map((tab) => (
+      <div className="border-b border-gray-200 flex gap-1 overflow-x-auto" role="tablist" aria-label="Task views">
+        {TAB_ORDER.map((tab, index) => (
           <button
             key={tab}
+            ref={(el) => {
+              tabRefs.current[tab] = el;
+            }}
             id={`tab-${tab}`}
+            role="tab"
+            aria-selected={activeTab === tab}
+            aria-controls={`tabpanel-${tab}`}
+            tabIndex={activeTab === tab ? 0 : -1}
             data-testid={`tab-${tab}`}
             onClick={() => setActiveTab(tab)}
-            className={`px-4 md:px-6 py-3 border-b-2 transition-all font-medium whitespace-nowrap min-h-[44px] ${
+            onKeyDown={(e) => handleTabKeyDown(e, index)}
+            className={`px-4 md:px-6 py-3 border-b-2 transition-all font-medium whitespace-nowrap min-h-[44px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-600 ${
               activeTab === tab
                 ? "border-indigo-600 text-indigo-600 bg-indigo-50"
                 : "border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50"
             }`}
           >
-            {tab === "active" && "Active"}
-            {tab === "grid" && "Grid View"}
-            {tab === "table" && "Table"}
-            {tab === "archived" && "Archive"}
-            {tab === "analytics" && "Analytics"}
+            {TAB_LABELS[tab]}
           </button>
         ))}
       </div>
 
       {/* Tab Content */}
-      <div data-testid={`tab-content-${activeTab}`}>
+      <div
+        id={`tabpanel-${activeTab}`}
+        role="tabpanel"
+        aria-labelledby={`tab-${activeTab}`}
+        tabIndex={0}
+        data-testid={`tab-content-${activeTab}`}
+      >
         {/* Active Tab */}
         {activeTab === "active" && (
           <div className="space-y-4 md:space-y-6">
@@ -284,11 +333,12 @@ export default function Tasks() {
                     <button
                       key={opt.key}
                       data-testid={`filter-assignee-${opt.key}`}
+                      aria-pressed={assigneeFilter === opt.key}
                       onClick={() => {
                         setAssigneeFilter(opt.key);
                         setPage(1);
                       }}
-                      className={`px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium transition-all min-h-[44px] ${
+                      className={`px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium transition-all min-h-[44px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 ${
                         assigneeFilter === opt.key
                           ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md"
                           : "bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -300,7 +350,12 @@ export default function Tasks() {
                 </div>
 
                 <div className="flex flex-wrap gap-2 md:gap-3 md:ml-auto">
+                  <label className="sr-only" htmlFor="status-filter-select">
+                    Filter by status
+                  </label>
                   <select
+                    id="status-filter-select"
+                    aria-label="Filter by status"
                     className="flex-1 md:flex-none border border-gray-300 rounded-lg px-3 md:px-4 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[44px]"
                     value={statusFilter}
                     onChange={(e) => {
@@ -312,7 +367,12 @@ export default function Tasks() {
                     <option value="todo">To Do</option>
                     <option value="in-progress">In Progress</option>
                   </select>
+                  <label className="sr-only" htmlFor="priority-filter-select">
+                    Filter by priority
+                  </label>
                   <select
+                    id="priority-filter-select"
+                    aria-label="Filter by priority"
                     className="flex-1 md:flex-none border border-gray-300 rounded-lg px-3 md:px-4 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[44px]"
                     value={priorityFilter}
                     onChange={(e) => {
@@ -329,7 +389,9 @@ export default function Tasks() {
                   <button
                     onClick={() => setShowQuickForm(!showQuickForm)}
                     data-testid="toggle-quick-form-btn"
-                    className="flex items-center px-3 md:px-4 py-2 bg-gray-100 text-xs md:text-sm rounded-lg hover:bg-gray-200 transition-colors font-medium text-gray-700 min-h-[44px] whitespace-nowrap"
+                    aria-expanded={showQuickForm}
+                    aria-controls="quick-add-form"
+                    className="flex items-center px-3 md:px-4 py-2 bg-gray-100 text-xs md:text-sm rounded-lg hover:bg-gray-200 transition-colors font-medium text-gray-700 min-h-[44px] whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"
                   >
                     {showQuickForm ? "Hide Add" : "Quick Add"}
                   </button>
@@ -338,7 +400,7 @@ export default function Tasks() {
             </div>
 
             {showQuickForm && (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 md:p-6">
+              <div id="quick-add-form" className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 md:p-6">
                 <TaskForm onCreated={(task) => setTasks((prev) => [task, ...prev])} />
               </div>
             )}
@@ -351,7 +413,7 @@ export default function Tasks() {
 
             {filtered.length === 0 && (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 md:p-12 text-center">
-                <svg className="w-12 h-12 md:w-16 md:h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-12 h-12 md:w-16 md:h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 <p className="text-gray-500 text-base md:text-lg">No tasks match your criteria</p>
@@ -366,16 +428,18 @@ export default function Tasks() {
                 </span>
                 <div className="flex gap-2 w-full sm:w-auto">
                   <button
-                    className="flex-1 sm:flex-none px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 hover:bg-gray-50 transition-colors text-sm font-medium min-h-[44px]"
+                    className="flex-1 sm:flex-none px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 hover:bg-gray-50 transition-colors text-sm font-medium min-h-[44px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
                     disabled={pageClamped === 1}
+                    aria-label="Previous page"
                   >
                     Previous
                   </button>
                   <button
-                    className="flex-1 sm:flex-none px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 hover:bg-gray-50 transition-colors text-sm font-medium min-h-[44px]"
+                    className="flex-1 sm:flex-none px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 hover:bg-gray-50 transition-colors text-sm font-medium min-h-[44px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                     disabled={pageClamped === totalPages}
+                    aria-label="Next page"
                   >
                     Next
                   </button>
@@ -422,7 +486,7 @@ export default function Tasks() {
           <div className="space-y-4">
             {filtered.length === 0 ? (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-20 w-20 mx-auto mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-20 w-20 mx-auto mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
                 </svg>
                 <p className="text-xl font-semibold text-gray-900 mb-2">Archive is Empty</p>
@@ -512,6 +576,7 @@ export default function Tasks() {
             clearError();
           } catch (err) {
             setError(err instanceof Error ? err.message : "Update error");
+            throw err;
           }
         }}
       />

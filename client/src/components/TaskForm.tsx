@@ -15,7 +15,7 @@ export function TaskForm({ onCreated }: Props) {
   const [dueDate, setDueDate] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
   const [users, setUsers] = useState<User[]>([]);
-  const submitLabel = "Dodaj zadanie";
+  const submitLabel = "Add task";
 
   useEffect(() => {
     const loadUsers = async () => {
@@ -63,27 +63,36 @@ export function TaskForm({ onCreated }: Props) {
   return (
     <form onSubmit={submit} className="space-y-3 p-3 border rounded bg-white">
       <div className="flex flex-col gap-1">
-        <label className="text-sm font-semibold">Tytuł</label>
+        <label htmlFor="quick-task-title" className="text-sm font-semibold">
+          Title
+        </label>
         <input
-          className="border rounded px-2 py-1"
+          id="quick-task-title"
+          className="border rounded px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           required
         />
       </div>
       <div className="flex flex-col gap-1">
-        <label className="text-sm font-semibold">Opis</label>
+        <label htmlFor="quick-task-description" className="text-sm font-semibold">
+          Description
+        </label>
         <textarea
-          className="border rounded px-2 py-1"
+          id="quick-task-description"
+          className="border rounded px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-semibold">Status</label>
+          <label htmlFor="quick-task-status" className="text-sm font-semibold">
+            Status
+          </label>
           <select
-            className="border rounded px-2 py-1"
+            id="quick-task-status"
+            className="border rounded px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
             value={status}
             onChange={(e) => setStatus(e.target.value as TaskStatus)}
           >
@@ -93,9 +102,12 @@ export function TaskForm({ onCreated }: Props) {
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-semibold">Priorytet</label>
+          <label htmlFor="quick-task-priority" className="text-sm font-semibold">
+            Priority
+          </label>
           <select
-            className="border rounded px-2 py-1"
+            id="quick-task-priority"
+            className="border rounded px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
             value={priority}
             onChange={(e) => setPriority(e.target.value as TaskPriority)}
           >
@@ -105,23 +117,30 @@ export function TaskForm({ onCreated }: Props) {
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-semibold">Due date</label>
+          <label htmlFor="quick-task-due-date" className="text-sm font-semibold">
+            Due date
+          </label>
           <input
+            id="quick-task-due-date"
             type="date"
-            className="border rounded px-2 py-1"
+            autoComplete="off"
+            className="border rounded px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
             value={dueDate ? dueDate.split("T")[0] : ""}
             onChange={(e) => setDueDate(e.target.value ? new Date(e.target.value).toISOString() : "")}
           />
         </div>
       </div>
       <div className="flex flex-col gap-1">
-        <label className="text-sm font-semibold">Przypisany użytkownik</label>
+        <label htmlFor="quick-task-assignee" className="text-sm font-semibold">
+          Assignee
+        </label>
         <select
-          className="border rounded px-2 py-1"
+          id="quick-task-assignee"
+          className="border rounded px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
           value={assigneeId}
           onChange={(e) => setAssigneeId(e.target.value)}
         >
-          <option value="">-- brak --</option>
+          <option value="">-- none --</option>
           {users.map((u) => (
             <option key={u.id} value={u.id}>
               {u.name}
@@ -132,7 +151,7 @@ export function TaskForm({ onCreated }: Props) {
       <button
         type="submit"
         data-testid="add-task-button"
-        className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
+        className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-800"
         aria-label={submitLabel}
       >
         {submitLabel}
