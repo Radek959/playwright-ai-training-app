@@ -19,9 +19,7 @@ npm run dev
 Created and maintained by **Radosław Wasik**.
 
 📘 **Learning Playwright?**
-Check out the free **Playwright Starter Pack** with commands, locators, assertions, configuration examples and practical checklists:
-
-https://starter.rwasik.pl/
+Check out the free **Playwright Starter Pack** with commands, locators, assertions, configuration examples and practical checklists: https://starter.rwasik.pl/
 
 ## Features
 
@@ -154,9 +152,8 @@ This project is private and intended for training purposes.
 
 ## More resources
 
-🤖 AI prompts for software testers and QA engineers:  
-https://prompty.rwasik.pl/
+🤖 AI prompts for software testers and QA engineers: https://prompty.rwasik.pl/
 
-🌐 https://rwasik.pl  
+🌐 Website: https://rwasik.pl  
 💼 LinkedIn: https://www.linkedin.com/in/rwasik/  
 📸 Instagram: https://instagram.com/radwasik
