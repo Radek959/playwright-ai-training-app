@@ -64,7 +64,7 @@ export default function Tasks() {
   const [users, setUsers] = useState<User[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
-  const [search, setSearch] = useState<string>("");
+  const [search, _setSearch] = useState<string>("");
   const [page, setPage] = useState<number>(1);
   const pageSize = 5;
   const [editing, setEditing] = useState<Task | null>(null);
@@ -236,7 +236,7 @@ export default function Tasks() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Tasks</h1>
-            <p className="text-sm md:text-base text-gray-600 mt-1">Manage and track your team's work</p>
+            <p className="text-sm md:text-base text-gray-600 mt-1">Manage and track your team&apos;s work</p>
           </div>
 
           <button
