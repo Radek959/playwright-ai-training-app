@@ -38,4 +38,12 @@ export type TaskWithAssignee = Task & {
 };
 
 export type TaskCreateInput = Omit<Task, "id" | "coverImage">;
-export type TaskUpdateInput = Partial<TaskCreateInput>;
+
+// Fields the backend accepts `null` for, meaning "clear this value".
+// Required fields (title/status/priority) and array fields (send [] to
+// clear those) intentionally do not accept null.
+type ClearableTaskFields = "description" | "dueDate" | "completedAt" | "assigneeId" | "taskType" | "estimatedHours" | "severity" | "approver";
+
+export type TaskUpdateInput = Partial<Omit<TaskCreateInput, ClearableTaskFields>> & {
+  [K in ClearableTaskFields]?: TaskCreateInput[K] | null;
+};

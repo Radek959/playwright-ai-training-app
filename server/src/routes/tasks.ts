@@ -1,9 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { tasks, users, Task } from "../data.js";
-import { validateTaskFields } from "../validation.js";
+import { NULLABLE_TASK_FIELDS, TASK_UPDATE_FIELDS, ValidationError, validateTaskFields } from "../validation.js";
 
 export const tasksRouter = Router();
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const badBodyResponse = () => ({
+  error: "Validation failed",
+  details: [{ field: "body", message: "request body must be a JSON object" }] as ValidationError[]
+});
 
 tasksRouter.get("/", (_req, res) => {
   res.json(tasks);
@@ -30,8 +38,11 @@ tasksRouter.get("/:id", (req, res) => {
 });
 
 tasksRouter.post("/", (req, res) => {
-  const body = req.body as Partial<Task>;
-  const candidate: Partial<Task> = {
+  if (!isPlainObject(req.body)) {
+    return res.status(400).json(badBodyResponse());
+  }
+  const body = req.body;
+  const candidate: Record<string, unknown> = {
     title: body.title,
     description: body.description,
     status: body.status ?? "todo",
@@ -52,24 +63,25 @@ tasksRouter.post("/", (req, res) => {
     return res.status(400).json({ error: "Validation failed", details: errors });
   }
 
-  const completedAt = candidate.status === "done" ? body.completedAt ?? new Date().toISOString() : undefined;
+  const status = candidate.status as Task["status"];
+  const completedAt = status === "done" ? (body.completedAt as string | undefined) ?? new Date().toISOString() : undefined;
 
   const task: Task = {
     id: randomUUID(),
-    title: candidate.title!.trim(),
-    description: candidate.description,
-    status: candidate.status!,
-    priority: candidate.priority!,
-    dueDate: candidate.dueDate || undefined,
+    title: (candidate.title as string).trim(),
+    description: candidate.description as string | undefined,
+    status,
+    priority: candidate.priority as Task["priority"],
+    dueDate: (candidate.dueDate as string | undefined) || undefined,
     completedAt,
-    assigneeId: candidate.assigneeId || undefined,
-    taskType: candidate.taskType,
-    estimatedHours: candidate.estimatedHours,
-    tags: candidate.tags,
-    dependencies: candidate.dependencies,
-    severity: candidate.severity,
-    requiresApproval: candidate.requiresApproval,
-    approver: candidate.approver
+    assigneeId: (candidate.assigneeId as string | undefined) || undefined,
+    taskType: candidate.taskType as Task["taskType"],
+    estimatedHours: candidate.estimatedHours as number | undefined,
+    tags: candidate.tags as string[] | undefined,
+    dependencies: candidate.dependencies as string[] | undefined,
+    severity: candidate.severity as Task["severity"],
+    requiresApproval: candidate.requiresApproval as boolean | undefined,
+    approver: candidate.approver as string | undefined
   };
   tasks.push(task);
   res.status(201).json(task);
@@ -79,19 +91,54 @@ tasksRouter.put("/:id", (req, res) => {
   const idx = tasks.findIndex((t) => t.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: "not found" });
   const existing = tasks[idx];
-  const patch = req.body as Partial<Task>;
 
-  const merged: Partial<Task> = {
-    ...existing,
-    ...patch
-  };
+  if (!isPlainObject(req.body)) {
+    return res.status(400).json(badBodyResponse());
+  }
+  const patch = req.body;
+
+  // Only an explicit allow-list of fields may be updated. "id" always gets
+  // its own message; anything else outside TaskUpdateInput is rejected too,
+  // so a stray/unknown key never silently mutates the stored task.
+  const fieldErrors: ValidationError[] = [];
+  for (const key of Object.keys(patch)) {
+    if (key === "id") {
+      fieldErrors.push({ field: "id", message: "id cannot be updated" });
+    } else if (!TASK_UPDATE_FIELDS.includes(key)) {
+      fieldErrors.push({ field: key, message: `${key} is not an updatable field` });
+    }
+  }
+  if (fieldErrors.length > 0) {
+    return res.status(400).json({ error: "Validation failed", details: fieldErrors });
+  }
+
+  // Merge onto a copy of the existing task. An explicit `null` on a
+  // nullable field clears it (deletes the key); any other field with
+  // `null` is a validation error, not a silent no-op.
+  const merged: Record<string, unknown> = { ...existing };
+  for (const key of TASK_UPDATE_FIELDS) {
+    if (!(key in patch)) continue;
+    const value = patch[key];
+    if (value === null) {
+      if (!NULLABLE_TASK_FIELDS.has(key)) {
+        fieldErrors.push({ field: key, message: `${key} cannot be null` });
+        continue;
+      }
+      delete merged[key];
+    } else {
+      merged[key] = value;
+    }
+  }
+  if (fieldErrors.length > 0) {
+    return res.status(400).json({ error: "Validation failed", details: fieldErrors });
+  }
 
   const errors = validateTaskFields(merged, { users, tasks, taskId: existing.id });
   if (errors.length > 0) {
     return res.status(400).json({ error: "Validation failed", details: errors });
   }
 
-  let completedAt = merged.completedAt ?? existing.completedAt;
+  let completedAt = merged.completedAt as string | undefined;
   if (merged.status === "done" && !completedAt) {
     completedAt = new Date().toISOString();
   } else if (merged.status !== "done") {
@@ -99,9 +146,9 @@ tasksRouter.put("/:id", (req, res) => {
   }
 
   const updated: Task = {
-    ...existing,
-    ...merged,
-    title: merged.title!.trim(),
+    ...(merged as Task),
+    id: existing.id,
+    title: (merged.title as string).trim(),
     completedAt
   };
   tasks[idx] = updated;

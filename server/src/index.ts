@@ -16,6 +16,18 @@ const port = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// Malformed JSON bodies should still come back as a controlled JSON 400,
+// not Express's default HTML error page.
+app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err instanceof SyntaxError && "body" in err) {
+    return res.status(400).json({
+      error: "Validation failed",
+      details: [{ field: "body", message: "request body must be valid JSON" }]
+    });
+  }
+  next(err);
+});
+
 // Serve static files (images for avatars and task covers)
 app.use("/images", express.static(path.join(__dirname, "../public/images")));
 

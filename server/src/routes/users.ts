@@ -5,13 +5,22 @@ import { validateUserFields } from "../validation.js";
 
 export const usersRouter = Router();
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 usersRouter.get("/", (_req, res) => {
   res.json(users);
 });
 
 usersRouter.post("/", (req, res) => {
-  const body = req.body as Partial<User>;
-  const candidate: Partial<User> = {
+  if (!isPlainObject(req.body)) {
+    return res.status(400).json({
+      error: "Validation failed",
+      details: [{ field: "body", message: "request body must be a JSON object" }]
+    });
+  }
+  const body = req.body;
+  const candidate: Record<string, unknown> = {
     name: body.name,
     email: body.email,
     role: body.role ?? "viewer",
@@ -25,10 +34,10 @@ usersRouter.post("/", (req, res) => {
 
   const user: User = {
     id: randomUUID(),
-    name: candidate.name!.trim(),
-    email: candidate.email!.trim(),
-    role: candidate.role!,
-    avatar: candidate.avatar
+    name: (candidate.name as string).trim(),
+    email: (candidate.email as string).trim(),
+    role: candidate.role as User["role"],
+    avatar: candidate.avatar as string | undefined
   };
   users.push(user);
   res.status(201).json(user);

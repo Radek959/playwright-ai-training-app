@@ -7,7 +7,7 @@ import { TaskTable } from "../components/TaskTable";
 import { TaskSearch } from "../components/TaskSearch";
 import { TaskGridItem } from "../components/TaskGridItem";
 import { useAppError } from "../context/AppErrorContext";
-import type { Task, TaskWithAssignee, User } from "../types";
+import type { Task, TaskUpdateInput, TaskWithAssignee, User } from "../types";
 
 function normalizeTask(raw: Partial<Task>): Task {
   return {
@@ -155,7 +155,7 @@ export default function Tasks() {
     clearError();
   };
 
-  const handleSave = async (patch: Partial<Task>) => {
+  const handleSave = async (patch: TaskUpdateInput) => {
     if (!editing) return;
     const res = await fetch(`/api/tasks/${editing.id}`, {
       method: "PUT",

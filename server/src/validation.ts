@@ -8,46 +8,103 @@ const TASK_TYPES: TaskType[] = ["bug", "feature", "research"];
 const SEVERITIES: TaskSeverity[] = ["critical", "major", "minor"];
 const ROLES: UserRole[] = ["admin", "editor", "viewer"];
 
+// Fields a client is allowed to send on PUT /api/tasks/:id. "id" is
+// intentionally excluded: identity is not editable through this contract.
+export const TASK_UPDATE_FIELDS: readonly string[] = [
+  "title",
+  "description",
+  "status",
+  "priority",
+  "dueDate",
+  "completedAt",
+  "assigneeId",
+  "taskType",
+  "estimatedHours",
+  "tags",
+  "dependencies",
+  "severity",
+  "requiresApproval",
+  "approver"
+];
+
+// Fields where an explicit `null` means "clear this value" rather than
+// "invalid input". Required fields (title/status/priority) are deliberately
+// excluded, as are array fields (send [] to clear those instead).
+export const NULLABLE_TASK_FIELDS: ReadonlySet<string> = new Set([
+  "description",
+  "dueDate",
+  "completedAt",
+  "assigneeId",
+  "taskType",
+  "estimatedHours",
+  "severity",
+  "approver"
+]);
+
+const isString = (value: unknown): value is string => typeof value === "string";
+const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
+const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every(isString);
+
 const isValidDate = (value: unknown): boolean => {
   if (typeof value !== "string") return false;
   return !Number.isNaN(new Date(value).getTime());
 };
 
+/**
+ * Validates a task candidate coming straight from request JSON. `candidate`
+ * is intentionally typed as Record<string, unknown> (not Partial<Task>):
+ * request bodies are runtime data and may contain any JSON shape, and every
+ * check here must be able to report a 400 instead of throwing.
+ */
 export function validateTaskFields(
-  candidate: Partial<Task>,
+  candidate: Record<string, unknown>,
   context: { users: User[]; tasks: Task[]; taskId?: string }
 ): ValidationError[] {
   const errors: ValidationError[] = [];
 
-  if (!candidate.title || candidate.title.trim().length === 0) {
+  const title = candidate.title;
+  if (title === undefined || title === null) {
     errors.push({ field: "title", message: "title is required" });
-  } else if (candidate.title.trim().length < 3) {
+  } else if (!isString(title)) {
+    errors.push({ field: "title", message: "title must be a string" });
+  } else if (title.trim().length === 0) {
+    errors.push({ field: "title", message: "title is required" });
+  } else if (title.trim().length < 3) {
     errors.push({ field: "title", message: "title must be at least 3 characters" });
   }
 
-  if (candidate.status !== undefined && !STATUSES.includes(candidate.status)) {
+  if (candidate.description !== undefined && candidate.description !== null && !isString(candidate.description)) {
+    errors.push({ field: "description", message: "description must be a string" });
+  }
+
+  if (candidate.status !== undefined && !STATUSES.includes(candidate.status as TaskStatus)) {
     errors.push({ field: "status", message: "invalid status" });
   }
-  if (candidate.priority !== undefined && !PRIORITIES.includes(candidate.priority)) {
+  if (candidate.priority !== undefined && !PRIORITIES.includes(candidate.priority as TaskPriority)) {
     errors.push({ field: "priority", message: "invalid priority" });
   }
-  if (candidate.taskType !== undefined && !TASK_TYPES.includes(candidate.taskType)) {
+  if (candidate.taskType !== undefined && candidate.taskType !== null && !TASK_TYPES.includes(candidate.taskType as TaskType)) {
     errors.push({ field: "taskType", message: "invalid taskType" });
   }
-  if (candidate.severity !== undefined && !SEVERITIES.includes(candidate.severity)) {
+  if (candidate.severity !== undefined && candidate.severity !== null && !SEVERITIES.includes(candidate.severity as TaskSeverity)) {
     errors.push({ field: "severity", message: "invalid severity" });
   }
 
-  if (candidate.assigneeId) {
-    const exists = context.users.some((u) => u.id === candidate.assigneeId);
-    if (!exists) {
-      errors.push({ field: "assigneeId", message: "assigneeId does not reference an existing user" });
+  if (candidate.assigneeId !== undefined && candidate.assigneeId !== null) {
+    if (!isString(candidate.assigneeId)) {
+      errors.push({ field: "assigneeId", message: "assigneeId must be a string" });
+    } else if (candidate.assigneeId.length > 0) {
+      const exists = context.users.some((u) => u.id === candidate.assigneeId);
+      if (!exists) {
+        errors.push({ field: "assigneeId", message: "assigneeId does not reference an existing user" });
+      }
     }
   }
 
   if (candidate.dependencies !== undefined) {
-    if (!Array.isArray(candidate.dependencies)) {
-      errors.push({ field: "dependencies", message: "dependencies must be an array of task ids" });
+    if (!isStringArray(candidate.dependencies)) {
+      errors.push({ field: "dependencies", message: "dependencies must be an array of strings" });
     } else {
       const invalidIds = candidate.dependencies.filter(
         (id) => id === context.taskId || !context.tasks.some((t) => t.id === id)
@@ -58,50 +115,56 @@ export function validateTaskFields(
     }
   }
 
+  if (candidate.tags !== undefined && !isStringArray(candidate.tags)) {
+    errors.push({ field: "tags", message: "tags must be an array of strings" });
+  }
+
   if (candidate.estimatedHours !== undefined && candidate.estimatedHours !== null) {
-    if (
-      typeof candidate.estimatedHours !== "number" ||
-      Number.isNaN(candidate.estimatedHours) ||
-      candidate.estimatedHours <= 0
-    ) {
+    if (!isFiniteNumber(candidate.estimatedHours) || candidate.estimatedHours <= 0) {
       errors.push({ field: "estimatedHours", message: "estimatedHours must be a positive number" });
     }
   }
 
-  if (candidate.dueDate !== undefined && candidate.dueDate !== null && candidate.dueDate !== "") {
+  if (candidate.requiresApproval !== undefined && !isBoolean(candidate.requiresApproval)) {
+    errors.push({ field: "requiresApproval", message: "requiresApproval must be a boolean" });
+  }
+
+  if (candidate.approver !== undefined && candidate.approver !== null && !isString(candidate.approver)) {
+    errors.push({ field: "approver", message: "approver must be a string" });
+  }
+
+  if (candidate.dueDate !== undefined && candidate.dueDate !== null) {
     if (!isValidDate(candidate.dueDate)) {
       errors.push({ field: "dueDate", message: "invalid dueDate" });
     }
   }
 
-  if (candidate.completedAt !== undefined && candidate.completedAt !== null && candidate.completedAt !== "") {
+  if (candidate.completedAt !== undefined && candidate.completedAt !== null) {
     if (!isValidDate(candidate.completedAt)) {
       errors.push({ field: "completedAt", message: "invalid completedAt" });
     }
   }
 
-  if (candidate.tags !== undefined && !Array.isArray(candidate.tags)) {
-    errors.push({ field: "tags", message: "tags must be an array of strings" });
-  }
+  // Business rules mirrored from the task creation wizard. Only evaluated
+  // against values that already passed their own type check above, so a
+  // wrong-typed field never cascades into a second, confusing error.
+  const taskType = isString(candidate.taskType) ? candidate.taskType : undefined;
+  const priority = isString(candidate.priority) ? candidate.priority : undefined;
+  const severity = candidate.severity !== undefined && candidate.severity !== null ? candidate.severity : undefined;
+  const estimatedHours = isFiniteNumber(candidate.estimatedHours) ? candidate.estimatedHours : undefined;
+  const requiresApproval = candidate.requiresApproval === true;
+  const approver = isString(candidate.approver) && candidate.approver.trim().length > 0 ? candidate.approver : undefined;
 
-  // Business rules mirrored from the task creation wizard.
-  if (candidate.taskType === "bug" && !candidate.severity) {
+  if (taskType === "bug" && !severity) {
     errors.push({ field: "severity", message: "bug tasks require a severity" });
   }
-  if (
-    candidate.taskType === "research" &&
-    !(typeof candidate.estimatedHours === "number" && candidate.estimatedHours >= 1)
-  ) {
+  if (taskType === "research" && !(estimatedHours !== undefined && estimatedHours >= 1)) {
     errors.push({ field: "estimatedHours", message: "research tasks require estimatedHours >= 1" });
   }
-  if (
-    candidate.priority === "high" &&
-    typeof candidate.estimatedHours === "number" &&
-    candidate.estimatedHours > 24
-  ) {
+  if (priority === "high" && estimatedHours !== undefined && estimatedHours > 24) {
     errors.push({ field: "estimatedHours", message: "high priority tasks cannot exceed 24 estimated hours" });
   }
-  if (candidate.requiresApproval && !candidate.approver) {
+  if (requiresApproval && !approver) {
     errors.push({ field: "approver", message: "requiresApproval requires an approver" });
   }
 
@@ -111,30 +174,44 @@ export function validateTaskFields(
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function validateUserFields(
-  candidate: Partial<User>,
+  candidate: Record<string, unknown>,
   context: { users: User[]; userId?: string }
 ): ValidationError[] {
   const errors: ValidationError[] = [];
 
-  if (!candidate.name || candidate.name.trim().length === 0) {
+  const name = candidate.name;
+  if (name === undefined || name === null) {
+    errors.push({ field: "name", message: "name is required" });
+  } else if (!isString(name)) {
+    errors.push({ field: "name", message: "name must be a string" });
+  } else if (name.trim().length === 0) {
     errors.push({ field: "name", message: "name is required" });
   }
 
-  if (!candidate.email || candidate.email.trim().length === 0) {
+  const email = candidate.email;
+  if (email === undefined || email === null) {
     errors.push({ field: "email", message: "email is required" });
-  } else if (!EMAIL_RE.test(candidate.email.trim())) {
+  } else if (!isString(email)) {
+    errors.push({ field: "email", message: "email must be a string" });
+  } else if (email.trim().length === 0) {
+    errors.push({ field: "email", message: "email is required" });
+  } else if (!EMAIL_RE.test(email.trim())) {
     errors.push({ field: "email", message: "email must be a valid email address" });
   } else {
     const duplicate = context.users.some(
-      (u) => u.id !== context.userId && u.email.toLowerCase() === candidate.email!.trim().toLowerCase()
+      (u) => u.id !== context.userId && u.email.toLowerCase() === email.trim().toLowerCase()
     );
     if (duplicate) {
       errors.push({ field: "email", message: "email is already in use" });
     }
   }
 
-  if (candidate.role !== undefined && !ROLES.includes(candidate.role)) {
+  if (candidate.role !== undefined && !ROLES.includes(candidate.role as UserRole)) {
     errors.push({ field: "role", message: "invalid role" });
+  }
+
+  if (candidate.avatar !== undefined && candidate.avatar !== null && !isString(candidate.avatar)) {
+    errors.push({ field: "avatar", message: "avatar must be a string" });
   }
 
   return errors;

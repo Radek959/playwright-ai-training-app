@@ -284,7 +284,7 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                       type="date"
                       value={task.dueDate ? task.dueDate.split("T")[0] : ""}
                       onChange={(e) =>
-                        commitUpdate(task.id, "dueDate", e.target.value ? new Date(e.target.value).toISOString() : undefined)
+                        commitUpdate(task.id, "dueDate", e.target.value ? new Date(e.target.value).toISOString() : null)
                       }
                       className="border rounded px-2 py-1 text-sm"
                       data-testid={`edit-dueDate-${task.id}`}
@@ -304,7 +304,7 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                   >
                     <select
                       value={task.assigneeId || ""}
-                      onChange={(e) => commitUpdate(task.id, "assigneeId", e.target.value || undefined)}
+                      onChange={(e) => commitUpdate(task.id, "assigneeId", e.target.value || null)}
                       className="border rounded px-2 py-1 text-sm"
                       data-testid={`edit-assigneeId-${task.id}`}
                       disabled={savingCell === `${task.id}-assigneeId`}
