@@ -10,6 +10,10 @@ type Props = {
   initialFocusRef?: React.RefObject<HTMLElement>;
   testId?: string;
   className?: string;
+  /** Overrides the overlay's layout classes (default: centered modal). Used e.g. by the mobile nav drawer to pin content to the left edge instead of centering it. */
+  overlayClassName?: string;
+  /** Overrides the overlay's data-testid (default: `${testId}-overlay`). */
+  overlayTestId?: string;
 };
 
 /**
@@ -17,7 +21,17 @@ type Props = {
  * Provides role="dialog", aria-modal, focus trapping, Escape-to-close,
  * focus restoration and a scroll lock while open.
  */
-export function Dialog({ open, onClose, titleId, children, initialFocusRef, testId, className }: Props) {
+export function Dialog({
+  open,
+  onClose,
+  titleId,
+  children,
+  initialFocusRef,
+  testId,
+  className,
+  overlayClassName,
+  overlayTestId
+}: Props) {
   const containerRef = useDialogA11y<HTMLDivElement>({ open, onClose, initialFocusRef });
 
   if (!open) return null;
@@ -28,8 +42,8 @@ export function Dialog({ open, onClose, titleId, children, initialFocusRef, test
   return createPortal(
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-      data-testid={testId ? `${testId}-overlay` : undefined}
+      className={overlayClassName ?? "fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"}
+      data-testid={overlayTestId ?? (testId ? `${testId}-overlay` : undefined)}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

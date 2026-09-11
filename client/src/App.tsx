@@ -3,6 +3,7 @@ import { useState } from "react";
 import Tasks from "./routes/Tasks";
 import Users from "./routes/Users";
 import Dashboard from "./routes/Dashboard";
+import { Dialog } from "./components/Dialog";
 import { useAppError } from "./context/AppErrorContext";
 
 const navLinkClass = (isActive: boolean) =>
@@ -11,6 +12,8 @@ const navLinkClass = (isActive: boolean) =>
       ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg" 
       : "text-gray-700 hover:bg-gray-100"
   }`;
+
+const MOBILE_NAV_TITLE_ID = "mobile-nav-title";
 
 export default function App() {
   const { error, clearError } = useAppError();
@@ -58,29 +61,18 @@ export default function App() {
         Skip to main content
       </a>
 
-      {/* Mobile Overlay */}
-      {mobileMenuOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
-          onClick={() => setMobileMenuOpen(false)}
-          data-testid="mobile-overlay"
-          aria-hidden="true"
-        />
-      )}
-
-      {/* Sidebar / Mobile Drawer */}
-      <aside 
+      {/* Desktop Sidebar (always mounted at md+; a plain static element, not a dialog) */}
+      <aside
         className={`
-          fixed md:static inset-y-0 left-0 z-50
-          ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
+          hidden md:flex md:flex-col
           ${sidebarCollapsed ? "md:w-20" : "md:w-64"}
-          w-64 bg-white shadow-2xl transition-all duration-300 flex flex-col border-r border-gray-200
+          bg-white shadow-2xl transition-all duration-300 border-r border-gray-200
         `}
-        data-testid="sidebar"
+        data-testid="desktop-sidebar"
       >
         {/* Logo */}
         <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-3" onClick={() => setMobileMenuOpen(false)}>
+          <Link to="/" className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-lg">
               P
             </div>
@@ -91,18 +83,6 @@ export default function App() {
               </div>
             )}
           </Link>
-
-          {/* Close button for mobile */}
-          <button
-            onClick={() => setMobileMenuOpen(false)}
-            className="md:hidden p-2 hover:bg-gray-100 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"
-            data-testid="close-mobile-menu"
-            aria-label="Close menu"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
         </div>
 
         {/* Navigation */}
@@ -113,7 +93,6 @@ export default function App() {
               to={item.to}
               end={item.end}
               className={navLinkClass(item.end ? location.pathname === item.to : location.pathname.startsWith(item.to)) + " focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"}
-              onClick={() => setMobileMenuOpen(false)}
             >
               {item.icon}
               {!sidebarCollapsed && <span className="font-medium">{item.label}</span>}
@@ -122,8 +101,8 @@ export default function App() {
           ))}
         </nav>
 
-        {/* Collapse Button (Desktop only) */}
-        <div className="p-4 border-t border-gray-200 hidden md:block">
+        {/* Collapse Button */}
+        <div className="p-4 border-t border-gray-200">
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
             className="w-full flex items-center justify-center gap-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors min-h-[44px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"
@@ -131,10 +110,10 @@ export default function App() {
             aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-pressed={sidebarCollapsed}
           >
-            <svg 
-              className={`w-5 h-5 transition-transform ${sidebarCollapsed ? "rotate-180" : ""}`} 
-              fill="none" 
-              stroke="currentColor" 
+            <svg
+              className={`w-5 h-5 transition-transform ${sidebarCollapsed ? "rotate-180" : ""}`}
+              fill="none"
+              stroke="currentColor"
               viewBox="0 0 24 24"
              aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
@@ -143,6 +122,67 @@ export default function App() {
           </button>
         </div>
       </aside>
+
+      {/* Mobile Nav Drawer: conditionally rendered (not just CSS-hidden) so its
+          content leaves the Tab order and accessibility tree entirely while
+          closed. Reuses the same accessible dialog mechanism (Dialog /
+          useDialogA11y) as TaskEditModal/TaskWizard, so it gets Escape-to-close,
+          a focus trap, initial focus into the drawer, and focus restored to
+          the button that opened it "for free". */}
+      <Dialog
+        open={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+        titleId={MOBILE_NAV_TITLE_ID}
+        testId="sidebar"
+        overlayTestId="mobile-overlay"
+        overlayClassName="fixed inset-0 bg-black/50 z-50 flex md:hidden"
+        className="w-64 max-w-[85vw] h-full bg-white shadow-2xl flex flex-col outline-none"
+      >
+        <h2 id={MOBILE_NAV_TITLE_ID} className="sr-only">
+          Navigation menu
+        </h2>
+
+        {/* Logo */}
+        <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+          <Link to="/" className="flex items-center gap-3" onClick={() => setMobileMenuOpen(false)}>
+            <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-lg">
+              P
+            </div>
+            <div>
+              <span className="font-bold text-lg text-gray-900 block">Playwright</span>
+              <p className="text-xs text-gray-500">Training App</p>
+            </div>
+          </Link>
+
+          {/* Close button */}
+          <button
+            onClick={() => setMobileMenuOpen(false)}
+            className="p-2 hover:bg-gray-100 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"
+            data-testid="close-mobile-menu"
+            aria-label="Close menu"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto" aria-label="Primary">
+          {navigationItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className={navLinkClass(item.end ? location.pathname === item.to : location.pathname.startsWith(item.to)) + " focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              {item.icon}
+              <span className="font-medium">{item.label}</span>
+            </NavLink>
+          ))}
+        </nav>
+      </Dialog>
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
