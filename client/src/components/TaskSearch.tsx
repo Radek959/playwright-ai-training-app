@@ -16,6 +16,13 @@ export function TaskSearch({ onSelect, placeholder = "Search tasks..." }: Props)
   const [focused, setFocused] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (query.length < 2) {
@@ -60,6 +67,16 @@ export function TaskSearch({ onSelect, placeholder = "Search tasks..." }: Props)
   }, [query]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Escape must close the dropdown regardless of whether results have
+    // loaded yet, so it is handled unconditionally before any
+    // results-dependent logic below (which would otherwise no-op while
+    // loading or when a "No results" message is showing).
+    if (e.key === "Escape") {
+      setFocused(false);
+      inputRef.current?.blur();
+      return;
+    }
+
     if (!results.length) return;
 
     if (e.key === "ArrowDown") {
@@ -71,9 +88,6 @@ export function TaskSearch({ onSelect, placeholder = "Search tasks..." }: Props)
     } else if (e.key === "Enter" && results[selectedIndex]) {
       e.preventDefault();
       handleSelect(results[selectedIndex]);
-    } else if (e.key === "Escape") {
-      setFocused(false);
-      inputRef.current?.blur();
     }
   };
 
@@ -107,8 +121,22 @@ export function TaskSearch({ onSelect, placeholder = "Search tasks..." }: Props)
           placeholder={placeholder}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setTimeout(() => setFocused(false), 200)}
+          onFocus={() => {
+            // Cancel any pending close from a previous blur so a quick
+            // refocus (e.g. Escape immediately followed by clicking back
+            // into the input) doesn't get closed out from under it later.
+            if (blurTimeoutRef.current) {
+              clearTimeout(blurTimeoutRef.current);
+              blurTimeoutRef.current = null;
+            }
+            setFocused(true);
+          }}
+          onBlur={() => {
+            blurTimeoutRef.current = setTimeout(() => {
+              blurTimeoutRef.current = null;
+              setFocused(false);
+            }, 200);
+          }}
           onKeyDown={handleKeyDown}
           data-testid="task-search-input"
           className="w-full border rounded-lg px-4 py-2 pr-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
