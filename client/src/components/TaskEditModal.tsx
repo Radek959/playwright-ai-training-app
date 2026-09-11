@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Dialog } from "./Dialog";
+import { ApiError, mapFieldErrors } from "../utils/apiError";
 import type { Task, TaskUpdateInput, User } from "../types";
 
 type Props = {
@@ -13,6 +14,17 @@ type Props = {
 const TITLE_ID = "task-edit-modal-title";
 const ERROR_ID = "task-edit-modal-error";
 
+const KNOWN_FIELDS = new Set(["title", "description", "status", "priority", "dueDate", "assigneeId"]);
+
+const FIELD_ERROR_ID: Record<string, string> = {
+  title: "edit-task-title-error",
+  description: "edit-task-description-error",
+  status: "edit-task-status-error",
+  priority: "edit-task-priority-error",
+  dueDate: "edit-task-due-date-error",
+  assigneeId: "edit-task-assignee-error"
+};
+
 export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
   const titleInputRef = useRef<HTMLInputElement>(null);
 
@@ -24,6 +36,7 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
   const [assigneeId, setAssigneeId] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (task) {
@@ -34,8 +47,18 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
       setDueDate(task.dueDate ? task.dueDate.split("T")[0] : "");
       setAssigneeId(task.assigneeId ?? "");
       setSaveError(null);
+      setFieldErrors({});
     }
   }, [task]);
+
+  const clearFieldError = (field: string) => {
+    setFieldErrors((prev) => {
+      if (!(field in prev)) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
 
   if (!task) return null;
 
@@ -44,6 +67,7 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
     if (isSaving) return;
     setIsSaving(true);
     setSaveError(null);
+    setFieldErrors({});
     try {
       await onSave({
         title,
@@ -56,6 +80,10 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
       // Entered data is intentionally left in place on failure so the
       // caller can decide whether to close (success) or keep it open.
     } catch (err) {
+      if (err instanceof ApiError) {
+        const { mapped } = mapFieldErrors(err.details, KNOWN_FIELDS);
+        setFieldErrors(mapped);
+      }
       setSaveError(err instanceof Error ? err.message : "Failed to save the task");
     } finally {
       setIsSaving(false);
@@ -103,10 +131,22 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
               ref={titleInputRef}
               className="border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                clearFieldError("title");
+              }}
               required
-              aria-describedby={saveError ? ERROR_ID : undefined}
+              aria-invalid={Boolean(fieldErrors.title)}
+              aria-describedby={
+                [fieldErrors.title ? FIELD_ERROR_ID.title : null, saveError ? ERROR_ID : null].filter(Boolean).join(" ") ||
+                undefined
+              }
             />
+            {fieldErrors.title && (
+              <p id={FIELD_ERROR_ID.title} role="alert" className="text-red-600 text-xs">
+                {fieldErrors.title}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-1">
             <label htmlFor="edit-task-priority" className="text-sm font-semibold text-slate-700">
@@ -116,12 +156,22 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
               id="edit-task-priority"
               className="border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
               value={priority}
-              onChange={(e) => setPriority(e.target.value as Task["priority"])}
+              onChange={(e) => {
+                setPriority(e.target.value as Task["priority"]);
+                clearFieldError("priority");
+              }}
+              aria-invalid={Boolean(fieldErrors.priority)}
+              aria-describedby={fieldErrors.priority ? FIELD_ERROR_ID.priority : undefined}
             >
               <option value="low">Low</option>
               <option value="medium">Medium</option>
               <option value="high">High</option>
             </select>
+            {fieldErrors.priority && (
+              <p id={FIELD_ERROR_ID.priority} role="alert" className="text-red-600 text-xs">
+                {fieldErrors.priority}
+              </p>
+            )}
           </div>
         </div>
 
@@ -134,8 +184,18 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
             className="border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
             rows={3}
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => {
+              setDescription(e.target.value);
+              clearFieldError("description");
+            }}
+            aria-invalid={Boolean(fieldErrors.description)}
+            aria-describedby={fieldErrors.description ? FIELD_ERROR_ID.description : undefined}
           />
+          {fieldErrors.description && (
+            <p id={FIELD_ERROR_ID.description} role="alert" className="text-red-600 text-xs">
+              {fieldErrors.description}
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -147,12 +207,22 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
               id="edit-task-status"
               className="border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
               value={status}
-              onChange={(e) => setStatus(e.target.value as Task["status"])}
+              onChange={(e) => {
+                setStatus(e.target.value as Task["status"]);
+                clearFieldError("status");
+              }}
+              aria-invalid={Boolean(fieldErrors.status)}
+              aria-describedby={fieldErrors.status ? FIELD_ERROR_ID.status : undefined}
             >
               <option value="todo">To Do</option>
               <option value="in-progress">In Progress</option>
               <option value="done">Done</option>
             </select>
+            {fieldErrors.status && (
+              <p id={FIELD_ERROR_ID.status} role="alert" className="text-red-600 text-xs">
+                {fieldErrors.status}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-1">
             <label htmlFor="edit-task-due-date" className="text-sm font-semibold text-slate-700">
@@ -164,8 +234,18 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
               autoComplete="off"
               className="border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
               value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
+              onChange={(e) => {
+                setDueDate(e.target.value);
+                clearFieldError("dueDate");
+              }}
+              aria-invalid={Boolean(fieldErrors.dueDate)}
+              aria-describedby={fieldErrors.dueDate ? FIELD_ERROR_ID.dueDate : undefined}
             />
+            {fieldErrors.dueDate && (
+              <p id={FIELD_ERROR_ID.dueDate} role="alert" className="text-red-600 text-xs">
+                {fieldErrors.dueDate}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-1">
             <label htmlFor="edit-task-assignee" className="text-sm font-semibold text-slate-700">
@@ -175,7 +255,12 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
               id="edit-task-assignee"
               className="border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
               value={assigneeId}
-              onChange={(e) => setAssigneeId(e.target.value)}
+              onChange={(e) => {
+                setAssigneeId(e.target.value);
+                clearFieldError("assigneeId");
+              }}
+              aria-invalid={Boolean(fieldErrors.assigneeId)}
+              aria-describedby={fieldErrors.assigneeId ? FIELD_ERROR_ID.assigneeId : undefined}
             >
               <option value="">-- none --</option>
               {users.map((u) => (
@@ -184,6 +269,11 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
                 </option>
               ))}
             </select>
+            {fieldErrors.assigneeId && (
+              <p id={FIELD_ERROR_ID.assigneeId} role="alert" className="text-red-600 text-xs">
+                {fieldErrors.assigneeId}
+              </p>
+            )}
           </div>
         </div>
 

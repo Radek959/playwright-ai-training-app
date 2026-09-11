@@ -8,6 +8,7 @@ import { TaskSearch } from "../components/TaskSearch";
 import { TaskGridItem } from "../components/TaskGridItem";
 import { useAppError } from "../context/AppErrorContext";
 import { isArchived } from "../utils/taskArchive";
+import { toApiError } from "../utils/apiError";
 import type { Task, TaskUpdateInput, TaskWithAssignee, User } from "../types";
 
 function normalizeTask(raw: Partial<Task>): Task {
@@ -29,19 +30,6 @@ function normalizeTask(raw: Partial<Task>): Task {
     requiresApproval: raw.requiresApproval,
     approver: raw.approver
   };
-}
-
-async function extractErrorMessage(res: Response, fallback: string): Promise<string> {
-  try {
-    const data = await res.json();
-    if (Array.isArray(data?.details) && data.details.length > 0) {
-      return data.details.map((d: { message: string }) => d.message).join("; ");
-    }
-    if (typeof data?.error === "string") return data.error;
-  } catch {
-    // response wasn't JSON
-  }
-  return fallback;
 }
 
 type TabView = "active" | "archived" | "analytics" | "table" | "grid";
@@ -179,7 +167,7 @@ export default function Tasks() {
     const res = await fetch(`/api/tasks/${id}`, {
       method: "DELETE"
     });
-    if (!res.ok) throw new Error(await extractErrorMessage(res, `Delete failed: ${res.status}`));
+    if (!res.ok) throw await toApiError(res, `Delete failed: ${res.status}`);
     setTasks((prev) => prev.filter((t) => t.id !== id));
     clearError();
   };
@@ -191,7 +179,7 @@ export default function Tasks() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch)
     });
-    if (!res.ok) throw new Error(await extractErrorMessage(res, `Update failed: ${res.status}`));
+    if (!res.ok) throw await toApiError(res, `Update failed: ${res.status}`);
     const updated = await res.json();
     setTasks((prev) => prev.map((t) => (t.id === editing.id ? normalizeTask(updated) : t)));
     setEditing(null);
@@ -203,7 +191,7 @@ export default function Tasks() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(draft)
     });
-    if (!res.ok) throw new Error(await extractErrorMessage(res, `Create failed: ${res.status}`));
+    if (!res.ok) throw await toApiError(res, `Create failed: ${res.status}`);
     const created = await res.json();
     setTasks((prev) => [normalizeTask(created), ...prev]);
   };
@@ -214,7 +202,7 @@ export default function Tasks() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ [field]: value })
     });
-    if (!res.ok) throw new Error(await extractErrorMessage(res, `Update failed: ${res.status}`));
+    if (!res.ok) throw await toApiError(res, `Update failed: ${res.status}`);
     const updated = await res.json();
     setTasks((prev) => prev.map((t) => (t.id === id ? normalizeTask(updated) : t)));
     clearError();
@@ -314,16 +302,16 @@ export default function Tasks() {
       </div>
 
       {/* Tab Content */}
+      {/* Active Tab */}
       <div
-        id={`tabpanel-${activeTab}`}
+        id="tabpanel-active"
         role="tabpanel"
-        aria-labelledby={`tab-${activeTab}`}
+        aria-labelledby="tab-active"
         tabIndex={0}
-        data-testid={`tab-content-${activeTab}`}
+        data-testid="tab-content-active"
+        hidden={activeTab !== "active"}
       >
-        {/* Active Tab */}
-        {activeTab === "active" && (
-          <div className="space-y-4 md:space-y-6">
+        <div className="space-y-4 md:space-y-6">
             {/* Filters */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 md:p-4">
               <div className="flex flex-col md:flex-row gap-3 md:gap-4">
@@ -447,11 +435,18 @@ export default function Tasks() {
               </div>
             )}
           </div>
-        )}
+      </div>
 
-        {/* Grid View Tab */}
-        {activeTab === "grid" && (
-          <div className="space-y-4 md:space-y-6">
+      {/* Grid View Tab */}
+      <div
+        id="tabpanel-grid"
+        role="tabpanel"
+        aria-labelledby="tab-grid"
+        tabIndex={0}
+        data-testid="tab-content-grid"
+        hidden={activeTab !== "grid"}
+      >
+        <div className="space-y-4 md:space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
               {filtered.map((t) => (
                 <TaskGridItem
@@ -468,22 +463,36 @@ export default function Tasks() {
               </div>
             )}
           </div>
-        )}
+      </div>
 
-        {/* Table Tab */}
-        {activeTab === "table" && (
-          <TaskTable
-            tasks={filtered}
-            users={users}
-            onUpdate={handleUpdate}
-            onDelete={handleDelete}
-            onBulkDelete={handleBulkDelete}
-          />
-        )}
+      {/* Table Tab */}
+      <div
+        id="tabpanel-table"
+        role="tabpanel"
+        aria-labelledby="tab-table"
+        tabIndex={0}
+        data-testid="tab-content-table"
+        hidden={activeTab !== "table"}
+      >
+        <TaskTable
+          tasks={filtered}
+          users={users}
+          onUpdate={handleUpdate}
+          onDelete={handleDelete}
+          onBulkDelete={handleBulkDelete}
+        />
+      </div>
 
-        {/* Archived Tab */}
-        {activeTab === "archived" && (
-          <div className="space-y-4">
+      {/* Archived Tab */}
+      <div
+        id="tabpanel-archived"
+        role="tabpanel"
+        aria-labelledby="tab-archived"
+        tabIndex={0}
+        data-testid="tab-content-archived"
+        hidden={activeTab !== "archived"}
+      >
+        <div className="space-y-4">
             {filtered.length === 0 ? (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-20 w-20 mx-auto mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -500,11 +509,18 @@ export default function Tasks() {
               </div>
             )}
           </div>
-        )}
+      </div>
 
-        {/* Analytics Tab */}
-        {activeTab === "analytics" && (
-          <div className="space-y-6">
+      {/* Analytics Tab */}
+      <div
+        id="tabpanel-analytics"
+        role="tabpanel"
+        aria-labelledby="tab-analytics"
+        tabIndex={0}
+        data-testid="tab-content-analytics"
+        hidden={activeTab !== "analytics"}
+      >
+        <div className="space-y-6">
             <h2 className="text-2xl font-bold text-gray-900">Task Analytics</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-6 shadow-sm">
@@ -561,7 +577,6 @@ export default function Tasks() {
               </div>
             </div>
           </div>
-        )}
       </div>
 
       {/* Modals */}
