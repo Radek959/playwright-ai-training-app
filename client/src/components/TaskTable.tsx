@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useAppError } from "../context/AppErrorContext";
 import type { Task, TaskPriority, TaskStatus, User } from "../types";
 
 type SortKey = "title" | "priority" | "dueDate" | "assigneeId" | "status";
@@ -21,6 +22,7 @@ const COLUMN_LABELS: Record<SortKey, string> = {
 };
 
 export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Props) {
+  const { setError, clearError } = useAppError();
   const [sortKey, setSortKey] = useState<SortKey>("title");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -122,6 +124,15 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
       }));
     } finally {
       setSavingCell(null);
+    }
+  };
+
+  const handleRowDelete = async (taskId: string, title: string) => {
+    try {
+      await onDelete(taskId);
+      clearError();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to delete task: ${title}`);
     }
   };
 
@@ -389,7 +400,7 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                     {/* Actions */}
                     <td className="border-b p-3">
                       <button
-                        onClick={() => onDelete(task.id)}
+                        onClick={() => handleRowDelete(task.id, task.title)}
                         data-testid={`delete-${task.id}`}
                         className="text-red-600 hover:underline text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600 rounded"
                         aria-label={`Delete task: ${task.title}`}
