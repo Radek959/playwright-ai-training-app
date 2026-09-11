@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateTaskFields, validateUserFields } from "./validation.js";
+import { buildTaskCreateCandidate, buildUserCreateCandidate, validateTaskFields, validateUserFields } from "./validation.js";
 import { Task, User } from "./data.js";
 
 const baseUsers: User[] = [
@@ -197,6 +197,81 @@ describe("validateTaskFields", () => {
       expect(errors).toContainEqual({ field: "approver", message: "requiresApproval requires an approver" });
     });
   });
+
+  describe("completedAt", () => {
+    it("accepts a valid completedAt date string", () => {
+      const errors = validateTaskFields(validTask({ completedAt: "2026-01-01T00:00:00.000Z" }), {
+        users: baseUsers,
+        tasks: baseTasks
+      });
+      expect(errors).toEqual([]);
+    });
+
+    it("accepts a missing completedAt", () => {
+      const errors = validateTaskFields(validTask(), { users: baseUsers, tasks: baseTasks });
+      expect(errors).toEqual([]);
+    });
+
+    it("rejects a non-string completedAt, e.g. a number", () => {
+      const errors = validateTaskFields(validTask({ completedAt: 123 }), { users: baseUsers, tasks: baseTasks });
+      expect(errors).toContainEqual({ field: "completedAt", message: "invalid completedAt" });
+    });
+
+    it("rejects an explicit null completedAt", () => {
+      const errors = validateTaskFields(validTask({ completedAt: null }), { users: baseUsers, tasks: baseTasks });
+      expect(errors).toContainEqual({ field: "completedAt", message: "completedAt cannot be null" });
+    });
+
+    it("rejects an unparseable completedAt string", () => {
+      const errors = validateTaskFields(validTask({ completedAt: "not-a-date" }), {
+        users: baseUsers,
+        tasks: baseTasks
+      });
+      expect(errors).toContainEqual({ field: "completedAt", message: "invalid completedAt" });
+    });
+  });
+});
+
+describe("buildTaskCreateCandidate", () => {
+  it("defaults status, priority, tags, dependencies and requiresApproval when the field is missing", () => {
+    const candidate = buildTaskCreateCandidate({ title: "A task" });
+    expect(candidate.status).toBe("todo");
+    expect(candidate.priority).toBe("medium");
+    expect(candidate.tags).toEqual([]);
+    expect(candidate.dependencies).toEqual([]);
+    expect(candidate.requiresApproval).toBe(false);
+  });
+
+  it("does not default an explicit null; the field is left null for validation to reject", () => {
+    const candidate = buildTaskCreateCandidate({
+      title: "A task",
+      status: null,
+      tags: null,
+      requiresApproval: null
+    });
+    expect(candidate.status).toBeNull();
+    expect(candidate.tags).toBeNull();
+    expect(candidate.requiresApproval).toBeNull();
+  });
+
+  it("rejects a request where defaultable fields were explicitly null", () => {
+    const candidate = buildTaskCreateCandidate({
+      title: "A task",
+      status: null,
+      tags: null,
+      requiresApproval: null
+    });
+    const errors = validateTaskFields(candidate, { users: baseUsers, tasks: baseTasks });
+    expect(errors).toContainEqual({ field: "status", message: "invalid status" });
+    expect(errors).toContainEqual({ field: "tags", message: "tags must be an array of strings" });
+    expect(errors).toContainEqual({ field: "requiresApproval", message: "requiresApproval must be a boolean" });
+  });
+
+  it("passes completedAt through unvalidated for validateTaskFields to check", () => {
+    const candidate = buildTaskCreateCandidate({ title: "A task", completedAt: 123 });
+    const errors = validateTaskFields(candidate, { users: baseUsers, tasks: baseTasks });
+    expect(errors).toContainEqual({ field: "completedAt", message: "invalid completedAt" });
+  });
 });
 
 const validUser = (overrides: Record<string, unknown> = {}) => ({
@@ -270,5 +345,23 @@ describe("validateUserFields", () => {
       const errors = validateUserFields(validUser({ role: "superadmin" }), { users: baseUsers });
       expect(errors).toContainEqual({ field: "role", message: "invalid role" });
     });
+  });
+});
+
+describe("buildUserCreateCandidate", () => {
+  it("defaults role to viewer when the field is missing", () => {
+    const candidate = buildUserCreateCandidate({ name: "New User", email: "new.user@example.com" });
+    expect(candidate.role).toBe("viewer");
+  });
+
+  it("does not default an explicit null role", () => {
+    const candidate = buildUserCreateCandidate({ name: "New User", email: "new.user@example.com", role: null });
+    expect(candidate.role).toBeNull();
+  });
+
+  it("rejects a request where role was explicitly null instead of defaulting it", () => {
+    const candidate = buildUserCreateCandidate({ name: "New User", email: "new.user@example.com", role: null });
+    const errors = validateUserFields(candidate, { users: baseUsers });
+    expect(errors).toContainEqual({ field: "role", message: "invalid role" });
   });
 });

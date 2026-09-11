@@ -7,6 +7,7 @@ import { TaskTable } from "../components/TaskTable";
 import { TaskSearch } from "../components/TaskSearch";
 import { TaskGridItem } from "../components/TaskGridItem";
 import { useAppError } from "../context/AppErrorContext";
+import { isArchived } from "../utils/taskArchive";
 import type { Task, TaskUpdateInput, TaskWithAssignee, User } from "../types";
 
 function normalizeTask(raw: Partial<Task>): Task {
@@ -28,17 +29,6 @@ function normalizeTask(raw: Partial<Task>): Task {
     requiresApproval: raw.requiresApproval,
     approver: raw.approver
   };
-}
-
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-
-function isArchived(task: Task): boolean {
-  if (task.status !== "done") return false;
-  const referenceDate = task.completedAt ?? task.dueDate;
-  if (!referenceDate) return false;
-  const time = new Date(referenceDate).getTime();
-  if (Number.isNaN(time)) return false;
-  return Date.now() - time > THIRTY_DAYS_MS;
 }
 
 async function extractErrorMessage(res: Response, fallback: string): Promise<string> {

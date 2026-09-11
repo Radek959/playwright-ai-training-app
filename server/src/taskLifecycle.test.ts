@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { applyAllowedUpdate, isTaskArchived, resolveCompletedAt } from "./taskLifecycle.js";
+import { applyAllowedUpdate, resolveCompletedAt } from "./taskLifecycle.js";
 import { TASK_UPDATE_FIELDS, NULLABLE_TASK_FIELDS } from "./validation.js";
-import { Task } from "./data.js";
 
 describe("resolveCompletedAt", () => {
   it("sets completedAt to now when moving to done without one supplied", () => {
@@ -71,50 +70,10 @@ describe("applyAllowedUpdate", () => {
       const result = applyAllowedUpdate(existing, { status: null }, TASK_UPDATE_FIELDS, NULLABLE_TASK_FIELDS);
       expect(result).toEqual({ ok: false, errors: [{ field: "status", message: "status cannot be null" }] });
     });
-  });
-});
 
-const archivedTask = (overrides: Partial<Pick<Task, "status" | "completedAt" | "dueDate">>) => ({
-  status: "done" as const,
-  completedAt: undefined,
-  dueDate: undefined,
-  ...overrides
-});
-
-describe("isTaskArchived", () => {
-  const now = new Date("2026-02-01T00:00:00.000Z").getTime();
-  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-
-  it("is never archived when the task is not done", () => {
-    const task = archivedTask({ status: "todo" as const, completedAt: new Date(now - THIRTY_DAYS_MS * 2).toISOString() });
-    expect(isTaskArchived(task, now)).toBe(false);
-  });
-
-  it("is not archived when completed less than 30 days ago", () => {
-    const completedAt = new Date(now - (THIRTY_DAYS_MS - 1000)).toISOString();
-    expect(isTaskArchived(archivedTask({ completedAt }), now)).toBe(false);
-  });
-
-  it("is not archived exactly at the 30 day boundary", () => {
-    const completedAt = new Date(now - THIRTY_DAYS_MS).toISOString();
-    expect(isTaskArchived(archivedTask({ completedAt }), now)).toBe(false);
-  });
-
-  it("is archived just past the 30 day boundary", () => {
-    const completedAt = new Date(now - THIRTY_DAYS_MS - 1000).toISOString();
-    expect(isTaskArchived(archivedTask({ completedAt }), now)).toBe(true);
-  });
-
-  it("falls back to dueDate when completedAt is missing", () => {
-    const dueDate = new Date(now - THIRTY_DAYS_MS - 1000).toISOString();
-    expect(isTaskArchived(archivedTask({ completedAt: undefined, dueDate }), now)).toBe(true);
-  });
-
-  it("is not archived when neither completedAt nor dueDate is set", () => {
-    expect(isTaskArchived(archivedTask({ completedAt: undefined, dueDate: undefined }), now)).toBe(false);
-  });
-
-  it("is not archived when the reference date is unparseable", () => {
-    expect(isTaskArchived(archivedTask({ completedAt: "not-a-date" }), now)).toBe(false);
+    it("rejects null on completedAt, which is derived from status rather than clearable", () => {
+      const result = applyAllowedUpdate(existing, { completedAt: null }, TASK_UPDATE_FIELDS, NULLABLE_TASK_FIELDS);
+      expect(result).toEqual({ ok: false, errors: [{ field: "completedAt", message: "completedAt cannot be null" }] });
+    });
   });
 });

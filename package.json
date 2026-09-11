@@ -15,7 +15,7 @@
     "build": "npm --prefix server run build && npm --prefix client run build",
     "lint": "eslint client/src server/src",
     "typecheck": "npm --prefix server run typecheck && npm --prefix client run typecheck",
-    "test": "npm --prefix server run test",
+    "test": "npm --prefix server run test && npm --prefix client run test",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "devDependencies": {

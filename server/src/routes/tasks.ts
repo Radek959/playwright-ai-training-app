@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { tasks, users, Task } from "../data.js";
-import { NULLABLE_TASK_FIELDS, TASK_UPDATE_FIELDS, ValidationError, validateTaskFields } from "../validation.js";
+import {
+  NULLABLE_TASK_FIELDS,
+  TASK_UPDATE_FIELDS,
+  ValidationError,
+  buildTaskCreateCandidate,
+  validateTaskFields
+} from "../validation.js";
 import { applyAllowedUpdate, resolveCompletedAt } from "../taskLifecycle.js";
 
 export const tasksRouter = Router();
@@ -43,21 +49,7 @@ tasksRouter.post("/", (req, res) => {
     return res.status(400).json(badBodyResponse());
   }
   const body = req.body;
-  const candidate: Record<string, unknown> = {
-    title: body.title,
-    description: body.description,
-    status: body.status ?? "todo",
-    priority: body.priority ?? "medium",
-    dueDate: body.dueDate,
-    assigneeId: body.assigneeId,
-    taskType: body.taskType,
-    estimatedHours: body.estimatedHours,
-    tags: body.tags ?? [],
-    dependencies: body.dependencies ?? [],
-    severity: body.severity,
-    requiresApproval: body.requiresApproval ?? false,
-    approver: body.approver
-  };
+  const candidate = buildTaskCreateCandidate(body);
 
   const errors = validateTaskFields(candidate, { users, tasks });
   if (errors.length > 0) {
@@ -65,7 +57,7 @@ tasksRouter.post("/", (req, res) => {
   }
 
   const status = candidate.status as Task["status"];
-  const completedAt = resolveCompletedAt(status, body.completedAt as string | undefined);
+  const completedAt = resolveCompletedAt(status, candidate.completedAt as string | undefined);
 
   const task: Task = {
     id: randomUUID(),
