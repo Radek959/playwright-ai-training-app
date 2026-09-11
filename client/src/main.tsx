@@ -2,15 +2,15 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
-import { LabProvider } from "./context/LabContext";
+import { AppErrorProvider } from "./context/AppErrorContext";
 import "./styles/index.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <BrowserRouter>
-      <LabProvider>
+      <AppErrorProvider>
         <App />
-      </LabProvider>
+      </AppErrorProvider>
     </BrowserRouter>
   </React.StrictMode>
 );

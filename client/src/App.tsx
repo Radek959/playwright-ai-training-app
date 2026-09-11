@@ -3,8 +3,7 @@ import { useState } from "react";
 import Tasks from "./routes/Tasks";
 import Users from "./routes/Users";
 import Dashboard from "./routes/Dashboard";
-import { useLab } from "./context/LabContext";
-import { getTestId } from "./utils/testIds";
+import { useAppError } from "./context/AppErrorContext";
 
 const navLinkClass = (isActive: boolean) =>
   `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 min-h-[44px] ${
@@ -14,7 +13,7 @@ const navLinkClass = (isActive: boolean) =>
   }`;
 
 export default function App() {
-  const { lastError, refreshToken } = useLab();
+  const { error } = useAppError();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
@@ -54,10 +53,10 @@ export default function App() {
     <div className="min-h-screen flex bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Mobile Overlay */}
       {mobileMenuOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-40 md:hidden"
           onClick={() => setMobileMenuOpen(false)}
-          data-testid={getTestId("mobile-overlay")}
+          data-testid="mobile-overlay"
         />
       )}
 
@@ -69,7 +68,7 @@ export default function App() {
           ${sidebarCollapsed ? "md:w-20" : "md:w-64"}
           w-64 bg-white shadow-2xl transition-all duration-300 flex flex-col border-r border-gray-200
         `}
-        data-testid={getTestId("sidebar")}
+        data-testid="sidebar"
       >
         {/* Logo */}
         <div className="p-6 border-b border-gray-200 flex items-center justify-between">
@@ -89,7 +88,7 @@ export default function App() {
           <button
             onClick={() => setMobileMenuOpen(false)}
             className="md:hidden p-2 hover:bg-gray-100 rounded-lg"
-            data-testid={getTestId("close-mobile-menu")}
+            data-testid="close-mobile-menu"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -118,7 +117,7 @@ export default function App() {
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
             className="w-full flex items-center justify-center gap-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors min-h-[44px]"
-            data-testid={getTestId("sidebar-toggle")}
+            data-testid="sidebar-toggle"
           >
             <svg 
               className={`w-5 h-5 transition-transform ${sidebarCollapsed ? "rotate-180" : ""}`} 
@@ -141,7 +140,7 @@ export default function App() {
             <button
               onClick={() => setMobileMenuOpen(true)}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              data-testid={getTestId("open-mobile-menu")}
+              data-testid="open-mobile-menu"
               aria-label="Open menu"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -161,13 +160,13 @@ export default function App() {
         </header>
 
         {/* Error Banner */}
-        {lastError && (
+        {error && (
           <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-200 shadow-sm">
             <div className="px-4 md:px-6 py-3 flex items-center gap-3">
               <svg className="w-5 h-5 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
-              <span className="text-sm font-medium text-amber-900">{lastError}</span>
+              <span className="text-sm font-medium text-amber-900">{error}</span>
             </div>
           </div>
         )}
@@ -175,7 +174,7 @@ export default function App() {
         {/* Main Content Area */}
         <main className="flex-1 overflow-auto p-4 md:p-8">
           <div className="max-w-7xl mx-auto">
-            <Routes key={refreshToken}>
+            <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/tasks" element={<Tasks />} />
               <Route path="/users" element={<Users />} />
@@ -201,7 +200,7 @@ export default function App() {
                       ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white"
                       : "text-gray-600 hover:bg-gray-100"
                   }`}
-                  data-testid={getTestId(`bottom-nav-${item.label.toLowerCase()}`)}
+                  data-testid={`bottom-nav-${item.label.toLowerCase()}`}
                 >
                   {item.icon}
                   <span className="text-xs font-medium mt-1">{item.label}</span>

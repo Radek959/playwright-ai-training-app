@@ -11,20 +11,6 @@
     "/api/tasks": {
       "get": {
         "summary": "List tasks",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "flaky",
-            "schema": { "type": "string" },
-            "description": "Enable flaky mode"
-          },
-          {
-            "in": "query",
-            "name": "lab_api_flaky",
-            "schema": { "type": "string" },
-            "description": "Force flaky mode from lab"
-          }
-        ],
         "responses": {
           "200": {
             "description": "List of tasks",
@@ -116,32 +102,6 @@
           "400": { "description": "Validation error" }
         }
       }
-    },
-    "/api/lab/state": {
-      "get": {
-        "summary": "Get lab state",
-        "responses": {
-          "200": {
-            "description": "Current lab flags",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LabState" } } }
-          }
-        }
-      },
-      "post": {
-        "summary": "Set lab state",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/LabState" } }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Updated lab flags",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LabState" } } }
-          }
-        }
-      }
     }
   },
   "components": {
@@ -191,15 +151,6 @@
           "avatar": { "type": "string" }
         },
         "required": ["name", "email"]
-      },
-      "LabState": {
-        "type": "object",
-        "properties": {
-          "chaos": { "type": "boolean" },
-          "a11y": { "type": "boolean" },
-          "apiFlaky": { "type": "boolean" }
-        },
-        "required": ["chaos", "a11y", "apiFlaky"]
       }
     }
   }

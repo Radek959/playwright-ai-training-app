@@ -6,8 +6,7 @@ import { TaskWizard } from "../components/TaskWizard";
 import { TaskTable } from "../components/TaskTable";
 import { TaskSearch } from "../components/TaskSearch";
 import { TaskGridItem } from "../components/TaskGridItem";
-import { useLab } from "../context/LabContext";
-import { getTestId } from "../utils/testIds";
+import { useAppError } from "../context/AppErrorContext";
 
 type Task = {
   id: string;
@@ -31,8 +30,6 @@ type TaskWithName = Task & {
   assigneeAvatarUrl?: string;
 };
 
-const apiV2Enabled = import.meta.env.VITE_API_VERSION_2 === "true";
-
 function normalizeTask(raw: any): Task {
   return {
     id: raw.id,
@@ -50,12 +47,8 @@ type TabView = "active" | "archived" | "analytics" | "table" | "grid";
 type FilterMode = "all" | "my-tasks" | "unassigned";
 
 export default function Tasks() {
-  const { apiFlaky, chaos, setLastError } = useLab();
-  const layoutRefactor = import.meta.env.VITE_REFACTOR_LAYOUT === "true";
-  const mobileBreakingChange = import.meta.env.VITE_MOBILE_BREAKING_CHANGE === "true";
-  const hiddenOnMobile = import.meta.env.VITE_HIDDEN_ON_MOBILE === "true";
-  const refactorSelectors = import.meta.env.VITE_REFACTOR_SELECTORS === "true";
-  
+  const { setError } = useAppError();
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -64,25 +57,22 @@ export default function Tasks() {
   const [page, setPage] = useState<number>(1);
   const pageSize = 5;
   const [editing, setEditing] = useState<Task | null>(null);
-  const primaryCtaLabel = refactorSelectors ? "Create Work Item" : "New Task";
-  const primaryCtaShortLabel = refactorSelectors ? "Create" : "New";
-  
+  const primaryCtaLabel = "New Task";
+  const primaryCtaShortLabel = "New";
+
   // New state for advanced UI
   const [activeTab, setActiveTab] = useState<TabView>("active");
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [showWizard, setShowWizard] = useState(false);
   const [showQuickForm, setShowQuickForm] = useState(false);
 
-  const endpoint = useMemo(
-    () => (apiFlaky ? "/api/tasks?lab_api_flaky=true" : "/api/tasks"),
-    [apiFlaky]
-  );
+  const endpoint = "/api/tasks";
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
-        const [tRes, uRes] = await Promise.all([fetch(endpoint), fetch(apiFlaky ? "/api/users?lab_api_flaky=true" : "/api/users")]);
+        const [tRes, uRes] = await Promise.all([fetch(endpoint), fetch("/api/users")]);
         if (!tRes.ok) throw new Error(`HTTP ${tRes.status}`);
         if (!uRes.ok) throw new Error(`Users HTTP ${uRes.status}`);
         const [tData, uData] = await Promise.all([tRes.json(), uRes.json()]);
@@ -92,14 +82,14 @@ export default function Tasks() {
           setUsers(uData);
         }
       } catch (err) {
-        setLastError(err instanceof Error ? err.message : "Fetch error");
+        setError(err instanceof Error ? err.message : "Fetch error");
       }
     };
     load();
     return () => {
       cancelled = true;
     };
-  }, [endpoint, apiFlaky, setLastError]);
+  }, [setError]);
 
   const enriched: TaskWithName[] = useMemo(() => {
     const byUser = new Map(users.map((u) => [u.id, { name: u.name, avatarUrl: u.avatarUrl }] as const));
@@ -148,7 +138,7 @@ export default function Tasks() {
   const paginated = filtered.slice((pageClamped - 1) * pageSize, pageClamped * pageSize);
 
   const handleDelete = async (id: string) => {
-    const res = await fetch(`/api/tasks/${id}${apiFlaky ? "?lab_api_flaky=true" : ""}`, {
+    const res = await fetch(`/api/tasks/${id}`, {
       method: "DELETE"
     });
     if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
@@ -157,18 +147,10 @@ export default function Tasks() {
 
   const handleSave = async (patch: Partial<Task>) => {
     if (!editing) return;
-    const res = await fetch(`/api/tasks/${editing.id}${apiFlaky ? "?lab_api_flaky=true" : ""}`, {
+    const res = await fetch(`/api/tasks/${editing.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        apiV2Enabled
-          ? {
-              ...patch,
-              name: patch.title ?? editing.title,
-              content: patch.description ?? editing.description
-            }
-          : patch
-      )
+      body: JSON.stringify(patch)
     });
     if (!res.ok) throw new Error(`Update failed: ${res.status}`);
     const updated = await res.json();
@@ -190,9 +172,9 @@ export default function Tasks() {
   const handleUpdate = async (id: string, field: string, value: any) => {
     const task = tasks.find(t => t.id === id);
     if (!task) return;
-    
+
     const patch = { [field]: value };
-    const res = await fetch(`/api/tasks/${id}${apiFlaky ? "?lab_api_flaky=true" : ""}`, {
+    const res = await fetch(`/api/tasks/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch)
@@ -205,7 +187,7 @@ export default function Tasks() {
   const handleBulkDelete = async (ids: string[]) => {
     // For demo, delete one by one
     for (const id of ids) {
-      await fetch(`/api/tasks/${id}${apiFlaky ? "?lab_api_flaky=true" : ""}`, {
+      await fetch(`/api/tasks/${id}`, {
         method: "DELETE"
       });
     }
@@ -217,7 +199,7 @@ export default function Tasks() {
   };
 
   return (
-    <div className="space-y-4 md:space-y-6 pb-20 md:pb-0" data-chaos={chaos ? "1" : "0"}>
+    <div className="space-y-4 md:space-y-6 pb-20 md:pb-0">
       {/* Header with Search */}
       <div className="flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -225,37 +207,20 @@ export default function Tasks() {
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Tasks</h1>
             <p className="text-sm md:text-base text-gray-600 mt-1">Manage and track your team's work</p>
           </div>
-          
-          {/* Desktop: Normal button */}
-          {!mobileBreakingChange && (
-            <button
-              onClick={() => setShowWizard(true)}
-              data-testid={getTestId("open-wizard-btn")}
-              className="flex items-center gap-2 px-4 md:px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:shadow-lg transition-all duration-200 font-medium min-h-[44px] whitespace-nowrap"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              <span className="hidden sm:inline">{primaryCtaLabel}</span>
-              <span className="sm:hidden">{primaryCtaShortLabel}</span>
-            </button>
-          )}
-          
-          {/* Mobile Breaking Change: Button hidden on desktop, FAB on mobile */}
-          {mobileBreakingChange && (
-            <button
-              onClick={() => setShowWizard(true)}
-              data-testid={getTestId("open-wizard-btn")}
-              className="hidden md:flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:shadow-lg transition-all duration-200 font-medium min-h-[44px]"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              {primaryCtaLabel}
-            </button>
-          )}
+
+          <button
+            onClick={() => setShowWizard(true)}
+            data-testid="open-wizard-btn"
+            className="flex items-center gap-2 px-4 md:px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:shadow-lg transition-all duration-200 font-medium min-h-[44px] whitespace-nowrap"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            <span className="hidden sm:inline">{primaryCtaLabel}</span>
+            <span className="sm:hidden">{primaryCtaShortLabel}</span>
+          </button>
         </div>
-        
+
         <div className="w-full md:max-w-md">
           <TaskSearch onSelect={handleSearchSelect} />
         </div>
@@ -267,7 +232,7 @@ export default function Tasks() {
           <button
             key={tab}
             id={`tab-${tab}`}
-            data-testid={getTestId(`tab-${tab}`)}
+            data-testid={`tab-${tab}`}
             onClick={() => setActiveTab(tab)}
             className={`px-4 md:px-6 py-3 border-b-2 transition-all font-medium whitespace-nowrap min-h-[44px] ${
               activeTab === tab
@@ -285,7 +250,7 @@ export default function Tasks() {
       </div>
 
       {/* Tab Content */}
-      <div data-testid={getTestId(`tab-content-${activeTab}`)}>
+      <div data-testid={`tab-content-${activeTab}`}>
         {/* Active Tab */}
         {activeTab === "active" && (
           <div className="space-y-4 md:space-y-6">
@@ -297,7 +262,7 @@ export default function Tasks() {
                   {(["all", "my-tasks", "unassigned"] as FilterMode[]).map((mode) => (
                     <button
                       key={mode}
-                      data-testid={getTestId(`filter-${mode}`)}
+                      data-testid={`filter-${mode}`}
                       onClick={() => {
                         setFilterMode(mode);
                         setPage(1);
@@ -309,10 +274,8 @@ export default function Tasks() {
                       }`}
                     >
                       {mode === "all" && "All"}
-                      {mode === "my-tasks" && <span className={hiddenOnMobile ? "hidden md:inline" : ""}>My Tasks</span>}
-                      {mode === "my-tasks" && hiddenOnMobile && <span className="md:hidden">My</span>}
-                      {mode === "unassigned" && <span className={hiddenOnMobile ? "hidden md:inline" : ""}>Unassigned</span>}
-                      {mode === "unassigned" && hiddenOnMobile && <span className="md:hidden">Un...</span>}
+                      {mode === "my-tasks" && "My Tasks"}
+                      {mode === "unassigned" && "Unassigned"}
                     </button>
                   ))}
                 </div>
@@ -347,10 +310,10 @@ export default function Tasks() {
                   
                   <button
                     onClick={() => setShowQuickForm(!showQuickForm)}
-                    data-testid={getTestId("toggle-quick-form-btn")}
-                    className={`${hiddenOnMobile ? "hidden md:flex" : "flex"} items-center px-3 md:px-4 py-2 bg-gray-100 text-xs md:text-sm rounded-lg hover:bg-gray-200 transition-colors font-medium text-gray-700 min-h-[44px] whitespace-nowrap`}
+                    data-testid="toggle-quick-form-btn"
+                    className="flex items-center px-3 md:px-4 py-2 bg-gray-100 text-xs md:text-sm rounded-lg hover:bg-gray-200 transition-colors font-medium text-gray-700 min-h-[44px] whitespace-nowrap"
                   >
-                    {refactorSelectors ? (showQuickForm ? "Close inline form" : "Inline add") : `${showQuickForm ? "Hide" : "Quick"} Add`}
+                    {showQuickForm ? "Hide Add" : "Quick Add"}
                   </button>
                 </div>
               </div>
@@ -362,9 +325,9 @@ export default function Tasks() {
               </div>
             )}
 
-            <div className={layoutRefactor ? "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4" : "space-y-3 md:space-y-4"}>
+            <div className="space-y-3 md:space-y-4">
               {paginated.map((t) => (
-                <TaskCard key={t.id} task={t} onDelete={handleDelete} onEdit={setEditing} layoutRefactor={layoutRefactor} />
+                <TaskCard key={t.id} task={t} onDelete={handleDelete} onEdit={setEditing} />
               ))}
             </div>
 
@@ -522,7 +485,7 @@ export default function Tasks() {
           try {
             await handleSave(patch);
           } catch (err) {
-            setLastError(err instanceof Error ? err.message : "Update error");
+            setError(err instanceof Error ? err.message : "Update error");
           }
         }}
       />
@@ -535,25 +498,11 @@ export default function Tasks() {
             try {
               await handleCreate(draft);
             } catch (err) {
-              setLastError(err instanceof Error ? err.message : "Create error");
+              setError(err instanceof Error ? err.message : "Create error");
             }
           }}
           onClose={() => setShowWizard(false)}
         />
-      )}
-
-      {/* Floating Action Button (FAB) - Mobile only when VITE_MOBILE_BREAKING_CHANGE=true */}
-      {mobileBreakingChange && (
-        <button
-          onClick={() => setShowWizard(true)}
-          data-testid={getTestId("open-wizard-btn")}
-          className="md:hidden fixed bottom-20 right-4 w-14 h-14 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-full shadow-2xl hover:shadow-3xl transition-all duration-200 flex items-center justify-center z-40"
-          aria-label="Add new task"
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-          </svg>
-        </button>
       )}
     </div>
   );

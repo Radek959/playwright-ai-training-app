@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { getTestId } from "../utils/testIds";
 
 type Props = {
   src?: string;
@@ -41,7 +40,7 @@ export function UserAvatar({ src, name, size = "md", className = "" }: Props) {
     return (
       <div
         className={`${sizeClasses[size]} ${bgColor} rounded-full flex items-center justify-center text-white font-semibold shadow-md ${className}`}
-        data-testid={getTestId("user-avatar-fallback")}
+        data-testid="user-avatar-fallback"
         title={name}
       >
         {initials}
@@ -55,7 +54,7 @@ export function UserAvatar({ src, name, size = "md", className = "" }: Props) {
       alt={name}
       className={`${sizeClasses[size]} rounded-full object-cover shadow-md ${className}`}
       onError={() => setImageError(true)}
-      data-testid={getTestId("user-avatar-image")}
+      data-testid="user-avatar-image"
       title={name}
     />
   );

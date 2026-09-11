@@ -1,6 +1,4 @@
 import { useState } from "react";
-import { useLab } from "../context/LabContext";
-import { getTestId } from "../utils/testIds";
 
 type Task = {
   id: string;
@@ -30,7 +28,6 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingCell, setEditingCell] = useState<string | null>(null);
-  const { refactorLayout } = useLab();
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -84,8 +81,7 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
     setSelectedIds(new Set());
   };
 
-  const cellId = (taskId: string, field: string) =>
-    refactorLayout ? `cell-${taskId}-${field}-v2` : `cell-${taskId}-${field}`;
+  const cellId = (taskId: string, field: string) => `cell-${taskId}-${field}`;
 
   const allSelected = tasks.length > 0 && selectedIds.size === tasks.length;
   const someSelected = selectedIds.size > 0 && selectedIds.size < tasks.length;
@@ -94,13 +90,13 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
     <div className="space-y-3">
       {/* Bulk Actions Bar */}
       {selectedIds.size > 0 && (
-        <div className="bg-blue-50 border border-blue-300 rounded p-3 flex items-center justify-between" data-testid={getTestId("bulk-actions-bar")}>
+        <div className="bg-blue-50 border border-blue-300 rounded p-3 flex items-center justify-between" data-testid="bulk-actions-bar">
           <span className="text-sm font-semibold">
-            Zaznaczono: <span data-testid={getTestId("selected-count")}>{selectedIds.size}</span>
+            Zaznaczono: <span data-testid="selected-count">{selectedIds.size}</span>
           </span>
           <div className="flex gap-2">
             <button
-              data-testid={getTestId("bulk-delete-btn")}
+              data-testid="bulk-delete-btn"
               onClick={handleBulkDelete}
               className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700"
             >
@@ -109,7 +105,7 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
             <button
               onClick={() => setSelectedIds(new Set())}
               className="px-3 py-1 border rounded text-sm hover:bg-gray-100"
-              data-testid={getTestId("bulk-cancel-btn")}
+              data-testid="bulk-cancel-btn"
             >
               Anuluj
             </button>
@@ -119,13 +115,13 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
 
       {/* Table */}
       <div className="border rounded overflow-hidden">
-        <table className="w-full border-collapse" data-testid={getTestId("task-table")}>
+        <table className="w-full border-collapse" data-testid="task-table">
           <thead className="bg-gray-100">
             <tr>
               <th className="border-b p-3 w-12">
                 <input
                   type="checkbox"
-                  data-testid={getTestId("select-all-checkbox")}
+                  data-testid="select-all-checkbox"
                   checked={allSelected}
                   ref={(el) => {
                     if (el) el.indeterminate = someSelected;
@@ -138,7 +134,7 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                   key={key}
                   className="border-b p-3 cursor-pointer hover:bg-gray-200 text-left"
                   onClick={() => toggleSort(key)}
-                  data-testid={getTestId(`sort-header-${key}`)}
+                  data-testid={`sort-header-${key}`}
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-semibold">
@@ -171,14 +167,14 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                 <tr
                   key={task.id}
                   className={`hover:bg-gray-50 ${selectedIds.has(task.id) ? "bg-blue-50" : ""}`}
-                  data-testid={getTestId(`task-row-${task.id}`)}
+                  data-testid={`task-row-${task.id}`}
                 >
                   <td className="border-b p-3 text-center">
                     <input
                       type="checkbox"
                       checked={selectedIds.has(task.id)}
                       onChange={() => toggleSelect(task.id)}
-                      data-testid={getTestId(`select-${task.id}`)}
+                      data-testid={`select-${task.id}`}
                     />
                   </td>
                   
@@ -187,7 +183,7 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                     id={cellId(task.id, "title")}
                     className="border-b p-3 cursor-pointer"
                     onClick={() => setEditingCell(`${task.id}-title`)}
-                    data-testid={getTestId(`cell-${task.id}-title`)}
+                    data-testid={`cell-${task.id}-title`}
                   >
                     {editingCell === `${task.id}-title` ? (
                       <input
@@ -207,7 +203,7 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                             setEditingCell(null);
                           }
                         }}
-                        data-testid={getTestId(`edit-title-${task.id}`)}
+                        data-testid={`edit-title-${task.id}`}
                       />
                     ) : (
                       <span className="hover:text-blue-600">{task.title}</span>
@@ -217,13 +213,13 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                   {/* Status - Editable */}
                   <td
                     className="border-b p-3"
-                    data-testid={getTestId(`cell-${task.id}-status`)}
+                    data-testid={`cell-${task.id}-status`}
                   >
                     <select
                       value={task.status}
                       onChange={(e) => onUpdate(task.id, "status", e.target.value)}
                       className="border rounded px-2 py-1 text-sm"
-                      data-testid={getTestId(`edit-status-${task.id}`)}
+                      data-testid={`edit-status-${task.id}`}
                     >
                       <option value="todo">To Do</option>
                       <option value="in-progress">In Progress</option>
@@ -234,13 +230,13 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                   {/* Priority - Editable */}
                   <td
                     className="border-b p-3"
-                    data-testid={getTestId(`cell-${task.id}-priority`)}
+                    data-testid={`cell-${task.id}-priority`}
                   >
                     <select
                       value={task.priority}
                       onChange={(e) => onUpdate(task.id, "priority", e.target.value)}
                       className="border rounded px-2 py-1 text-sm"
-                      data-testid={getTestId(`edit-priority-${task.id}`)}
+                      data-testid={`edit-priority-${task.id}`}
                     >
                       <option value="low">Low</option>
                       <option value="medium">Medium</option>
@@ -251,27 +247,27 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                   {/* Due Date - Editable */}
                   <td
                     className="border-b p-3"
-                    data-testid={getTestId(`cell-${task.id}-dueDate`)}
+                    data-testid={`cell-${task.id}-dueDate`}
                   >
                     <input
                       type="date"
                       value={task.dueDate ? task.dueDate.split("T")[0] : ""}
                       onChange={(e) => onUpdate(task.id, "dueDate", e.target.value ? new Date(e.target.value).toISOString() : undefined)}
                       className="border rounded px-2 py-1 text-sm"
-                      data-testid={getTestId(`edit-dueDate-${task.id}`)}
+                      data-testid={`edit-dueDate-${task.id}`}
                     />
                   </td>
 
                   {/* Assignee - Editable */}
                   <td
                     className="border-b p-3"
-                    data-testid={getTestId(`cell-${task.id}-assignedTo`)}
+                    data-testid={`cell-${task.id}-assignedTo`}
                   >
                     <select
                       value={task.assignedTo || ""}
                       onChange={(e) => onUpdate(task.id, "assignedTo", e.target.value || undefined)}
                       className="border rounded px-2 py-1 text-sm"
-                      data-testid={getTestId(`edit-assignedTo-${task.id}`)}
+                      data-testid={`edit-assignedTo-${task.id}`}
                     >
                       <option value="">-- Brak --</option>
                       {users.map((u) => (
@@ -286,7 +282,7 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                   <td className="border-b p-3">
                     <button
                       onClick={() => onDelete(task.id)}
-                      data-testid={getTestId(`delete-${task.id}`)}
+                      data-testid={`delete-${task.id}`}
                       className="text-red-600 hover:underline text-sm"
                     >
                       Usuń
@@ -299,7 +295,7 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
         </table>
       </div>
 
-      <div className="text-sm text-gray-600" data-testid={getTestId("table-info")}>
+      <div className="text-sm text-gray-600" data-testid="table-info">
         Wyświetlono {sorted.length} {sorted.length === 1 ? "zadanie" : "zadań"}
         {sortKey && ` • Sortowanie: ${sortKey} ${sortDir === "asc" ? "rosnąco" : "malejąco"}`}
       </div>

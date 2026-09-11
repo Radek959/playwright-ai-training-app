@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { UserForm } from "../components/UserForm";
 import { UserAvatar } from "../components/UserAvatar";
-import { useLab } from "../context/LabContext";
+import { useAppError } from "../context/AppErrorContext";
 
 type User = { 
   id: string; 
@@ -13,28 +13,27 @@ type User = {
 };
 
 export default function Users() {
-  const { apiFlaky, setLastError } = useLab();
-  const hiddenOnMobile = import.meta.env.VITE_HIDDEN_ON_MOBILE === "true";
+  const { setError } = useAppError();
   const [users, setUsers] = useState<User[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
-        const res = await fetch(apiFlaky ? "/api/users?lab_api_flaky=true" : "/api/users");
+        const res = await fetch("/api/users");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (!Array.isArray(data)) throw new Error("Unexpected payload");
         if (!cancelled) setUsers(data);
       } catch (err) {
-        setLastError(err instanceof Error ? err.message : "Fetch error");
+        setError(err instanceof Error ? err.message : "Fetch error");
       }
     };
     load();
     return () => {
       cancelled = true;
     };
-  }, [apiFlaky, setLastError]);
+  }, [setError]);
 
   return (
     <div className="space-y-4 md:space-y-6 pb-20 md:pb-0">
@@ -88,11 +87,11 @@ export default function Users() {
             <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
               <tr>
                 <th className="text-left px-6 py-4 text-sm font-semibold text-gray-900">User</th>
-                <th className={`text-left px-6 py-4 text-sm font-semibold text-gray-900 ${hiddenOnMobile ? "hidden lg:table-cell" : ""}`}>
+                <th className="text-left px-6 py-4 text-sm font-semibold text-gray-900">
                   Email
                 </th>
                 <th className="text-left px-6 py-4 text-sm font-semibold text-gray-900">Role</th>
-                <th className={`text-left px-6 py-4 text-sm font-semibold text-gray-900 ${hiddenOnMobile ? "hidden xl:table-cell" : ""}`}>
+                <th className="text-left px-6 py-4 text-sm font-semibold text-gray-900">
                   Status
                 </th>
               </tr>
@@ -113,7 +112,7 @@ export default function Users() {
                       <span className="font-semibold text-gray-900">{u.name}</span>
                     </div>
                   </td>
-                  <td className={`px-6 py-4 text-sm text-gray-600 ${hiddenOnMobile ? "hidden lg:table-cell" : ""}`}>
+                  <td className="px-6 py-4 text-sm text-gray-600">
                     {u.email}
                   </td>
                   <td className="px-6 py-4">
@@ -127,7 +126,7 @@ export default function Users() {
                       {u.role}
                     </span>
                   </td>
-                  <td className={`px-6 py-4 ${hiddenOnMobile ? "hidden xl:table-cell" : ""}`}>
+                  <td className="px-6 py-4">
                     <span className="inline-flex items-center gap-1 text-sm text-green-600">
                       <span className="w-2 h-2 bg-green-500 rounded-full"></span>
                       Active
