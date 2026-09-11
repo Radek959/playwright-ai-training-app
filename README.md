@@ -1,6 +1,27 @@
-# Playwright AI Training APP
+# Playwright AI Training App
 
-A full-stack task management application built with React, TypeScript, Express, and Tailwind CSS. This project serves as a training sandbox for testing and experimenting with AI-powered development tools and Playwright automation.
+A training application created for workshops and hands-on sessions focused on **Playwright, API testing and AI-assisted QA**.
+
+The repository is used during live training to practice:
+
+* generating and modifying Playwright E2E tests with AI,
+* working with API tests,
+* analyzing and improving existing tests,
+* using AI agents in testing workflows.
+
+The application is intentionally simple to run locally:
+
+```bash
+npm install
+npm run dev
+```
+
+Created and maintained by **Radosław Wasik**.
+
+📘 **Learning Playwright?**
+Check out the free **Playwright Starter Pack** with commands, locators, assertions, configuration examples and practical checklists:
+
+https://starter.rwasik.pl/
 
 ## Features
 
@@ -130,3 +151,12 @@ ai-training-sandbox/
 ## License
 
 This project is private and intended for training purposes.
+
+## More resources
+
+🤖 AI prompts for software testers and QA engineers:  
+https://prompty.rwasik.pl/
+
+🌐 https://rwasik.pl  
+💼 LinkedIn: https://www.linkedin.com/in/rwasik/  
+📸 Instagram: https://instagram.com/radwasik
