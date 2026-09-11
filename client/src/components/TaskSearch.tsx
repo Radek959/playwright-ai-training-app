@@ -1,12 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-
-type Task = {
-  id: string;
-  title: string;
-  status: string;
-  priority: string;
-  description?: string;
-};
+import type { Task } from "../types";
 
 type Props = {
   onSelect: (task: Task) => void;
@@ -20,9 +13,11 @@ export function TaskSearch({ onSelect, placeholder = "Szukaj zadań..." }: Props
   const [focused, setFocused] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (query.length < 2) {
+      abortRef.current?.abort();
       setResults([]);
       setLoading(false);
       return;
@@ -30,17 +25,26 @@ export function TaskSearch({ onSelect, placeholder = "Szukaj zadań..." }: Props
 
     setLoading(true);
     const timer = setTimeout(async () => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
       try {
-        const res = await fetch(`/api/tasks/search?q=${encodeURIComponent(query)}`);
+        const res = await fetch(`/api/tasks/search?q=${encodeURIComponent(query)}`, {
+          signal: controller.signal
+        });
         if (!res.ok) throw new Error("Search failed");
         const data = await res.json();
+        if (controller.signal.aborted) return;
         setResults(data);
         setSelectedIndex(0);
       } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
         console.error("Search error:", error);
         setResults([]);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     }, 300);
 

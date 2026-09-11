@@ -1,5 +1,7 @@
 export type TaskStatus = "todo" | "in-progress" | "done";
 export type TaskPriority = "low" | "medium" | "high";
+export type TaskType = "bug" | "feature" | "research";
+export type TaskSeverity = "critical" | "major" | "minor";
 
 export type Task = {
   id: string;
@@ -8,8 +10,16 @@ export type Task = {
   status: TaskStatus;
   priority: TaskPriority;
   dueDate?: string;
+  completedAt?: string;
   assigneeId?: string;
   coverImage?: string;
+  taskType?: TaskType;
+  estimatedHours?: number;
+  tags?: string[];
+  dependencies?: string[];
+  severity?: TaskSeverity;
+  requiresApproval?: boolean;
+  approver?: string;
 };
 
 export type UserRole = "admin" | "editor" | "viewer";
@@ -32,6 +42,9 @@ const coverImages = [
   `${BASE_URL}/images/cover-workspace.jpg`,
 ];
 
+const daysAgo = (days: number) => new Date(Date.now() - 86400000 * days).toISOString();
+const daysFromNow = (days: number) => new Date(Date.now() + 86400000 * days).toISOString();
+
 export const tasks: Task[] = [
   {
     id: "t1",
@@ -39,9 +52,14 @@ export const tasks: Task[] = [
     description: "Add OAuth2 authentication with Google and GitHub providers",
     status: "in-progress",
     priority: "high",
-    dueDate: new Date(Date.now() + 86400000 * 3).toISOString(),
+    dueDate: daysFromNow(3),
     assigneeId: "u1",
-    coverImage: coverImages[0]
+    coverImage: coverImages[0],
+    taskType: "feature",
+    estimatedHours: 16,
+    tags: ["backend", "security"],
+    dependencies: [],
+    requiresApproval: false
   },
   {
     id: "t2",
@@ -49,9 +67,15 @@ export const tasks: Task[] = [
     description: "Create modern, responsive landing page with hero section",
     status: "todo",
     priority: "medium",
-    dueDate: new Date(Date.now() + 86400000 * 7).toISOString(),
+    dueDate: daysFromNow(7),
     assigneeId: "u2",
-    coverImage: coverImages[1]
+    coverImage: coverImages[1],
+    taskType: "feature",
+    estimatedHours: 8,
+    tags: ["frontend", "design"],
+    dependencies: [],
+    requiresApproval: true,
+    approver: "manager-a"
   },
   {
     id: "t3",
@@ -59,9 +83,15 @@ export const tasks: Task[] = [
     description: "Navigation menu doesn't close on mobile devices",
     status: "todo",
     priority: "high",
-    dueDate: new Date(Date.now() + 86400000 * 2).toISOString(),
+    dueDate: daysFromNow(2),
     assigneeId: "u3",
-    coverImage: coverImages[2]
+    coverImage: coverImages[2],
+    taskType: "bug",
+    severity: "major",
+    estimatedHours: 4,
+    tags: ["frontend", "mobile"],
+    dependencies: ["t2"],
+    requiresApproval: false
   },
   {
     id: "t4",
@@ -69,24 +99,45 @@ export const tasks: Task[] = [
     description: "Add API documentation and code examples",
     status: "done",
     priority: "low",
-    dueDate: new Date(Date.now() - 86400000 * 5).toISOString(),
+    dueDate: daysAgo(40),
+    completedAt: daysAgo(38),
     assigneeId: "u1",
-    coverImage: coverImages[3]
+    coverImage: coverImages[3],
+    taskType: "feature",
+    estimatedHours: 3,
+    tags: ["docs"],
+    dependencies: [],
+    requiresApproval: false
+  },
+  {
+    id: "t5",
+    title: "Investigate flaky checkout tests",
+    description: "Research root cause of intermittent checkout test failures",
+    status: "done",
+    priority: "medium",
+    dueDate: daysAgo(2),
+    completedAt: daysAgo(2),
+    assigneeId: "u3",
+    taskType: "research",
+    estimatedHours: 6,
+    tags: ["qa", "research"],
+    dependencies: [],
+    requiresApproval: false
   }
 ];
 
 export const users: User[] = [
-  { 
-    id: "u1", 
-    name: "Alice Johnson", 
-    email: "alice@example.com", 
+  {
+    id: "u1",
+    name: "Alice Johnson",
+    email: "alice@example.com",
     role: "admin",
     avatarUrl: `${BASE_URL}/images/avatar-1.jpg`
   },
-  { 
-    id: "u2", 
-    name: "Bob Smith", 
-    email: "bob@example.com", 
+  {
+    id: "u2",
+    name: "Bob Smith",
+    email: "bob@example.com",
     role: "editor",
     avatarUrl: `${BASE_URL}/images/avatar-2.jpg`
   },
@@ -96,10 +147,10 @@ export const users: User[] = [
     email: "charlie@example.com",
     role: "editor"
   },
-  { 
-    id: "u4", 
-    name: "Diana Martinez", 
-    email: "diana@example.com", 
+  {
+    id: "u4",
+    name: "Diana Martinez",
+    email: "diana@example.com",
     role: "viewer",
     avatarUrl: `${BASE_URL}/images/avatar-4.jpg`
   }

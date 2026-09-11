@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { Router } from "express";
-import { users, User, UserRole, tasks } from "../data.js";
+import { users, User, tasks } from "../data.js";
+import { validateUserFields } from "../validation.js";
 
 export const usersRouter = Router();
 
@@ -8,18 +10,25 @@ usersRouter.get("/", (_req, res) => {
 });
 
 usersRouter.post("/", (req, res) => {
-  const { name, email, role, avatar } = req.body as Partial<User>;
-  if (!name) return res.status(400).json({ error: "name is required" });
-  if (!email) return res.status(400).json({ error: "email is required" });
-  const roleOk = (value: any): value is UserRole =>
-    value === "admin" || value === "editor" || value === "viewer";
-  const safeRole = role && roleOk(role) ? role : "viewer";
+  const body = req.body as Partial<User>;
+  const candidate: Partial<User> = {
+    name: body.name,
+    email: body.email,
+    role: body.role ?? "viewer",
+    avatar: body.avatar
+  };
+
+  const errors = validateUserFields(candidate, { users });
+  if (errors.length > 0) {
+    return res.status(400).json({ error: "Validation failed", details: errors });
+  }
+
   const user: User = {
-    id: `u-${users.length + 1}`,
-    name,
-    email,
-    role: safeRole,
-    avatar
+    id: randomUUID(),
+    name: candidate.name!.trim(),
+    email: candidate.email!.trim(),
+    role: candidate.role!,
+    avatar: candidate.avatar
   };
   users.push(user);
   res.status(201).json(user);
@@ -27,22 +36,19 @@ usersRouter.post("/", (req, res) => {
 
 usersRouter.delete("/:id", (req, res) => {
   const userId = req.params.id;
-  
+  const idx = users.findIndex((u) => u.id === userId);
+  if (idx === -1) return res.status(404).json({ error: "User not found" });
+
   // Validation: cannot delete user with active tasks
-  const activeTasks = tasks.filter(
-    t => t.assigneeId === userId && t.status !== "done"
-  );
-  
+  const activeTasks = tasks.filter((t) => t.assigneeId === userId && t.status !== "done");
+
   if (activeTasks.length > 0) {
     return res.status(409).json({
       error: "Cannot delete user with active tasks",
-      conflictingTasks: activeTasks.map(t => ({ id: t.id, title: t.title }))
+      conflictingTasks: activeTasks.map((t) => ({ id: t.id, title: t.title }))
     });
   }
-  
-  const idx = users.findIndex((u) => u.id === userId);
-  if (idx === -1) return res.status(404).json({ error: "User not found" });
-  
+
   users.splice(idx, 1);
   res.status(204).end();
 });

@@ -1,17 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-
-type Task = {
-  id: string;
-  title: string;
-  description?: string;
-  status: "todo" | "in-progress" | "done";
-  priority: "low" | "medium" | "high";
-  dueDate?: string;
-  assigneeId?: string;
-};
-
-type User = { id: string; name: string };
+import type { Task, User } from "../types";
 
 type Props = {
   task: Task | null;

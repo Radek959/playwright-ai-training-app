@@ -1,29 +1,28 @@
 import { useState } from "react";
+import type { Task, TaskPriority, TaskSeverity, TaskStatus, TaskType, User } from "../types";
 
 type WizardStep = 1 | 2 | 3;
 
-type TaskDraft = {
+export type TaskDraft = {
   title?: string;
   description?: string;
-  priority?: string;
-  status?: string;
+  priority?: TaskPriority;
+  status?: TaskStatus;
   dueDate?: string;
-  assignedTo?: string;
+  assigneeId?: string;
   estimatedHours?: number;
   tags?: string[];
   dependencies?: string[];
-  taskType?: "bug" | "feature" | "research";
-  severity?: string;
+  taskType?: TaskType;
+  severity?: TaskSeverity;
   requiresApproval?: boolean;
   approver?: string;
 };
 
-type User = { id: string; name: string };
-
 type Props = {
   users: User[];
-  existingTasks: any[];
-  onComplete: (task: TaskDraft) => void;
+  existingTasks: Task[];
+  onComplete: (task: TaskDraft) => Promise<void>;
   onClose: () => void;
 };
 
@@ -31,6 +30,8 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
   const [step, setStep] = useState<WizardStep>(1);
   const [draft, setDraft] = useState<TaskDraft>({ taskType: "feature", status: "todo" });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const validateStep1 = () => {
     const newErrors: Record<string, string> = {};
@@ -49,8 +50,8 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
 
   const validateStep2 = () => {
     const newErrors: Record<string, string> = {};
-    if (!draft.assignedTo) {
-      newErrors.assignedTo = "Musisz przypisać zadanie";
+    if (!draft.assigneeId) {
+      newErrors.assigneeId = "Musisz przypisać zadanie";
     }
     if (draft.estimatedHours && draft.estimatedHours < 1) {
       newErrors.estimatedHours = "Minimum 1 godzina";
@@ -67,6 +68,9 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
     if (draft.taskType === "research" && !draft.estimatedHours) {
       newErrors.estimatedHours = "Research wymaga szacunku czasu";
     }
+    if (draft.requiresApproval && !draft.approver) {
+      newErrors.approver = "Wskaż zatwierdzającego";
+    }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -81,9 +85,19 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
     if (step > 1) setStep((s) => (s - 1) as WizardStep);
   };
 
-  const submit = () => {
-    onComplete(draft);
-    onClose();
+  const submit = async () => {
+    if (isSubmitting) return;
+    if (!validateStep1() || !validateStep2()) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      await onComplete(draft);
+      onClose();
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Nie udało się utworzyć zadania");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const stepId = `wizard-step-${step}`;
@@ -108,14 +122,14 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
           {step === 1 && (
             <div className="space-y-4">
               <h2 className="text-2xl font-bold mb-4">Krok 1: Podstawowe informacje</h2>
-              
+
               <div>
                 <label className="block text-sm font-semibold mb-1">Typ zadania</label>
                 <select
                   data-testid="task-type-select"
                   className="w-full border rounded px-3 py-2"
                   value={draft.taskType || "feature"}
-                  onChange={(e) => setDraft({ ...draft, taskType: e.target.value as any })}
+                  onChange={(e) => setDraft({ ...draft, taskType: e.target.value as TaskType })}
                 >
                   <option value="feature">Feature</option>
                   <option value="bug">Bug</option>
@@ -153,7 +167,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                   data-testid="task-priority-select"
                   className="w-full border rounded px-3 py-2"
                   value={draft.priority || ""}
-                  onChange={(e) => setDraft({ ...draft, priority: e.target.value })}
+                  onChange={(e) => setDraft({ ...draft, priority: e.target.value as TaskPriority })}
                 >
                   <option value="">Wybierz...</option>
                   <option value="low">Low</option>
@@ -174,14 +188,14 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
           {step === 2 && (
             <div className="space-y-4">
               <h2 className="text-2xl font-bold mb-4">Krok 2: Przypisanie i szczegóły</h2>
-              
+
               <div>
                 <label className="block text-sm font-semibold mb-1">Przypisz do *</label>
                 <select
                   data-testid="task-assignee-select"
                   className="w-full border rounded px-3 py-2"
-                  value={draft.assignedTo || ""}
-                  onChange={(e) => setDraft({ ...draft, assignedTo: e.target.value })}
+                  value={draft.assigneeId || ""}
+                  onChange={(e) => setDraft({ ...draft, assigneeId: e.target.value })}
                 >
                   <option value="">Wybierz użytkownika...</option>
                   {users.map((u) => (
@@ -190,7 +204,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                     </option>
                   ))}
                 </select>
-                {errors.assignedTo && <p className="text-red-600 text-sm mt-1">{errors.assignedTo}</p>}
+                {errors.assigneeId && <p className="text-red-600 text-sm mt-1">{errors.assigneeId}</p>}
               </div>
 
               <div>
@@ -226,7 +240,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                   <select
                     className="w-full border rounded px-3 py-2"
                     value={draft.severity || ""}
-                    onChange={(e) => setDraft({ ...draft, severity: e.target.value })}
+                    onChange={(e) => setDraft({ ...draft, severity: e.target.value as TaskSeverity })}
                     data-testid="task-severity-select"
                   >
                     <option value="">Wybierz...</option>
@@ -254,7 +268,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
               {/* Conditional: Approver */}
               {draft.requiresApproval && (
                 <div data-testid="approver-field">
-                  <label className="block text-sm font-semibold mb-1">Zatwierdzający</label>
+                  <label className="block text-sm font-semibold mb-1">Zatwierdzający *</label>
                   <select
                     className="w-full border rounded px-3 py-2"
                     value={draft.approver || ""}
@@ -266,6 +280,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                     <option value="manager-b">Manager B</option>
                     <option value="manager-c">Manager C</option>
                   </select>
+                  {errors.approver && <p className="text-red-600 text-sm mt-1">{errors.approver}</p>}
                 </div>
               )}
 
@@ -299,7 +314,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
           {step === 3 && (
             <div className="space-y-4">
               <h2 className="text-2xl font-bold mb-4">Krok 3: Podsumowanie</h2>
-              
+
               <div className="bg-gray-50 rounded p-4 space-y-3" data-testid="wizard-summary">
                 <div>
                   <span className="font-semibold">Typ:</span>{" "}
@@ -316,7 +331,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                 <div>
                   <span className="font-semibold">Przypisane do:</span>{" "}
                   <span className="text-gray-700">
-                    {users.find(u => u.id === draft.assignedTo)?.name || "—"}
+                    {users.find(u => u.id === draft.assigneeId)?.name || "—"}
                   </span>
                 </div>
                 <div>
@@ -356,6 +371,12 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
               <div className="bg-blue-50 border border-blue-300 rounded p-3 text-sm">
                 💡 Sprawdź poprawność danych przed zapisaniem. Po utworzeniu zadania niektóre pola będą niemożliwe do edycji.
               </div>
+
+              {submitError && (
+                <div className="bg-red-50 border border-red-300 rounded p-3 text-sm text-red-700" data-testid="wizard-submit-error">
+                  {submitError}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -365,7 +386,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
           <button
             type="button"
             onClick={prevStep}
-            disabled={step === 1}
+            disabled={step === 1 || isSubmitting}
             className="px-4 py-2 border rounded disabled:opacity-50 disabled:cursor-not-allowed"
             data-testid="wizard-prev-btn"
           >
@@ -375,7 +396,8 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-gray-600 hover:text-gray-800"
+            disabled={isSubmitting}
+            className="px-4 py-2 text-gray-600 hover:text-gray-800 disabled:opacity-50"
             data-testid="wizard-cancel-btn"
           >
             Anuluj
@@ -394,10 +416,11 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
             <button
               type="button"
               onClick={submit}
-              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+              disabled={isSubmitting}
+              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
               data-testid="wizard-submit-btn"
             >
-              ✓ Utwórz zadanie
+              {isSubmitting ? "Zapisywanie…" : "✓ Utwórz zadanie"}
             </button>
           )}
         </div>

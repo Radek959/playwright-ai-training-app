@@ -2,29 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import { useAppError } from "../context/AppErrorContext";
 import { StatCard } from "../components/StatCard";
 import { UserAvatar } from "../components/UserAvatar";
+import type { Task, User } from "../types";
 
-type Task = {
-  id: string;
-  title: string;
-  description?: string;
-  status: "todo" | "in-progress" | "done";
-  priority: "low" | "medium" | "high";
-};
-
-type User = { 
-  id: string; 
-  name: string;
-  avatar?: string;
-  avatarUrl?: string;
-};
-
-function normalizeTask(raw: any): Task {
+function normalizeTask(raw: Partial<Task>): Task {
   return {
-    id: raw.id,
+    id: raw.id!,
     title: raw.title ?? "",
     description: raw.description ?? "",
     status: raw.status ?? "todo",
-    priority: raw.priority ?? "medium"
+    priority: raw.priority ?? "medium",
+    assigneeId: raw.assigneeId
   };
 }
 
@@ -87,7 +74,6 @@ export default function Dashboard() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             </svg>
           }
-          trend={{ value: "+12%", isPositive: true }}
         />
 
         <StatCard
@@ -98,7 +84,6 @@ export default function Dashboard() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
           }
-          trend={{ value: "+5%", isPositive: true }}
         />
 
         <StatCard
@@ -119,7 +104,6 @@ export default function Dashboard() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           }
-          trend={{ value: "+8%", isPositive: true }}
         />
       </div>
 

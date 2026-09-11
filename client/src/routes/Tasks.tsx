@@ -2,49 +2,60 @@ import { useEffect, useMemo, useState } from "react";
 import { TaskCard } from "../components/TaskCard";
 import { TaskForm } from "../components/TaskForm";
 import { TaskEditModal } from "../components/TaskEditModal";
-import { TaskWizard } from "../components/TaskWizard";
+import { TaskWizard, TaskDraft } from "../components/TaskWizard";
 import { TaskTable } from "../components/TaskTable";
 import { TaskSearch } from "../components/TaskSearch";
 import { TaskGridItem } from "../components/TaskGridItem";
 import { useAppError } from "../context/AppErrorContext";
+import type { Task, TaskWithAssignee, User } from "../types";
 
-type Task = {
-  id: string;
-  title: string;
-  description?: string;
-  status: "todo" | "in-progress" | "done";
-  priority: "low" | "medium" | "high";
-  dueDate?: string;
-  assigneeId?: string;
-  coverImage?: string;
-};
-
-type User = { 
-  id: string; 
-  name: string;
-  avatarUrl?: string;
-};
-
-type TaskWithName = Task & { 
-  assigneeName?: string;
-  assigneeAvatarUrl?: string;
-};
-
-function normalizeTask(raw: any): Task {
+function normalizeTask(raw: Partial<Task>): Task {
   return {
-    id: raw.id,
+    id: raw.id!,
     title: raw.title ?? "",
     description: raw.description ?? "",
     status: raw.status ?? "todo",
     priority: raw.priority ?? "medium",
     dueDate: raw.dueDate,
+    completedAt: raw.completedAt,
     assigneeId: raw.assigneeId,
-    coverImage: raw.coverImage
+    coverImage: raw.coverImage,
+    taskType: raw.taskType,
+    estimatedHours: raw.estimatedHours,
+    tags: raw.tags,
+    dependencies: raw.dependencies,
+    severity: raw.severity,
+    requiresApproval: raw.requiresApproval,
+    approver: raw.approver
   };
 }
 
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+function isArchived(task: Task): boolean {
+  if (task.status !== "done") return false;
+  const referenceDate = task.completedAt ?? task.dueDate;
+  if (!referenceDate) return false;
+  const time = new Date(referenceDate).getTime();
+  if (Number.isNaN(time)) return false;
+  return Date.now() - time > THIRTY_DAYS_MS;
+}
+
+async function extractErrorMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const data = await res.json();
+    if (Array.isArray(data?.details) && data.details.length > 0) {
+      return data.details.map((d: { message: string }) => d.message).join("; ");
+    }
+    if (typeof data?.error === "string") return data.error;
+  } catch {
+    // response wasn't JSON
+  }
+  return fallback;
+}
+
 type TabView = "active" | "archived" | "analytics" | "table" | "grid";
-type FilterMode = "all" | "my-tasks" | "unassigned";
+type AssigneeFilter = "all" | "unassigned" | string;
 
 export default function Tasks() {
   const { setError, clearError } = useAppError();
@@ -62,7 +73,7 @@ export default function Tasks() {
 
   // New state for advanced UI
   const [activeTab, setActiveTab] = useState<TabView>("active");
-  const [filterMode, setFilterMode] = useState<FilterMode>("all");
+  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
   const [showWizard, setShowWizard] = useState(false);
   const [showQuickForm, setShowQuickForm] = useState(false);
 
@@ -92,12 +103,12 @@ export default function Tasks() {
     };
   }, [setError, clearError]);
 
-  const enriched: TaskWithName[] = useMemo(() => {
+  const enriched: TaskWithAssignee[] = useMemo(() => {
     const byUser = new Map(users.map((u) => [u.id, { name: u.name, avatarUrl: u.avatarUrl }] as const));
     return tasks.map((t) => {
       const userInfo = t.assigneeId ? byUser.get(t.assigneeId) : undefined;
-      return { 
-        ...t, 
+      return {
+        ...t,
         assigneeName: userInfo?.name,
         assigneeAvatarUrl: userInfo?.avatarUrl
       };
@@ -106,33 +117,30 @@ export default function Tasks() {
 
   const filtered = useMemo(() => {
     let result = enriched;
-    
+
     // Tab filtering
     if (activeTab === "archived") {
-      // Simulate archived tasks (done for >30 days)
-      result = result.filter(t => t.status === "done");
+      result = result.filter(isArchived);
     } else if (activeTab === "active") {
-      result = result.filter(t => t.status !== "done");
+      result = result.filter((t) => t.status !== "done");
     }
-    
-    // Filter mode (only for active tab)
+
+    // Assignee filter (only meaningful on the Active tab)
     if (activeTab === "active") {
-      if (filterMode === "my-tasks") {
-        // For demo, filter tasks assigned to first user
-        const currentUserId = users[0]?.id;
-        result = result.filter(t => t.assigneeId === currentUserId);
-      } else if (filterMode === "unassigned") {
-        result = result.filter(t => !t.assigneeId);
+      if (assigneeFilter === "unassigned") {
+        result = result.filter((t) => !t.assigneeId);
+      } else if (assigneeFilter !== "all") {
+        result = result.filter((t) => t.assigneeId === assigneeFilter);
       }
     }
-    
+
     // Existing filters
-    if (statusFilter !== "all") result = result.filter(t => t.status === statusFilter);
-    if (priorityFilter !== "all") result = result.filter(t => t.priority === priorityFilter);
-    if (search) result = result.filter(t => t.title.toLowerCase().includes(search.toLowerCase()));
-    
+    if (statusFilter !== "all") result = result.filter((t) => t.status === statusFilter);
+    if (priorityFilter !== "all") result = result.filter((t) => t.priority === priorityFilter);
+    if (search) result = result.filter((t) => t.title.toLowerCase().includes(search.toLowerCase()));
+
     return result;
-  }, [enriched, activeTab, filterMode, statusFilter, priorityFilter, search, users]);
+  }, [enriched, activeTab, assigneeFilter, statusFilter, priorityFilter, search]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const pageClamped = Math.min(page, totalPages);
@@ -142,7 +150,7 @@ export default function Tasks() {
     const res = await fetch(`/api/tasks/${id}`, {
       method: "DELETE"
     });
-    if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+    if (!res.ok) throw new Error(await extractErrorMessage(res, `Delete failed: ${res.status}`));
     setTasks((prev) => prev.filter((t) => t.id !== id));
     clearError();
   };
@@ -154,53 +162,72 @@ export default function Tasks() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch)
     });
-    if (!res.ok) throw new Error(`Update failed: ${res.status}`);
+    if (!res.ok) throw new Error(await extractErrorMessage(res, `Update failed: ${res.status}`));
     const updated = await res.json();
     setTasks((prev) => prev.map((t) => (t.id === editing.id ? normalizeTask(updated) : t)));
     setEditing(null);
   };
 
-  const handleCreate = async (draft: any) => {
+  const handleCreate = async (draft: TaskDraft): Promise<void> => {
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(draft)
     });
-    if (!res.ok) throw new Error(`Create failed: ${res.status}`);
+    if (!res.ok) throw new Error(await extractErrorMessage(res, `Create failed: ${res.status}`));
     const created = await res.json();
     setTasks((prev) => [normalizeTask(created), ...prev]);
   };
 
-  const handleUpdate = async (id: string, field: string, value: any) => {
-    const task = tasks.find(t => t.id === id);
-    if (!task) return;
-
-    const patch = { [field]: value };
+  const handleUpdate = async (id: string, field: string, value: unknown) => {
     const res = await fetch(`/api/tasks/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch)
+      body: JSON.stringify({ [field]: value })
     });
-    if (!res.ok) throw new Error(`Update failed: ${res.status}`);
+    if (!res.ok) throw new Error(await extractErrorMessage(res, `Update failed: ${res.status}`));
     const updated = await res.json();
     setTasks((prev) => prev.map((t) => (t.id === id ? normalizeTask(updated) : t)));
     clearError();
   };
 
-  const handleBulkDelete = async (ids: string[]) => {
-    // For demo, delete one by one
-    for (const id of ids) {
-      await fetch(`/api/tasks/${id}`, {
-        method: "DELETE"
-      });
+  const handleBulkDelete = async (ids: string[]): Promise<string[]> => {
+    const results = await Promise.all(
+      ids.map(async (id) => {
+        try {
+          const res = await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+          return { id, ok: res.ok };
+        } catch {
+          return { id, ok: false };
+        }
+      })
+    );
+    const deletedIds = results.filter((r) => r.ok).map((r) => r.id);
+    const failedIds = results.filter((r) => !r.ok).map((r) => r.id);
+
+    if (deletedIds.length > 0) {
+      setTasks((prev) => prev.filter((t) => !deletedIds.includes(t.id)));
     }
-    setTasks((prev) => prev.filter((t) => !ids.includes(t.id)));
-    clearError();
+    if (failedIds.length > 0) {
+      setError(`Nie udało się usunąć ${failedIds.length} z ${ids.length} zadań`);
+    } else {
+      clearError();
+    }
+    return deletedIds;
   };
 
-  const handleSearchSelect = (task: any) => {
+  const handleSearchSelect = (task: Task) => {
     setEditing(task);
   };
+
+  const assigneeFilterOptions = useMemo(
+    () => [
+      { key: "all" as const, label: "All assignees" },
+      { key: "unassigned" as const, label: "Unassigned" },
+      ...users.map((u) => ({ key: u.id, label: u.name }))
+    ],
+    [users]
+  );
 
   return (
     <div className="space-y-4 md:space-y-6 pb-20 md:pb-0">
@@ -262,24 +289,22 @@ export default function Tasks() {
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 md:p-4">
               <div className="flex flex-col md:flex-row gap-3 md:gap-4">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold text-gray-700 w-full md:w-auto">View:</span>
-                  {(["all", "my-tasks", "unassigned"] as FilterMode[]).map((mode) => (
+                  <span className="text-sm font-semibold text-gray-700 w-full md:w-auto">Assignee:</span>
+                  {assigneeFilterOptions.map((opt) => (
                     <button
-                      key={mode}
-                      data-testid={`filter-${mode}`}
+                      key={opt.key}
+                      data-testid={`filter-assignee-${opt.key}`}
                       onClick={() => {
-                        setFilterMode(mode);
+                        setAssigneeFilter(opt.key);
                         setPage(1);
                       }}
                       className={`px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium transition-all min-h-[44px] ${
-                        filterMode === mode
+                        assigneeFilter === opt.key
                           ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md"
                           : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                       }`}
                     >
-                      {mode === "all" && "All"}
-                      {mode === "my-tasks" && "My Tasks"}
-                      {mode === "unassigned" && "Unassigned"}
+                      {opt.label}
                     </button>
                   ))}
                 </div>
@@ -296,7 +321,6 @@ export default function Tasks() {
                     <option value="all">Status: All</option>
                     <option value="todo">To Do</option>
                     <option value="in-progress">In Progress</option>
-                    <option value="done">Done</option>
                   </select>
                   <select
                     className="flex-1 md:flex-none border border-gray-300 rounded-lg px-3 md:px-4 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[44px]"
@@ -311,7 +335,7 @@ export default function Tasks() {
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
                   </select>
-                  
+
                   <button
                     onClick={() => setShowQuickForm(!showQuickForm)}
                     data-testid="toggle-quick-form-btn"
@@ -325,7 +349,7 @@ export default function Tasks() {
 
             {showQuickForm && (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 md:p-6">
-                <TaskForm onCreated={handleCreate} />
+                <TaskForm onCreated={(task) => setTasks((prev) => [task, ...prev])} />
               </div>
             )}
 
@@ -376,14 +400,14 @@ export default function Tasks() {
           <div className="space-y-4 md:space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
               {filtered.map((t) => (
-                <TaskGridItem 
-                  key={t.id} 
-                  task={t} 
-                  onClick={() => setEditing(t as any)}
+                <TaskGridItem
+                  key={t.id}
+                  task={t}
+                  onClick={() => setEditing(t)}
                 />
               ))}
             </div>
-            
+
             {filtered.length === 0 && (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 md:p-12 text-center">
                 <p className="text-gray-500 text-base md:text-lg">No tasks to display</p>
@@ -405,14 +429,21 @@ export default function Tasks() {
 
         {/* Archived Tab */}
         {activeTab === "archived" && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-20 w-20 mx-auto mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-            </svg>
-            <p className="text-xl font-semibold text-gray-900 mb-2">Archive is Empty</p>
-            <p className="text-gray-600">Completed tasks are automatically archived after 30 days.</p>
-            {filtered.length > 0 && (
-              <p className="text-sm text-indigo-600 mt-4 font-medium">Found {filtered.length} completed tasks</p>
+          <div className="space-y-4">
+            {filtered.length === 0 ? (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-20 w-20 mx-auto mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                </svg>
+                <p className="text-xl font-semibold text-gray-900 mb-2">Archive is Empty</p>
+                <p className="text-gray-600">Completed tasks are automatically archived after 30 days.</p>
+              </div>
+            ) : (
+              <div className="space-y-3 md:space-y-4">
+                {filtered.map((t) => (
+                  <TaskCard key={t.id} task={t} onDelete={handleDelete} onEdit={setEditing} />
+                ))}
+              </div>
             )}
           </div>
         )}
@@ -459,7 +490,7 @@ export default function Tasks() {
                         <span className="font-bold text-indigo-600">{userTasks.length} tasks</span>
                       </div>
                       <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
+                        <div
                           className="bg-gradient-to-r from-indigo-600 to-purple-600 h-2 rounded-full transition-all"
                           style={{ width: `${percentage}%` }}
                         />
@@ -481,7 +512,7 @@ export default function Tasks() {
 
       {/* Modals */}
       <TaskEditModal
-        task={editing as any}
+        task={editing}
         open={Boolean(editing)}
         users={users}
         onClose={() => setEditing(null)}
@@ -505,6 +536,7 @@ export default function Tasks() {
               clearError();
             } catch (err) {
               setError(err instanceof Error ? err.message : "Create error");
+              throw err;
             }
           }}
           onClose={() => setShowWizard(false)}

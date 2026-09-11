@@ -2,15 +2,7 @@ import { useEffect, useState } from "react";
 import { UserForm } from "../components/UserForm";
 import { UserAvatar } from "../components/UserAvatar";
 import { useAppError } from "../context/AppErrorContext";
-
-type User = { 
-  id: string; 
-  name: string; 
-  email: string; 
-  role: string; 
-  avatar?: string;
-  avatarUrl?: string;
-};
+import type { User } from "../types";
 
 export default function Users() {
   const { setError, clearError } = useAppError();
