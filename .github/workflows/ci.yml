@@ -24,7 +24,10 @@ jobs:
       - name: Install dependencies (root, client, server)
         run: npm install
 
-      - name: Lint, typecheck and build
+      - name: Verify lockfiles were not modified by install
+        run: git diff --exit-code -- package-lock.json client/package-lock.json server/package-lock.json
+
+      - name: Lint, typecheck, test and build
         run: npm run check
 
       - name: Start application (frontend + backend)

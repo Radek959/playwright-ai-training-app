@@ -60,8 +60,7 @@ Check out the free [Playwright Starter Pack](https://starter.rwasik.pl/) with us
 
 Before running the application, make sure you have installed:
 
-* **Node.js 22.x** (recommended, LTS) — the version pinned in [`.nvmrc`](./.nvmrc) and `engines.node`
-  * Minimum supported: Node.js 20.x (the app still runs on it, but Node 22 is what CI and this README assume)
+* **Node.js 22.x** (LTS) — the officially supported version, pinned in [`.nvmrc`](./.nvmrc) and `engines.node`
 * npm (bundled with Node.js)
 * Git
 
@@ -208,10 +207,16 @@ npm run typecheck
 Runs the TypeScript compiler (no emit) for both the client and the server.
 
 ```bash
+npm run test
+```
+
+Runs the server's Vitest unit test suite (business-logic and validation functions only — no React component tests, no Playwright/browser tests).
+
+```bash
 npm run check
 ```
 
-Runs `lint`, `typecheck` and `build` in sequence. This is the command CI runs to validate the application.
+Runs `lint`, `typecheck`, `test` and `build` in sequence. This is the command CI runs to validate the application.
 
 ### Client
 
@@ -230,6 +235,7 @@ npm run dev
 npm run build
 npm start
 npm run typecheck
+npm run test
 ```
 
 ---
@@ -241,10 +247,11 @@ Every push and pull request targeting `main` runs the [`CI` workflow](./.github/
 1. checks out the repository;
 2. sets up Node.js using the version pinned in `.nvmrc`;
 3. runs `npm install` (the same install path participants use locally);
-4. runs `npm run check` (lint, typecheck, build);
-5. starts the application with `npm run dev`;
-6. waits for the backend (`http://localhost:3001/api/health`) and the frontend (`http://localhost:5173`) to become available, failing the build if either does not start;
-7. stops the application processes.
+4. verifies that `npm install` did not modify any of the three committed lockfiles;
+5. runs `npm run check` (lint, typecheck, unit tests, build);
+6. starts the application with `npm run dev`;
+7. waits for the backend (`http://localhost:3001/api/health`) and the frontend (`http://localhost:5173`) to become available, failing the build if either does not start;
+8. stops the application processes.
 
 This workflow intentionally does not run Playwright or install browsers — end-to-end tests are written by participants during the training and are not part of this baseline.
 
