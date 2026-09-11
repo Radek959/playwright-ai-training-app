@@ -8,7 +8,7 @@ type Props = {
 };
 
 export function TaskForm({ onCreated }: Props) {
-  const { setError } = useAppError();
+  const { setError, clearError } = useAppError();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("todo");
@@ -24,13 +24,16 @@ export function TaskForm({ onCreated }: Props) {
         const res = await fetch("/api/users");
         if (!res.ok) throw new Error(`Users HTTP ${res.status}`);
         const data = await res.json();
-        if (Array.isArray(data)) setUsers(data);
+        if (Array.isArray(data)) {
+          setUsers(data);
+          clearError();
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Users fetch error");
       }
     };
     loadUsers();
-  }, [setError]);
+  }, [setError, clearError]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -44,8 +47,8 @@ export function TaskForm({ onCreated }: Props) {
       const data = await res.json();
       const normalized = {
         id: data.id,
-        title: data.title ?? data.name,
-        description: data.description ?? data.content,
+        title: data.title,
+        description: data.description,
         status: data.status ?? "todo",
         priority: data.priority ?? "medium",
         dueDate: data.dueDate,
@@ -58,6 +61,7 @@ export function TaskForm({ onCreated }: Props) {
       setPriority("medium");
       setDueDate("");
       setAssigneeId("");
+      clearError();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create error");
     }

@@ -21,15 +21,15 @@ type User = {
 function normalizeTask(raw: any): Task {
   return {
     id: raw.id,
-    title: raw.title ?? raw.name ?? "",
-    description: raw.description ?? raw.content ?? "",
+    title: raw.title ?? "",
+    description: raw.description ?? "",
     status: raw.status ?? "todo",
     priority: raw.priority ?? "medium"
   };
 }
 
 export default function Dashboard() {
-  const { setError } = useAppError();
+  const { setError, clearError } = useAppError();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
 
@@ -44,12 +44,13 @@ export default function Dashboard() {
         if (!Array.isArray(tData) || !Array.isArray(uData)) throw new Error("Unexpected payload");
         setTasks(tData.map(normalizeTask));
         setUsers(uData);
+        clearError();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Dashboard load failed");
       }
     };
     load();
-  }, [setError]);
+  }, [setError, clearError]);
 
   const totals = useMemo(() => {
     const statusCount = { todo: 0, "in-progress": 0, done: 0 } as Record<string, number>;

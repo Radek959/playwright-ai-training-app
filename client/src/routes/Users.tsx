@@ -13,7 +13,7 @@ type User = {
 };
 
 export default function Users() {
-  const { setError } = useAppError();
+  const { setError, clearError } = useAppError();
   const [users, setUsers] = useState<User[]>([]);
 
   useEffect(() => {
@@ -24,7 +24,10 @@ export default function Users() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (!Array.isArray(data)) throw new Error("Unexpected payload");
-        if (!cancelled) setUsers(data);
+        if (!cancelled) {
+          setUsers(data);
+          clearError();
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Fetch error");
       }
@@ -33,7 +36,7 @@ export default function Users() {
     return () => {
       cancelled = true;
     };
-  }, [setError]);
+  }, [setError, clearError]);
 
   return (
     <div className="space-y-4 md:space-y-6 pb-20 md:pb-0">

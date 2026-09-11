@@ -33,8 +33,8 @@ type TaskWithName = Task & {
 function normalizeTask(raw: any): Task {
   return {
     id: raw.id,
-    title: raw.title ?? raw.name ?? "",
-    description: raw.description ?? raw.content ?? "",
+    title: raw.title ?? "",
+    description: raw.description ?? "",
     status: raw.status ?? "todo",
     priority: raw.priority ?? "medium",
     dueDate: raw.dueDate,
@@ -47,7 +47,7 @@ type TabView = "active" | "archived" | "analytics" | "table" | "grid";
 type FilterMode = "all" | "my-tasks" | "unassigned";
 
 export default function Tasks() {
-  const { setError } = useAppError();
+  const { setError, clearError } = useAppError();
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -80,6 +80,7 @@ export default function Tasks() {
         if (!cancelled) {
           setTasks(tData.map(normalizeTask));
           setUsers(uData);
+          clearError();
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Fetch error");
@@ -89,7 +90,7 @@ export default function Tasks() {
     return () => {
       cancelled = true;
     };
-  }, [setError]);
+  }, [setError, clearError]);
 
   const enriched: TaskWithName[] = useMemo(() => {
     const byUser = new Map(users.map((u) => [u.id, { name: u.name, avatarUrl: u.avatarUrl }] as const));
@@ -143,6 +144,7 @@ export default function Tasks() {
     });
     if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
     setTasks((prev) => prev.filter((t) => t.id !== id));
+    clearError();
   };
 
   const handleSave = async (patch: Partial<Task>) => {
@@ -182,6 +184,7 @@ export default function Tasks() {
     if (!res.ok) throw new Error(`Update failed: ${res.status}`);
     const updated = await res.json();
     setTasks((prev) => prev.map((t) => (t.id === id ? normalizeTask(updated) : t)));
+    clearError();
   };
 
   const handleBulkDelete = async (ids: string[]) => {
@@ -192,6 +195,7 @@ export default function Tasks() {
       });
     }
     setTasks((prev) => prev.filter((t) => !ids.includes(t.id)));
+    clearError();
   };
 
   const handleSearchSelect = (task: any) => {
@@ -484,6 +488,7 @@ export default function Tasks() {
         onSave={async (patch) => {
           try {
             await handleSave(patch);
+            clearError();
           } catch (err) {
             setError(err instanceof Error ? err.message : "Update error");
           }
@@ -497,6 +502,7 @@ export default function Tasks() {
           onComplete={async (draft) => {
             try {
               await handleCreate(draft);
+              clearError();
             } catch (err) {
               setError(err instanceof Error ? err.message : "Create error");
             }

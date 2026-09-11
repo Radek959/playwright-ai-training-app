@@ -21,7 +21,7 @@ export function TaskCard({
   onDelete: (id: string) => void | Promise<void>;
   onEdit: (task: Task) => void;
 }) {
-  const { setError } = useAppError();
+  const { setError, clearError } = useAppError();
 
   const ids = useMemo(
     () => ({
@@ -36,6 +36,7 @@ export function TaskCard({
   const handleDelete = async () => {
     try {
       await onDelete(task.id);
+      clearError();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
     }

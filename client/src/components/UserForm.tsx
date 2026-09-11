@@ -6,7 +6,7 @@ type Props = {
 };
 
 export function UserForm({ onCreated }: Props) {
-  const { setError } = useAppError();
+  const { setError, clearError } = useAppError();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("viewer");
@@ -27,6 +27,7 @@ export function UserForm({ onCreated }: Props) {
       setEmail("");
       setRole("viewer");
       setAvatar("");
+      clearError();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create error");
     }
