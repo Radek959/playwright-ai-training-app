@@ -2,7 +2,7 @@
   "openapi": "3.0.1",
   "info": {
     "title": "AI Training Sandbox API",
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "servers": [
     { "url": "http://localhost:3001" }
@@ -28,7 +28,7 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/TaskInput" }
+              "schema": { "$ref": "#/components/schemas/TaskCreateInput" }
             }
           }
         },
@@ -39,25 +39,70 @@
               "application/json": { "schema": { "$ref": "#/components/schemas/Task" } }
             }
           },
-          "400": { "description": "Validation error" }
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ValidationErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/search": {
+      "get": {
+        "summary": "Search tasks by title or description",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Search query. Fewer than 2 characters returns an empty array.",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching tasks (max 10)",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Task" } }
+              }
+            }
+          }
         }
       }
     },
     "/api/tasks/{id}": {
+      "get": {
+        "summary": "Get a single task",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Task", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Task" } } } },
+          "404": { "description": "Not found" }
+        }
+      },
       "put": {
         "summary": "Update task",
+        "description": "id is not an updatable field and any attempt to set it (or any other field outside TaskUpdateInput) returns 400.",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/TaskInput" } }
+            "application/json": { "schema": { "$ref": "#/components/schemas/TaskUpdateInput" } }
           }
         },
         "responses": {
           "200": { "description": "Updated task", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Task" } } } },
-          "400": { "description": "Validation error" },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ValidationErrorResponse" } }
+            }
+          },
           "404": { "description": "Not found" }
         }
       },
@@ -99,7 +144,25 @@
             "description": "Created user",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } }
           },
-          "400": { "description": "Validation error" }
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ValidationErrorResponse" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/{id}": {
+      "delete": {
+        "summary": "Delete user",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "204": { "description": "Deleted" },
+          "404": { "description": "Not found" },
+          "409": { "description": "User has active (non-done) tasks assigned and cannot be deleted" }
         }
       }
     }
@@ -115,21 +178,75 @@
           "status": { "type": "string", "enum": ["todo", "in-progress", "done"] },
           "priority": { "type": "string", "enum": ["low", "medium", "high"] },
           "dueDate": { "type": "string", "format": "date-time", "nullable": true },
-          "assigneeId": { "type": "string", "nullable": true }
+          "completedAt": { "type": "string", "format": "date-time", "nullable": true, "description": "Set automatically when status becomes done unless provided explicitly." },
+          "assigneeId": { "type": "string", "nullable": true },
+          "coverImage": { "type": "string", "nullable": true },
+          "taskType": { "type": "string", "enum": ["bug", "feature", "research"], "nullable": true },
+          "estimatedHours": { "type": "number", "nullable": true },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "dependencies": { "type": "array", "items": { "type": "string" }, "description": "IDs of other tasks this task depends on." },
+          "severity": { "type": "string", "enum": ["critical", "major", "minor"], "nullable": true, "description": "Required when taskType is bug." },
+          "requiresApproval": { "type": "boolean" },
+          "approver": { "type": "string", "nullable": true, "description": "Required when requiresApproval is true." }
         },
         "required": ["id", "title", "status", "priority"]
       },
-      "TaskInput": {
+      "TaskCreateInput": {
         "type": "object",
         "properties": {
-          "title": { "type": "string" },
+          "title": { "type": "string", "minLength": 3 },
           "description": { "type": "string" },
           "status": { "type": "string", "enum": ["todo", "in-progress", "done"] },
           "priority": { "type": "string", "enum": ["low", "medium", "high"] },
           "dueDate": { "type": "string", "format": "date-time" },
-          "assigneeId": { "type": "string" }
+          "assigneeId": { "type": "string", "description": "Must reference an existing user. Optional (Quick Add can omit it)." },
+          "taskType": { "type": "string", "enum": ["bug", "feature", "research"] },
+          "estimatedHours": { "type": "number", "minimum": 1 },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "dependencies": { "type": "array", "items": { "type": "string" }, "description": "Must reference existing task IDs." },
+          "severity": { "type": "string", "enum": ["critical", "major", "minor"] },
+          "requiresApproval": { "type": "boolean" },
+          "approver": { "type": "string" }
         },
-        "required": ["title"]
+        "required": ["title"],
+        "description": "Business rules: bug requires severity; research requires estimatedHours >= 1; high priority tasks with estimatedHours cannot exceed 24; requiresApproval=true requires approver."
+      },
+      "TaskUpdateInput": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string", "minLength": 3 },
+          "description": { "type": "string", "nullable": true, "description": "Pass null to clear." },
+          "status": { "type": "string", "enum": ["todo", "in-progress", "done"] },
+          "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+          "dueDate": { "type": "string", "format": "date-time", "nullable": true, "description": "Pass null to clear." },
+          "completedAt": { "type": "string", "format": "date-time", "nullable": true, "description": "Pass null to clear." },
+          "assigneeId": { "type": "string", "nullable": true, "description": "Pass null to unassign." },
+          "taskType": { "type": "string", "enum": ["bug", "feature", "research"], "nullable": true, "description": "Pass null to clear." },
+          "estimatedHours": { "type": "number", "minimum": 1, "nullable": true, "description": "Pass null to clear." },
+          "tags": { "type": "array", "items": { "type": "string" }, "description": "Send [] to clear; null is not accepted for array fields." },
+          "dependencies": { "type": "array", "items": { "type": "string" }, "description": "Send [] to clear; null is not accepted for array fields." },
+          "severity": { "type": "string", "enum": ["critical", "major", "minor"], "nullable": true, "description": "Pass null to clear." },
+          "requiresApproval": { "type": "boolean" },
+          "approver": { "type": "string", "nullable": true, "description": "Pass null to clear." }
+        },
+        "additionalProperties": false,
+        "description": "Partial update. Only these fields may be sent; any other field (including id) is rejected with 400. Fields marked nullable accept null to clear the stored value (required fields such as title/status/priority do not accept null). Fields are merged with the existing task before the same business rules as TaskCreateInput are re-validated."
+      },
+      "ValidationErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "details": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": { "type": "string" },
+                "message": { "type": "string" }
+              }
+            }
+          }
+        }
       },
       "User": {
         "type": "object",
@@ -138,7 +255,8 @@
           "name": { "type": "string" },
           "email": { "type": "string" },
           "role": { "type": "string", "enum": ["admin", "editor", "viewer"] },
-          "avatar": { "type": "string", "nullable": true }
+          "avatar": { "type": "string", "nullable": true },
+          "avatarUrl": { "type": "string", "nullable": true }
         },
         "required": ["id", "name", "email", "role"]
       },
@@ -146,11 +264,12 @@
         "type": "object",
         "properties": {
           "name": { "type": "string" },
-          "email": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
           "role": { "type": "string", "enum": ["admin", "editor", "viewer"] },
           "avatar": { "type": "string" }
         },
-        "required": ["name", "email"]
+        "required": ["name", "email"],
+        "description": "email must be unique and a valid email address; role must be one of the listed values (an invalid role is rejected, never silently downgraded)."
       }
     }
   }

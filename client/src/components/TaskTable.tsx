@@ -1,26 +1,15 @@
 import { useState } from "react";
+import type { Task, TaskPriority, TaskStatus, User } from "../types";
 
-type Task = {
-  id: string;
-  title: string;
-  description?: string;
-  status: "todo" | "in-progress" | "done";
-  priority: "low" | "medium" | "high";
-  dueDate?: string;
-  assignedTo?: string;
-};
-
-type User = { id: string; name: string };
-
-type SortKey = "title" | "priority" | "dueDate" | "assignedTo" | "status";
+type SortKey = "title" | "priority" | "dueDate" | "assigneeId" | "status";
 type SortDir = "asc" | "desc";
 
 type Props = {
   tasks: Task[];
   users: User[];
-  onUpdate: (id: string, field: string, value: any) => void;
-  onDelete: (id: string) => void;
-  onBulkDelete: (ids: string[]) => void;
+  onUpdate: (id: string, field: string, value: unknown) => void | Promise<void>;
+  onDelete: (id: string) => void | Promise<void>;
+  onBulkDelete: (ids: string[]) => Promise<string[]>;
 };
 
 export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Props) {
@@ -28,6 +17,8 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingCell, setEditingCell] = useState<string | null>(null);
+  const [savingCell, setSavingCell] = useState<string | null>(null);
+  const [cellErrors, setCellErrors] = useState<Record<string, string>>({});
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -39,17 +30,12 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
   };
 
   const sorted = [...tasks].sort((a, b) => {
-    let aVal: any = a[sortKey];
-    let bVal: any = b[sortKey];
+    let aVal: string = (a[sortKey] as string | undefined) ?? "";
+    let bVal: string = (b[sortKey] as string | undefined) ?? "";
 
-    // Handle undefined values
-    if (aVal === undefined) aVal = "";
-    if (bVal === undefined) bVal = "";
-
-    // For assignedTo, sort by user name
-    if (sortKey === "assignedTo") {
-      const aUser = users.find(u => u.id === aVal);
-      const bUser = users.find(u => u.id === bVal);
+    if (sortKey === "assigneeId") {
+      const aUser = users.find((u) => u.id === a.assigneeId);
+      const bUser = users.find((u) => u.id === b.assigneeId);
       aVal = aUser?.name || "";
       bVal = bUser?.name || "";
     }
@@ -76,9 +62,35 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
     }
   };
 
-  const handleBulkDelete = () => {
-    onBulkDelete(Array.from(selectedIds));
-    setSelectedIds(new Set());
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedIds);
+    const deletedIds = await onBulkDelete(ids);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of deletedIds) next.delete(id);
+      return next;
+    });
+  };
+
+  const commitUpdate = async (taskId: string, field: string, value: unknown) => {
+    const key = `${taskId}-${field}`;
+    if (savingCell === key) return;
+    setSavingCell(key);
+    setCellErrors((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    try {
+      await onUpdate(taskId, field, value);
+    } catch (err) {
+      setCellErrors((prev) => ({
+        ...prev,
+        [key]: err instanceof Error ? err.message : "Update failed"
+      }));
+    } finally {
+      setSavingCell(null);
+    }
   };
 
   const cellId = (taskId: string, field: string) => `cell-${taskId}-${field}`;
@@ -129,7 +141,7 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                   onChange={(e) => toggleSelectAll(e.target.checked)}
                 />
               </th>
-              {(["title", "status", "priority", "dueDate", "assignedTo"] as SortKey[]).map((key) => (
+              {(["title", "status", "priority", "dueDate", "assigneeId"] as SortKey[]).map((key) => (
                 <th
                   key={key}
                   className="border-b p-3 cursor-pointer hover:bg-gray-200 text-left"
@@ -142,7 +154,7 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                       {key === "status" && "Status"}
                       {key === "priority" && "Priorytet"}
                       {key === "dueDate" && "Termin"}
-                      {key === "assignedTo" && "Przypisany"}
+                      {key === "assigneeId" && "Przypisany"}
                     </span>
                     {sortKey === key && (
                       <span className="text-xs ml-2">
@@ -177,7 +189,7 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                       data-testid={`select-${task.id}`}
                     />
                   </td>
-                  
+
                   {/* Title - Editable */}
                   <td
                     id={cellId(task.id, "title")}
@@ -191,13 +203,15 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                         className="w-full border rounded px-2 py-1"
                         defaultValue={task.title}
                         onBlur={(e) => {
-                          onUpdate(task.id, "title", e.target.value);
+                          if (editingCell !== `${task.id}-title`) return;
                           setEditingCell(null);
+                          commitUpdate(task.id, "title", e.target.value);
                         }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
-                            onUpdate(task.id, "title", e.currentTarget.value);
+                            const value = e.currentTarget.value;
                             setEditingCell(null);
+                            commitUpdate(task.id, "title", value);
                           }
                           if (e.key === "Escape") {
                             setEditingCell(null);
@@ -208,6 +222,11 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                     ) : (
                       <span className="hover:text-blue-600">{task.title}</span>
                     )}
+                    {cellErrors[`${task.id}-title`] && (
+                      <p className="text-red-600 text-xs mt-1" data-testid={`error-${task.id}-title`}>
+                        {cellErrors[`${task.id}-title`]}
+                      </p>
+                    )}
                   </td>
 
                   {/* Status - Editable */}
@@ -217,14 +236,20 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                   >
                     <select
                       value={task.status}
-                      onChange={(e) => onUpdate(task.id, "status", e.target.value)}
+                      onChange={(e) => commitUpdate(task.id, "status", e.target.value as TaskStatus)}
                       className="border rounded px-2 py-1 text-sm"
                       data-testid={`edit-status-${task.id}`}
+                      disabled={savingCell === `${task.id}-status`}
                     >
                       <option value="todo">To Do</option>
                       <option value="in-progress">In Progress</option>
                       <option value="done">Done</option>
                     </select>
+                    {cellErrors[`${task.id}-status`] && (
+                      <p className="text-red-600 text-xs mt-1" data-testid={`error-${task.id}-status`}>
+                        {cellErrors[`${task.id}-status`]}
+                      </p>
+                    )}
                   </td>
 
                   {/* Priority - Editable */}
@@ -234,14 +259,20 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                   >
                     <select
                       value={task.priority}
-                      onChange={(e) => onUpdate(task.id, "priority", e.target.value)}
+                      onChange={(e) => commitUpdate(task.id, "priority", e.target.value as TaskPriority)}
                       className="border rounded px-2 py-1 text-sm"
                       data-testid={`edit-priority-${task.id}`}
+                      disabled={savingCell === `${task.id}-priority`}
                     >
                       <option value="low">Low</option>
                       <option value="medium">Medium</option>
                       <option value="high">High</option>
                     </select>
+                    {cellErrors[`${task.id}-priority`] && (
+                      <p className="text-red-600 text-xs mt-1" data-testid={`error-${task.id}-priority`}>
+                        {cellErrors[`${task.id}-priority`]}
+                      </p>
+                    )}
                   </td>
 
                   {/* Due Date - Editable */}
@@ -252,22 +283,31 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                     <input
                       type="date"
                       value={task.dueDate ? task.dueDate.split("T")[0] : ""}
-                      onChange={(e) => onUpdate(task.id, "dueDate", e.target.value ? new Date(e.target.value).toISOString() : undefined)}
+                      onChange={(e) =>
+                        commitUpdate(task.id, "dueDate", e.target.value ? new Date(e.target.value).toISOString() : null)
+                      }
                       className="border rounded px-2 py-1 text-sm"
                       data-testid={`edit-dueDate-${task.id}`}
+                      disabled={savingCell === `${task.id}-dueDate`}
                     />
+                    {cellErrors[`${task.id}-dueDate`] && (
+                      <p className="text-red-600 text-xs mt-1" data-testid={`error-${task.id}-dueDate`}>
+                        {cellErrors[`${task.id}-dueDate`]}
+                      </p>
+                    )}
                   </td>
 
                   {/* Assignee - Editable */}
                   <td
                     className="border-b p-3"
-                    data-testid={`cell-${task.id}-assignedTo`}
+                    data-testid={`cell-${task.id}-assigneeId`}
                   >
                     <select
-                      value={task.assignedTo || ""}
-                      onChange={(e) => onUpdate(task.id, "assignedTo", e.target.value || undefined)}
+                      value={task.assigneeId || ""}
+                      onChange={(e) => commitUpdate(task.id, "assigneeId", e.target.value || null)}
                       className="border rounded px-2 py-1 text-sm"
-                      data-testid={`edit-assignedTo-${task.id}`}
+                      data-testid={`edit-assigneeId-${task.id}`}
+                      disabled={savingCell === `${task.id}-assigneeId`}
                     >
                       <option value="">-- Brak --</option>
                       {users.map((u) => (
@@ -276,6 +316,11 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                         </option>
                       ))}
                     </select>
+                    {cellErrors[`${task.id}-assigneeId`] && (
+                      <p className="text-red-600 text-xs mt-1" data-testid={`error-${task.id}-assigneeId`}>
+                        {cellErrors[`${task.id}-assigneeId`]}
+                      </p>
+                    )}
                   </td>
 
                   {/* Actions */}

@@ -1,15 +1,7 @@
 import { UserAvatar } from "./UserAvatar";
+import type { TaskWithAssignee } from "../types";
 
-type Task = {
-  id: string;
-  title: string;
-  description?: string;
-  status: "todo" | "in-progress" | "done";
-  priority: "low" | "medium" | "high";
-  coverImage?: string;
-  assigneeName?: string;
-  assigneeAvatarUrl?: string;
-};
+type Task = TaskWithAssignee;
 
 type Props = {
   task: Task;
@@ -76,6 +68,7 @@ export function TaskGridItem({ task, onClick }: Props) {
         <div className="flex items-center justify-between pt-3 border-t border-gray-100">
           <span className="text-xs font-medium text-gray-500">
             {statusLabels[task.status]}
+            {task.taskType && ` · ${task.taskType}`}
           </span>
           
           {task.assigneeName && (

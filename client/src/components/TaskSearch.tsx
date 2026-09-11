@@ -1,12 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-
-type Task = {
-  id: string;
-  title: string;
-  status: string;
-  priority: string;
-  description?: string;
-};
+import type { Task } from "../types";
 
 type Props = {
   onSelect: (task: Task) => void;
@@ -29,22 +22,38 @@ export function TaskSearch({ onSelect, placeholder = "Szukaj zadań..." }: Props
     }
 
     setLoading(true);
+    // Created synchronously so the effect cleanup below can abort it the
+    // instant the query changes again, rather than waiting for the next
+    // debounce window to elapse before cancelling the stale request.
+    const controller = new AbortController();
+
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/tasks/search?q=${encodeURIComponent(query)}`);
+        const res = await fetch(`/api/tasks/search?q=${encodeURIComponent(query)}`, {
+          signal: controller.signal
+        });
         if (!res.ok) throw new Error("Search failed");
         const data = await res.json();
+        if (controller.signal.aborted) return;
         setResults(data);
         setSelectedIndex(0);
       } catch (error) {
+        if (controller.signal.aborted) return;
         console.error("Search error:", error);
         setResults([]);
       } finally {
-        setLoading(false);
+        // A stale/aborted request must never flip off the loading state
+        // that belongs to a newer, still-pending query.
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     }, 300);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [query]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

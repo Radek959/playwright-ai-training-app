@@ -1,16 +1,8 @@
 import { useMemo } from "react";
 import { useAppError } from "../context/AppErrorContext";
+import type { TaskWithAssignee } from "../types";
 
-type Task = {
-  id: string;
-  title: string;
-  description?: string;
-  status: "todo" | "in-progress" | "done";
-  priority: "low" | "medium" | "high";
-  dueDate?: string;
-  assigneeId?: string;
-  assigneeName?: string;
-};
+type Task = TaskWithAssignee;
 
 export function TaskCard({
   task,
@@ -56,6 +48,8 @@ export function TaskCard({
           <Badge label={`P: ${task.priority}`} tone={task.priority === "high" ? "red" : task.priority === "medium" ? "yellow" : "gray"} />
           {task.dueDate && <Badge label={`Due: ${new Date(task.dueDate).toLocaleDateString()}`} tone="slate" />}
           {task.assigneeName && <Badge label={`Owner: ${task.assigneeName}`} tone="indigo" />}
+          {task.taskType && <Badge label={task.taskType} tone="slate" />}
+          {task.severity && <Badge label={`Severity: ${task.severity}`} tone={task.severity === "critical" ? "red" : task.severity === "major" ? "yellow" : "gray"} />}
         </div>
       </div>
 

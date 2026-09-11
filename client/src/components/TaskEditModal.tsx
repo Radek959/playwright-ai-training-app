@@ -1,24 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-
-type Task = {
-  id: string;
-  title: string;
-  description?: string;
-  status: "todo" | "in-progress" | "done";
-  priority: "low" | "medium" | "high";
-  dueDate?: string;
-  assigneeId?: string;
-};
-
-type User = { id: string; name: string };
+import type { Task, TaskUpdateInput, User } from "../types";
 
 type Props = {
   task: Task | null;
   open: boolean;
   users: User[];
   onClose: () => void;
-  onSave: (updated: Partial<Task>) => Promise<void> | void;
+  onSave: (updated: TaskUpdateInput) => Promise<void> | void;
 };
 
 export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
@@ -212,8 +201,8 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
                                   description,
                                   status,
                                   priority,
-                                  dueDate: dueDate ? new Date(dueDate).toISOString() : undefined,
-                                  assigneeId
+                                  dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+                                  assigneeId: assigneeId || null
                                 })}
                                 className="modal-btn primary"
                               >

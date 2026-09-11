@@ -1,15 +1,16 @@
 import { FormEvent, useState } from "react";
 import { useAppError } from "../context/AppErrorContext";
+import type { User, UserRole } from "../types";
 
 type Props = {
-  onCreated: (user: any) => void;
+  onCreated: (user: User) => void;
 };
 
 export function UserForm({ onCreated }: Props) {
   const { setError, clearError } = useAppError();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState("viewer");
+  const [role, setRole] = useState<UserRole>("viewer");
   const [avatar, setAvatar] = useState("");
 
   const submit = async (e: FormEvent) => {
@@ -20,9 +21,12 @@ export function UserForm({ onCreated }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, role, avatar })
       });
-      if (!res.ok) throw new Error(`Create failed: ${res.status}`);
       const data = await res.json();
-      onCreated(data);
+      if (!res.ok) {
+        const detailMessage = Array.isArray(data?.details) && data.details.length > 0 ? data.details[0].message : undefined;
+        throw new Error(detailMessage ?? data?.error ?? `Create failed: ${res.status}`);
+      }
+      onCreated(data as User);
       setName("");
       setEmail("");
       setRole("viewer");
@@ -62,7 +66,7 @@ export function UserForm({ onCreated }: Props) {
           <select
             className="border rounded px-2 py-1"
             value={role}
-            onChange={(e) => setRole(e.target.value)}
+            onChange={(e) => setRole(e.target.value as UserRole)}
           >
             <option value="admin">Admin</option>
             <option value="editor">Editor</option>

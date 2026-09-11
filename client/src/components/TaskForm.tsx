@@ -1,18 +1,17 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useAppError } from "../context/AppErrorContext";
-
-type User = { id: string; name: string };
+import type { Task, TaskPriority, TaskStatus, User } from "../types";
 
 type Props = {
-  onCreated: (task: any) => void;
+  onCreated: (task: Task) => void;
 };
 
 export function TaskForm({ onCreated }: Props) {
   const { setError, clearError } = useAppError();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [status, setStatus] = useState("todo");
-  const [priority, setPriority] = useState("medium");
+  const [status, setStatus] = useState<TaskStatus>("todo");
+  const [priority, setPriority] = useState<TaskPriority>("medium");
   const [dueDate, setDueDate] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
   const [users, setUsers] = useState<User[]>([]);
@@ -43,18 +42,12 @@ export function TaskForm({ onCreated }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, description, status, priority, dueDate, assigneeId })
       });
-      if (!res.ok) throw new Error(`Create failed: ${res.status}`);
       const data = await res.json();
-      const normalized = {
-        id: data.id,
-        title: data.title,
-        description: data.description,
-        status: data.status ?? "todo",
-        priority: data.priority ?? "medium",
-        dueDate: data.dueDate,
-        assigneeId: data.assigneeId
-      };
-      onCreated(normalized);
+      if (!res.ok) {
+        const detailMessage = Array.isArray(data?.details) && data.details.length > 0 ? data.details[0].message : undefined;
+        throw new Error(detailMessage ?? data?.error ?? `Create failed: ${res.status}`);
+      }
+      onCreated(data as Task);
       setTitle("");
       setDescription("");
       setStatus("todo");
@@ -92,7 +85,7 @@ export function TaskForm({ onCreated }: Props) {
           <select
             className="border rounded px-2 py-1"
             value={status}
-            onChange={(e) => setStatus(e.target.value)}
+            onChange={(e) => setStatus(e.target.value as TaskStatus)}
           >
             <option value="todo">To Do</option>
             <option value="in-progress">In Progress</option>
@@ -104,7 +97,7 @@ export function TaskForm({ onCreated }: Props) {
           <select
             className="border rounded px-2 py-1"
             value={priority}
-            onChange={(e) => setPriority(e.target.value)}
+            onChange={(e) => setPriority(e.target.value as TaskPriority)}
           >
             <option value="low">Low</option>
             <option value="medium">Medium</option>
