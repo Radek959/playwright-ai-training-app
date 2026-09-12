@@ -1,6 +1,6 @@
 # Dokumentacja produktowa — Task Manager
 
-Ten dokument opisuje **oczekiwane zachowanie aplikacji** widoczne z perspektywy użytkownika — interfejsu i API — wraz z regułami walidacji, jakim podlegają dane. Opisuje wymagania i zachowanie, a nie szczegóły techniczne ich implementacji. Jest to źródło wymagań, a nie gotowy zestaw przypadków testowych.
+Ten dokument opisuje **oczekiwane zachowanie aplikacji** widoczne z perspektywy użytkownika — interfejsu i API — wraz z regułami walidacji, jakim podlegają dane. Opisuje wymagania i zachowanie, a nie szczegóły techniczne ich implementacji.
 
 ---
 
@@ -72,7 +72,7 @@ Dla obu operacji ten sam zestaw pól ma szczególne traktowanie `null`: `descrip
 
 Sposób, w jaki `null` na tych polach jest obsługiwany, różni się jednak między tworzeniem a aktualizacją:
 
-**Tworzenie (`POST /api/tasks`)** — przesłanie `null` na jednym z tych pól jest akceptowane bez błędu walidacji i traktowane tak samo, jak brak tej wartości. Utworzone zadanie może mieć takie pole zapisane jako `null` (widoczne jako `null` w odpowiedzi API), a nie po prostu nieobecne.
+**Tworzenie (`POST /api/tasks`)** — przesłanie `null` na jednym z tych pól samo w sobie nie jest błędem walidacji i jest traktowane tak samo, jak brak tej wartości. Utworzone zadanie może mieć takie pole zapisane jako `null` (widoczne jako `null` w odpowiedzi API), a nie po prostu nieobecne. Wynikowe zadanie nadal musi spełniać reguły z sekcji 3 — np. `severity: null` przy `taskType: "bug"` jest odrzucane, bo zadanie typu `bug` wymaga `severity` niezależnie od tego, czy brak wartości wynika z `null`, czy z pominięcia pola.
 
 **Aktualizacja (`PUT /api/tasks/:id`)** — przesłanie `null` na jednym z tych pól **czyści** (usuwa) dotychczasową wartość — pole znika z zapisanego zadania, tak jakby nigdy nie zostało ustawione. Przesłanie `null` na którymkolwiek z pozostałych pól jest odrzucane z komunikatem `"<pole> cannot be null"`, zanim jeszcze zostaną sprawdzone pozostałe reguły walidacji.
 
@@ -217,7 +217,7 @@ Oba te formularze operują na dokładnie tym samym, węższym zestawie pól: `ti
 - Ustawienie `status` na `"done"` w tych formularzach uruchamia tę samą automatyczną logikę `completedAt`, co przy każdej innej ścieżce aktualizacji (sekcja 2.3) — formularze same nie wysyłają `completedAt`.
 - Błędy walidacji z API są mapowane na konkretne pola formularza (czerwony komunikat pod danym polem), o ile pole błędu należy do tego zestawu sześciu pól; błędy dotyczące innych pól (np. reguł z sekcji 3, jeśli aktualizacja naruszy je pośrednio) trafiają tylko do ogólnego komunikatu błędu.
 
-### 7.3 API bezpośrednio (np. Swagger, testy)
+### 7.3 API bezpośrednio
 
 - API nie narzuca żadnego z ograniczeń opisanych w 7.1–7.2 dotyczących tego, „które pola można ustawić w danym formularzu” — przez `POST`/`PUT` można ustawić dowolne pole z sekcji 1.1, w tym `taskType`, `severity`, `estimatedHours`, `tags`, `dependencies`, `requiresApproval` i `approver`, których UI (poza samym kreatorem przy tworzeniu) nie pozwala zmienić.
 - Jedyne pole, którego nie da się ustawić przez żaden udokumentowany endpoint, to `coverImage` — występuje wyłącznie w danych startowych.
