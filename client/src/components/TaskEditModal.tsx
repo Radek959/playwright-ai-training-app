@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { Dialog } from "./Dialog";
+import { ApiError, mapFieldErrors } from "../utils/apiError";
 import type { Task, TaskUpdateInput, User } from "../types";
 
 type Props = {
@@ -10,10 +11,22 @@ type Props = {
   onSave: (updated: TaskUpdateInput) => Promise<void> | void;
 };
 
+const TITLE_ID = "task-edit-modal-title";
+const ERROR_ID = "task-edit-modal-error";
+
+const KNOWN_FIELDS = new Set(["title", "description", "status", "priority", "dueDate", "assigneeId"]);
+
+const FIELD_ERROR_ID: Record<string, string> = {
+  title: "edit-task-title-error",
+  description: "edit-task-description-error",
+  status: "edit-task-status-error",
+  priority: "edit-task-priority-error",
+  dueDate: "edit-task-due-date-error",
+  assigneeId: "edit-task-assignee-error"
+};
+
 export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  const shadowRoot = useRef<ShadowRoot | null>(null);
-  const [ready, setReady] = useState(false);
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -21,25 +34,9 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
   const [priority, setPriority] = useState<Task["priority"]>("medium");
   const [dueDate, setDueDate] = useState<string>("");
   const [assigneeId, setAssigneeId] = useState<string>("");
-
-  useEffect(() => {
-    if (!hostRef.current) {
-      const host = document.createElement("div");
-      host.setAttribute("data-modal-host", "true");
-      hostRef.current = host;
-      document.body.appendChild(host);
-      shadowRoot.current = host.attachShadow({ mode: "open" });
-      setReady(true);
-    }
-    return () => {
-      if (hostRef.current) {
-        hostRef.current.remove();
-      }
-      hostRef.current = null;
-      shadowRoot.current = null;
-      setReady(false);
-    };
-  }, []);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (task) {
@@ -49,180 +46,254 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
       setPriority(task.priority);
       setDueDate(task.dueDate ? task.dueDate.split("T")[0] : "");
       setAssigneeId(task.assigneeId ?? "");
+      setSaveError(null);
+      setFieldErrors({});
     }
   }, [task]);
 
-  const content = useMemo(() => {
-    if (!open || !shadowRoot.current || !task || !ready) return null;
-    const overlayStyle = {
-      position: "fixed" as const,
-      top: 0,
-      right: 0,
-      bottom: 0,
-      left: 0,
-      background: "rgba(15,23,42,0.45)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 9999
-    };
-    const cardStyle = {
-      background: "#fff",
-      borderRadius: "12px",
-      padding: "20px",
-      width: "min(720px, 92vw)",
-      boxShadow: "0 24px 80px rgba(0,0,0,0.35)",
-      border: "1px solid #e2e8f0"
-    };
-    const deepWrap = (node: JSX.Element) => (
-      <div data-layer="1">
-        <div data-layer="2">
-          <div data-layer="3">{node}</div>
+  const clearFieldError = (field: string) => {
+    setFieldErrors((prev) => {
+      if (!(field in prev)) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
+  if (!task) return null;
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (isSaving) return;
+    setIsSaving(true);
+    setSaveError(null);
+    setFieldErrors({});
+    try {
+      await onSave({
+        title,
+        description,
+        status,
+        priority,
+        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+        assigneeId: assigneeId || null
+      });
+      // Entered data is intentionally left in place on failure so the
+      // caller can decide whether to close (success) or keep it open.
+    } catch (err) {
+      if (err instanceof ApiError) {
+        const { mapped } = mapFieldErrors(err.details, KNOWN_FIELDS);
+        setFieldErrors(mapped);
+      }
+      setSaveError(err instanceof Error ? err.message : "Failed to save the task");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      titleId={TITLE_ID}
+      initialFocusRef={titleInputRef}
+      testId="task-edit-modal"
+    >
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <div className="flex justify-between items-start gap-4">
+          <h2 id={TITLE_ID} className="text-2xl font-bold text-gray-900">
+            Edit task
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close dialog"
+            className="text-gray-400 hover:text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 rounded p-1 -mt-1 -mr-1"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
-      </div>
-    );
 
-    return createPortal(
-      <div style={{}}>
-        <style>{`
-          *, *::before, *::after { box-sizing: border-box; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
-          h1, h2, h3, label, span, button, input, select, textarea { color: #0f172a; }
-          .modal-title { font-size: 26px; font-weight: 800; margin-bottom: 8px; }
-          .modal-subgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
-          .modal-input { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; font-size: 14px; transition: border 120ms ease, box-shadow 120ms ease; background: #fff; }
-          .modal-input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15); }
-          .modal-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #334155; }
-          .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
-          .modal-btn { border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 14px; font-size: 14px; cursor: pointer; transition: all 140ms ease; }
-          .modal-btn.secondary { background: #fff; color: #0f172a; }
-          .modal-btn.secondary:hover { background: #f1f5f9; }
-          .modal-btn.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
-          .modal-btn.primary:hover { background: #1d4ed8; }
-          .modal-close { color: #64748b; font-size: 14px; }
-          .modal-close:hover { color: #0f172a; }
-        `}</style>
-        <div style={{ position: "relative" }}>
-          <div style={{}}>
-            {deepWrap(
-              <div style={{}}>
-                <div style={{}}>
-                  <div style={{}}>
-                    <div style={{}}>
-                      <div style={overlayStyle}>
-                        <div style={cardStyle}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <h2 className="modal-title">Edytuj zadanie</h2>
-                            </div>
-                            <div className="modal-subgrid">
-                              <label>
-                                <span className="modal-label">Tytuł</span>
-                                <input
-                                  className="modal-input"
-                                  value={title}
-                                  onChange={(e) => setTitle(e.target.value)}
-                                />
-                              </label>
-                              <label>
-                                <span className="modal-label">Priorytet</span>
-                                <select
-                                  className="modal-input"
-                                  value={priority}
-                                  onChange={(e) => setPriority(e.target.value as Task["priority"])}
-                                >
-                                  <option value="low">Low</option>
-                                  <option value="medium">Medium</option>
-                                  <option value="high">High</option>
-                                </select>
-                              </label>
-                            </div>
+        {saveError && (
+          <div id={ERROR_ID} role="alert" className="bg-red-50 border border-red-300 rounded p-3 text-sm text-red-700">
+            {saveError}
+          </div>
+        )}
 
-                            <label>
-                              <span className="modal-label">Opis</span>
-                              <textarea
-                                className="modal-input"
-                                rows={3}
-                                value={description}
-                                onChange={(e) => setDescription(e.target.value)}
-                              />
-                            </label>
-
-                            <div className="modal-subgrid">
-                              <label>
-                                <span className="modal-label">Status</span>
-                                <select
-                                  className="modal-input"
-                                  value={status}
-                                  onChange={(e) => setStatus(e.target.value as Task["status"])}
-                                >
-                                  <option value="todo">To Do</option>
-                                  <option value="in-progress">In Progress</option>
-                                  <option value="done">Done</option>
-                                </select>
-                              </label>
-                              <label>
-                                <span className="modal-label">Due date</span>
-                                <input
-                                  type="date"
-                                  className="modal-input"
-                                  value={dueDate}
-                                  onChange={(e) => setDueDate(e.target.value)}
-                                />
-                              </label>
-                              <label>
-                                <span className="modal-label">Assignee</span>
-                                <select
-                                  className="modal-input"
-                                  value={assigneeId}
-                                  onChange={(e) => setAssigneeId(e.target.value)}
-                                >
-                                  <option value="">-- brak --</option>
-                                  {users.map((u) => (
-                                    <option key={u.id} value={u.id}>
-                                      {u.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                            </div>
-
-                            <div className="modal-actions">
-                              <button
-                                type="button"
-                                onClick={onClose}
-                                className="modal-btn secondary"
-                              >
-                                Anuluj
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => onSave({
-                                  title,
-                                  description,
-                                  status,
-                                  priority,
-                                  dueDate: dueDate ? new Date(dueDate).toISOString() : null,
-                                  assigneeId: assigneeId || null
-                                })}
-                                className="modal-btn primary"
-                              >
-                                Zapisz
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="edit-task-title" className="text-sm font-semibold text-slate-700">
+              Title
+            </label>
+            <input
+              id="edit-task-title"
+              ref={titleInputRef}
+              className="border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+              value={title}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                clearFieldError("title");
+              }}
+              required
+              aria-invalid={Boolean(fieldErrors.title)}
+              aria-describedby={
+                [fieldErrors.title ? FIELD_ERROR_ID.title : null, saveError ? ERROR_ID : null].filter(Boolean).join(" ") ||
+                undefined
+              }
+            />
+            {fieldErrors.title && (
+              <p id={FIELD_ERROR_ID.title} role="alert" className="text-red-600 text-xs">
+                {fieldErrors.title}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="edit-task-priority" className="text-sm font-semibold text-slate-700">
+              Priority
+            </label>
+            <select
+              id="edit-task-priority"
+              className="border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+              value={priority}
+              onChange={(e) => {
+                setPriority(e.target.value as Task["priority"]);
+                clearFieldError("priority");
+              }}
+              aria-invalid={Boolean(fieldErrors.priority)}
+              aria-describedby={fieldErrors.priority ? FIELD_ERROR_ID.priority : undefined}
+            >
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+            {fieldErrors.priority && (
+              <p id={FIELD_ERROR_ID.priority} role="alert" className="text-red-600 text-xs">
+                {fieldErrors.priority}
+              </p>
             )}
           </div>
         </div>
-      </div>,
-      shadowRoot.current
-    );
-  }, [open, task, ready, title, description, status, priority, dueDate, assigneeId, users, onClose, onSave]);
 
-  return content;
+        <div className="flex flex-col gap-1">
+          <label htmlFor="edit-task-description" className="text-sm font-semibold text-slate-700">
+            Description
+          </label>
+          <textarea
+            id="edit-task-description"
+            className="border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+            rows={3}
+            value={description}
+            onChange={(e) => {
+              setDescription(e.target.value);
+              clearFieldError("description");
+            }}
+            aria-invalid={Boolean(fieldErrors.description)}
+            aria-describedby={fieldErrors.description ? FIELD_ERROR_ID.description : undefined}
+          />
+          {fieldErrors.description && (
+            <p id={FIELD_ERROR_ID.description} role="alert" className="text-red-600 text-xs">
+              {fieldErrors.description}
+            </p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="edit-task-status" className="text-sm font-semibold text-slate-700">
+              Status
+            </label>
+            <select
+              id="edit-task-status"
+              className="border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+              value={status}
+              onChange={(e) => {
+                setStatus(e.target.value as Task["status"]);
+                clearFieldError("status");
+              }}
+              aria-invalid={Boolean(fieldErrors.status)}
+              aria-describedby={fieldErrors.status ? FIELD_ERROR_ID.status : undefined}
+            >
+              <option value="todo">To Do</option>
+              <option value="in-progress">In Progress</option>
+              <option value="done">Done</option>
+            </select>
+            {fieldErrors.status && (
+              <p id={FIELD_ERROR_ID.status} role="alert" className="text-red-600 text-xs">
+                {fieldErrors.status}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="edit-task-due-date" className="text-sm font-semibold text-slate-700">
+              Due date
+            </label>
+            <input
+              id="edit-task-due-date"
+              type="date"
+              autoComplete="off"
+              className="border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+              value={dueDate}
+              onChange={(e) => {
+                setDueDate(e.target.value);
+                clearFieldError("dueDate");
+              }}
+              aria-invalid={Boolean(fieldErrors.dueDate)}
+              aria-describedby={fieldErrors.dueDate ? FIELD_ERROR_ID.dueDate : undefined}
+            />
+            {fieldErrors.dueDate && (
+              <p id={FIELD_ERROR_ID.dueDate} role="alert" className="text-red-600 text-xs">
+                {fieldErrors.dueDate}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="edit-task-assignee" className="text-sm font-semibold text-slate-700">
+              Assignee
+            </label>
+            <select
+              id="edit-task-assignee"
+              className="border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+              value={assigneeId}
+              onChange={(e) => {
+                setAssigneeId(e.target.value);
+                clearFieldError("assigneeId");
+              }}
+              aria-invalid={Boolean(fieldErrors.assigneeId)}
+              aria-describedby={fieldErrors.assigneeId ? FIELD_ERROR_ID.assigneeId : undefined}
+            >
+              <option value="">-- none --</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
+            {fieldErrors.assigneeId && (
+              <p id={FIELD_ERROR_ID.assigneeId} role="alert" className="text-red-600 text-xs">
+                {fieldErrors.assigneeId}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 mt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSaving}
+            className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-800"
+          >
+            {isSaving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  );
 }

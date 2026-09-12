@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useAppError } from "../context/AppErrorContext";
 import type { Task, TaskPriority, TaskStatus, User } from "../types";
 
 type SortKey = "title" | "priority" | "dueDate" | "assigneeId" | "status";
@@ -12,13 +13,39 @@ type Props = {
   onBulkDelete: (ids: string[]) => Promise<string[]>;
 };
 
+const COLUMN_LABELS: Record<SortKey, string> = {
+  title: "Title",
+  status: "Status",
+  priority: "Priority",
+  dueDate: "Due date",
+  assigneeId: "Assignee"
+};
+
 export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Props) {
+  const { setError, clearError } = useAppError();
   const [sortKey, setSortKey] = useState<SortKey>("title");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [savingCell, setSavingCell] = useState<string | null>(null);
   const [cellErrors, setCellErrors] = useState<Record<string, string>>({});
+  const [bulkDeleteMessage, setBulkDeleteMessage] = useState<string>("");
+  const titleTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const titleEditInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingFocusRestoreId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (editingCell) {
+      titleEditInputRef.current?.focus();
+      titleEditInputRef.current?.select();
+    } else if (pendingFocusRestoreId.current) {
+      // The trigger button only exists in the DOM once editingCell clears and
+      // this effect runs after that re-render commits, so focus it here
+      // instead of synchronously in the event handler.
+      titleTriggerRefs.current[pendingFocusRestoreId.current]?.focus();
+      pendingFocusRestoreId.current = null;
+    }
+  }, [editingCell]);
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -70,6 +97,13 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
       for (const id of deletedIds) next.delete(id);
       return next;
     });
+    if (deletedIds.length === ids.length) {
+      setBulkDeleteMessage(`Deleted ${deletedIds.length} ${deletedIds.length === 1 ? "task" : "tasks"}.`);
+    } else {
+      setBulkDeleteMessage(
+        `Deleted ${deletedIds.length} of ${ids.length} tasks. ${ids.length - deletedIds.length} could not be deleted.`
+      );
+    }
   };
 
   const commitUpdate = async (taskId: string, field: string, value: unknown) => {
@@ -93,47 +127,73 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
     }
   };
 
+  const handleRowDelete = async (taskId: string, title: string) => {
+    try {
+      await onDelete(taskId);
+      clearError();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to delete task: ${title}`);
+    }
+  };
+
   const cellId = (taskId: string, field: string) => `cell-${taskId}-${field}`;
+
+  const stopEditingTitle = (taskId: string) => {
+    pendingFocusRestoreId.current = taskId;
+    setEditingCell(null);
+  };
 
   const allSelected = tasks.length > 0 && selectedIds.size === tasks.length;
   const someSelected = selectedIds.size > 0 && selectedIds.size < tasks.length;
 
+  const ariaSortFor = (key: SortKey): "ascending" | "descending" | "none" => {
+    if (sortKey !== key) return "none";
+    return sortDir === "asc" ? "ascending" : "descending";
+  };
+
   return (
     <div className="space-y-3">
+      {/* Live region announcing bulk delete outcome */}
+      <div role="status" aria-live="polite" className="sr-only">
+        {bulkDeleteMessage}
+      </div>
+
       {/* Bulk Actions Bar */}
       {selectedIds.size > 0 && (
         <div className="bg-blue-50 border border-blue-300 rounded p-3 flex items-center justify-between" data-testid="bulk-actions-bar">
           <span className="text-sm font-semibold">
-            Zaznaczono: <span data-testid="selected-count">{selectedIds.size}</span>
+            Selected: <span data-testid="selected-count">{selectedIds.size}</span>
           </span>
           <div className="flex gap-2">
             <button
               data-testid="bulk-delete-btn"
               onClick={handleBulkDelete}
-              className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700"
+              className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800"
             >
-              Usuń zaznaczone
+              Delete selected
             </button>
             <button
               onClick={() => setSelectedIds(new Set())}
-              className="px-3 py-1 border rounded text-sm hover:bg-gray-100"
+              className="px-3 py-1 border rounded text-sm hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
               data-testid="bulk-cancel-btn"
             >
-              Anuluj
+              Cancel
             </button>
           </div>
         </div>
       )}
 
       {/* Table */}
-      <div className="border rounded overflow-hidden">
+      <div className="border rounded overflow-x-auto">
         <table className="w-full border-collapse" data-testid="task-table">
+          <caption className="sr-only">Tasks. Column headers with a sort button can be activated to sort the table.</caption>
           <thead className="bg-gray-100">
             <tr>
-              <th className="border-b p-3 w-12">
+              <th className="border-b p-3 w-12" scope="col">
                 <input
                   type="checkbox"
                   data-testid="select-all-checkbox"
+                  aria-label="Select all tasks"
                   checked={allSelected}
                   ref={(el) => {
                     if (el) el.indeterminate = someSelected;
@@ -142,207 +202,223 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                 />
               </th>
               {(["title", "status", "priority", "dueDate", "assigneeId"] as SortKey[]).map((key) => (
-                <th
-                  key={key}
-                  className="border-b p-3 cursor-pointer hover:bg-gray-200 text-left"
-                  onClick={() => toggleSort(key)}
-                  data-testid={`sort-header-${key}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold">
-                      {key === "title" && "Tytuł"}
-                      {key === "status" && "Status"}
-                      {key === "priority" && "Priorytet"}
-                      {key === "dueDate" && "Termin"}
-                      {key === "assigneeId" && "Przypisany"}
-                    </span>
+                <th key={key} className="border-b p-3 text-left" scope="col" aria-sort={ariaSortFor(key)}>
+                  <button
+                    type="button"
+                    onClick={() => toggleSort(key)}
+                    className="flex items-center justify-between gap-2 w-full font-semibold hover:text-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 rounded"
+                    data-testid={`sort-header-${key}`}
+                  >
+                    <span>{COLUMN_LABELS[key]}</span>
                     {sortKey === key && (
-                      <span className="text-xs ml-2">
+                      <span className="text-xs ml-2" aria-hidden="true">
                         {sortDir === "asc" ? "▲" : "▼"}
                       </span>
                     )}
-                  </div>
+                  </button>
                 </th>
               ))}
-              <th className="border-b p-3 text-left font-semibold">Akcje</th>
+              <th className="border-b p-3 text-left font-semibold" scope="col">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody>
             {sorted.length === 0 ? (
               <tr>
                 <td colSpan={7} className="p-6 text-center text-gray-500">
-                  Brak zadań do wyświetlenia
+                  No tasks to display
                 </td>
               </tr>
             ) : (
-              sorted.map((task) => (
-                <tr
-                  key={task.id}
-                  className={`hover:bg-gray-50 ${selectedIds.has(task.id) ? "bg-blue-50" : ""}`}
-                  data-testid={`task-row-${task.id}`}
-                >
-                  <td className="border-b p-3 text-center">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(task.id)}
-                      onChange={() => toggleSelect(task.id)}
-                      data-testid={`select-${task.id}`}
-                    />
-                  </td>
+              sorted.map((task) => {
+                const isEditingTitle = editingCell === `${task.id}-title`;
+                const titleErrorKey = `${task.id}-title`;
+                const statusErrorKey = `${task.id}-status`;
+                const priorityErrorKey = `${task.id}-priority`;
+                const dueDateErrorKey = `${task.id}-dueDate`;
+                const assigneeErrorKey = `${task.id}-assigneeId`;
 
-                  {/* Title - Editable */}
-                  <td
-                    id={cellId(task.id, "title")}
-                    className="border-b p-3 cursor-pointer"
-                    onClick={() => setEditingCell(`${task.id}-title`)}
-                    data-testid={`cell-${task.id}-title`}
+                return (
+                  <tr
+                    key={task.id}
+                    className={`hover:bg-gray-50 ${selectedIds.has(task.id) ? "bg-blue-50" : ""}`}
+                    data-testid={`task-row-${task.id}`}
                   >
-                    {editingCell === `${task.id}-title` ? (
+                    <td className="border-b p-3 text-center">
                       <input
-                        autoFocus
-                        className="w-full border rounded px-2 py-1"
-                        defaultValue={task.title}
-                        onBlur={(e) => {
-                          if (editingCell !== `${task.id}-title`) return;
-                          setEditingCell(null);
-                          commitUpdate(task.id, "title", e.target.value);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            const value = e.currentTarget.value;
-                            setEditingCell(null);
-                            commitUpdate(task.id, "title", value);
-                          }
-                          if (e.key === "Escape") {
-                            setEditingCell(null);
-                          }
-                        }}
-                        data-testid={`edit-title-${task.id}`}
+                        type="checkbox"
+                        checked={selectedIds.has(task.id)}
+                        onChange={() => toggleSelect(task.id)}
+                        data-testid={`select-${task.id}`}
+                        aria-label={`Select task: ${task.title}`}
                       />
-                    ) : (
-                      <span className="hover:text-blue-600">{task.title}</span>
-                    )}
-                    {cellErrors[`${task.id}-title`] && (
-                      <p className="text-red-600 text-xs mt-1" data-testid={`error-${task.id}-title`}>
-                        {cellErrors[`${task.id}-title`]}
-                      </p>
-                    )}
-                  </td>
+                    </td>
 
-                  {/* Status - Editable */}
-                  <td
-                    className="border-b p-3"
-                    data-testid={`cell-${task.id}-status`}
-                  >
-                    <select
-                      value={task.status}
-                      onChange={(e) => commitUpdate(task.id, "status", e.target.value as TaskStatus)}
-                      className="border rounded px-2 py-1 text-sm"
-                      data-testid={`edit-status-${task.id}`}
-                      disabled={savingCell === `${task.id}-status`}
-                    >
-                      <option value="todo">To Do</option>
-                      <option value="in-progress">In Progress</option>
-                      <option value="done">Done</option>
-                    </select>
-                    {cellErrors[`${task.id}-status`] && (
-                      <p className="text-red-600 text-xs mt-1" data-testid={`error-${task.id}-status`}>
-                        {cellErrors[`${task.id}-status`]}
-                      </p>
-                    )}
-                  </td>
+                    {/* Title - Editable */}
+                    <td id={cellId(task.id, "title")} className="border-b p-3" data-testid={`cell-${task.id}-title`}>
+                      {isEditingTitle ? (
+                        <input
+                          ref={titleEditInputRef}
+                          className="w-full border rounded px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+                          defaultValue={task.title}
+                          aria-label={`Title for ${task.title}`}
+                          aria-invalid={Boolean(cellErrors[titleErrorKey])}
+                          aria-describedby={cellErrors[titleErrorKey] ? `error-${task.id}-title` : undefined}
+                          onBlur={(e) => {
+                            if (editingCell !== `${task.id}-title`) return;
+                            const value = e.target.value;
+                            stopEditingTitle(task.id);
+                            commitUpdate(task.id, "title", value);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              const value = e.currentTarget.value;
+                              stopEditingTitle(task.id);
+                              commitUpdate(task.id, "title", value);
+                            }
+                            if (e.key === "Escape") {
+                              e.preventDefault();
+                              stopEditingTitle(task.id);
+                            }
+                          }}
+                          data-testid={`edit-title-${task.id}`}
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          ref={(el) => {
+                            titleTriggerRefs.current[task.id] = el;
+                          }}
+                          onClick={() => setEditingCell(`${task.id}-title`)}
+                          className="text-left hover:text-blue-600 w-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 rounded"
+                          aria-label={`Edit title: ${task.title}`}
+                        >
+                          {task.title}
+                        </button>
+                      )}
+                      {cellErrors[titleErrorKey] && (
+                        <p className="text-red-600 text-xs mt-1" data-testid={`error-${task.id}-title`} id={`error-${task.id}-title`} role="alert">
+                          {cellErrors[titleErrorKey]}
+                        </p>
+                      )}
+                    </td>
 
-                  {/* Priority - Editable */}
-                  <td
-                    className="border-b p-3"
-                    data-testid={`cell-${task.id}-priority`}
-                  >
-                    <select
-                      value={task.priority}
-                      onChange={(e) => commitUpdate(task.id, "priority", e.target.value as TaskPriority)}
-                      className="border rounded px-2 py-1 text-sm"
-                      data-testid={`edit-priority-${task.id}`}
-                      disabled={savingCell === `${task.id}-priority`}
-                    >
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
-                    </select>
-                    {cellErrors[`${task.id}-priority`] && (
-                      <p className="text-red-600 text-xs mt-1" data-testid={`error-${task.id}-priority`}>
-                        {cellErrors[`${task.id}-priority`]}
-                      </p>
-                    )}
-                  </td>
+                    {/* Status - Editable */}
+                    <td className="border-b p-3" data-testid={`cell-${task.id}-status`}>
+                      <select
+                        value={task.status}
+                        onChange={(e) => commitUpdate(task.id, "status", e.target.value as TaskStatus)}
+                        className="border rounded px-2 py-1 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+                        data-testid={`edit-status-${task.id}`}
+                        disabled={savingCell === `${task.id}-status`}
+                        aria-label={`Status for ${task.title}`}
+                        aria-invalid={Boolean(cellErrors[statusErrorKey])}
+                        aria-describedby={cellErrors[statusErrorKey] ? `error-${task.id}-status` : undefined}
+                      >
+                        <option value="todo">To Do</option>
+                        <option value="in-progress">In Progress</option>
+                        <option value="done">Done</option>
+                      </select>
+                      {cellErrors[statusErrorKey] && (
+                        <p className="text-red-600 text-xs mt-1" data-testid={`error-${task.id}-status`} id={`error-${task.id}-status`} role="alert">
+                          {cellErrors[statusErrorKey]}
+                        </p>
+                      )}
+                    </td>
 
-                  {/* Due Date - Editable */}
-                  <td
-                    className="border-b p-3"
-                    data-testid={`cell-${task.id}-dueDate`}
-                  >
-                    <input
-                      type="date"
-                      value={task.dueDate ? task.dueDate.split("T")[0] : ""}
-                      onChange={(e) =>
-                        commitUpdate(task.id, "dueDate", e.target.value ? new Date(e.target.value).toISOString() : null)
-                      }
-                      className="border rounded px-2 py-1 text-sm"
-                      data-testid={`edit-dueDate-${task.id}`}
-                      disabled={savingCell === `${task.id}-dueDate`}
-                    />
-                    {cellErrors[`${task.id}-dueDate`] && (
-                      <p className="text-red-600 text-xs mt-1" data-testid={`error-${task.id}-dueDate`}>
-                        {cellErrors[`${task.id}-dueDate`]}
-                      </p>
-                    )}
-                  </td>
+                    {/* Priority - Editable */}
+                    <td className="border-b p-3" data-testid={`cell-${task.id}-priority`}>
+                      <select
+                        value={task.priority}
+                        onChange={(e) => commitUpdate(task.id, "priority", e.target.value as TaskPriority)}
+                        className="border rounded px-2 py-1 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+                        data-testid={`edit-priority-${task.id}`}
+                        disabled={savingCell === `${task.id}-priority`}
+                        aria-label={`Priority for ${task.title}`}
+                        aria-invalid={Boolean(cellErrors[priorityErrorKey])}
+                        aria-describedby={cellErrors[priorityErrorKey] ? `error-${task.id}-priority` : undefined}
+                      >
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                      </select>
+                      {cellErrors[priorityErrorKey] && (
+                        <p className="text-red-600 text-xs mt-1" data-testid={`error-${task.id}-priority`} id={`error-${task.id}-priority`} role="alert">
+                          {cellErrors[priorityErrorKey]}
+                        </p>
+                      )}
+                    </td>
 
-                  {/* Assignee - Editable */}
-                  <td
-                    className="border-b p-3"
-                    data-testid={`cell-${task.id}-assigneeId`}
-                  >
-                    <select
-                      value={task.assigneeId || ""}
-                      onChange={(e) => commitUpdate(task.id, "assigneeId", e.target.value || null)}
-                      className="border rounded px-2 py-1 text-sm"
-                      data-testid={`edit-assigneeId-${task.id}`}
-                      disabled={savingCell === `${task.id}-assigneeId`}
-                    >
-                      <option value="">-- Brak --</option>
-                      {users.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.name}
-                        </option>
-                      ))}
-                    </select>
-                    {cellErrors[`${task.id}-assigneeId`] && (
-                      <p className="text-red-600 text-xs mt-1" data-testid={`error-${task.id}-assigneeId`}>
-                        {cellErrors[`${task.id}-assigneeId`]}
-                      </p>
-                    )}
-                  </td>
+                    {/* Due Date - Editable */}
+                    <td className="border-b p-3" data-testid={`cell-${task.id}-dueDate`}>
+                      <input
+                        type="date"
+                        value={task.dueDate ? task.dueDate.split("T")[0] : ""}
+                        onChange={(e) => commitUpdate(task.id, "dueDate", e.target.value ? new Date(e.target.value).toISOString() : null)}
+                        className="border rounded px-2 py-1 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+                        data-testid={`edit-dueDate-${task.id}`}
+                        disabled={savingCell === `${task.id}-dueDate`}
+                        aria-label={`Due date for ${task.title}`}
+                        aria-invalid={Boolean(cellErrors[dueDateErrorKey])}
+                        aria-describedby={cellErrors[dueDateErrorKey] ? `error-${task.id}-dueDate` : undefined}
+                      />
+                      {cellErrors[dueDateErrorKey] && (
+                        <p className="text-red-600 text-xs mt-1" data-testid={`error-${task.id}-dueDate`} id={`error-${task.id}-dueDate`} role="alert">
+                          {cellErrors[dueDateErrorKey]}
+                        </p>
+                      )}
+                    </td>
 
-                  {/* Actions */}
-                  <td className="border-b p-3">
-                    <button
-                      onClick={() => onDelete(task.id)}
-                      data-testid={`delete-${task.id}`}
-                      className="text-red-600 hover:underline text-sm"
-                    >
-                      Usuń
-                    </button>
-                  </td>
-                </tr>
-              ))
+                    {/* Assignee - Editable */}
+                    <td className="border-b p-3" data-testid={`cell-${task.id}-assigneeId`}>
+                      <select
+                        value={task.assigneeId || ""}
+                        onChange={(e) => commitUpdate(task.id, "assigneeId", e.target.value || null)}
+                        className="border rounded px-2 py-1 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+                        data-testid={`edit-assigneeId-${task.id}`}
+                        disabled={savingCell === `${task.id}-assigneeId`}
+                        aria-label={`Assignee for ${task.title}`}
+                        aria-invalid={Boolean(cellErrors[assigneeErrorKey])}
+                        aria-describedby={cellErrors[assigneeErrorKey] ? `error-${task.id}-assigneeId` : undefined}
+                      >
+                        <option value="">-- None --</option>
+                        {users.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.name}
+                          </option>
+                        ))}
+                      </select>
+                      {cellErrors[assigneeErrorKey] && (
+                        <p className="text-red-600 text-xs mt-1" data-testid={`error-${task.id}-assigneeId`} id={`error-${task.id}-assigneeId`} role="alert">
+                          {cellErrors[assigneeErrorKey]}
+                        </p>
+                      )}
+                    </td>
+
+                    {/* Actions */}
+                    <td className="border-b p-3">
+                      <button
+                        onClick={() => handleRowDelete(task.id, task.title)}
+                        data-testid={`delete-${task.id}`}
+                        className="text-red-600 hover:underline text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600 rounded"
+                        aria-label={`Delete task: ${task.title}`}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
 
       <div className="text-sm text-gray-600" data-testid="table-info">
-        Wyświetlono {sorted.length} {sorted.length === 1 ? "zadanie" : "zadań"}
-        {sortKey && ` • Sortowanie: ${sortKey} ${sortDir === "asc" ? "rosnąco" : "malejąco"}`}
+        Showing {sorted.length} {sorted.length === 1 ? "task" : "tasks"}
+        {sortKey && ` • Sorted by: ${COLUMN_LABELS[sortKey]} ${sortDir === "asc" ? "ascending" : "descending"}`}
       </div>
     </div>
   );

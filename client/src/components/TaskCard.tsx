@@ -42,7 +42,7 @@ export function TaskCard({
     >
       <div className="space-y-1 flex-1">
         <h3 className="font-semibold text-lg">{task.title}</h3>
-        <p className="text-sm text-slate-700">{task.description ?? "Brak opisu"}</p>
+        <p className="text-sm text-slate-700">{task.description ?? "No description"}</p>
         <div className="flex gap-2 flex-wrap text-xs text-slate-600">
           <Badge label={task.status} tone={task.status === "done" ? "green" : task.status === "in-progress" ? "blue" : "gray"} />
           <Badge label={`P: ${task.priority}`} tone={task.priority === "high" ? "red" : task.priority === "medium" ? "yellow" : "gray"} />
@@ -57,21 +57,21 @@ export function TaskCard({
         <button
           id={ids.editBtn}
           type="button"
-          className="bg-slate-100 px-3 py-1 rounded"
+          className="bg-slate-100 px-3 py-1 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
           onClick={() => onEdit(task)}
-          aria-label="Edytuj zadanie"
+          aria-label={`Edit task: ${task.title}`}
         >
           Edit
         </button>
 
         <button
           id={ids.deleteBtn}
-          className="bg-red-500 text-white px-3 py-1 rounded"
+          className="bg-red-500 text-white px-3 py-1 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800"
           type="button"
           onClick={handleDelete}
-          aria-label="Usuń zadanie"
+          aria-label={`Delete task: ${task.title}`}
         >
-          Usuń
+          Delete
         </button>
       </div>
     </article>
