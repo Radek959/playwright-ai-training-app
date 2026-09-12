@@ -1,8 +1,6 @@
 # Dokumentacja produktowa — Task Manager
 
-Ten dokument opisuje **oczekiwane, faktyczne zachowanie aplikacji** (frontend + API) tak, jak działa ono w bieżącym stanie repozytorium. Jest to źródło wymagań do pisania testów (E2E w Playwright, testów API, analizy przypadków brzegowych) — **nie jest to gotowy zestaw testów ani lista scenariuszy do wykonania**. Każda reguła opisana poniżej została zweryfikowana w kodzie źródłowym aplikacji.
-
-Dokument celowo pomija: rozwiązania konkretnych ćwiczeń, wskazówki dla prowadzącego, informacje o celowo wstrzykniętych błędach czy flagach na potrzeby warsztatu (jeśli takie istnieją na innych gałęziach szkoleniowych, nie są tu opisywane).
+Ten dokument opisuje **oczekiwane zachowanie aplikacji** widoczne z perspektywy użytkownika — interfejsu i API — wraz z regułami walidacji, jakim podlegają dane. Opisuje wymagania i zachowanie, a nie szczegóły techniczne ich implementacji. Jest to źródło wymagań, a nie gotowy zestaw przypadków testowych.
 
 ---
 
@@ -17,8 +15,8 @@ Pole | Typ / dozwolone wartości | Uwagi
 `description` | `string` | Opcjonalne.
 `status` | `"todo" \| "in-progress" \| "done"` | Domyślnie `"todo"` przy tworzeniu przez API.
 `priority` | `"low" \| "medium" \| "high"` | Domyślnie `"medium"` przy tworzeniu przez API.
-`dueDate` | `string` (ISO data) | Opcjonalne, musi być poprawną datą, jeśli podane.
-`completedAt` | `string` (ISO data) | Ustawiane automatycznie — patrz sekcja 2.3. Nie da się go bezpośrednio wyczyścić (`null` jest odrzucane jako błąd walidacji).
+`dueDate` | `string` (data) | Opcjonalne. Akceptowana jest dowolna wartość tekstowa, którą da się sparsować jako datę (nie tylko format ISO 8601).
+`completedAt` | `string` (data) | Ustawiane automatycznie — patrz sekcja 2.3. Ten sam warunek dot. formatu co `dueDate`. Nie da się go bezpośrednio wyczyścić (`null` jest odrzucane jako błąd walidacji).
 `assigneeId` | `string` (`id` istniejącego użytkownika) lub brak | Jeśli podane i niepuste, musi wskazywać na istniejącego użytkownika.
 `coverImage` | `string` (URL) | Ustawiane tylko w danych startowych; nie ma pola do jego edycji w UI ani w formularzu tworzenia zadania.
 `taskType` | `"bug" \| "feature" \| "research"` | Opcjonalne.
@@ -48,7 +46,7 @@ Pole | Typ / dozwolone wartości | Uwagi
 
 - Walidacja zwraca `400` z ciałem `{ "error": "Validation failed", "details": [{ "field": ..., "message": ... }] }` — może zawierać wiele błędów naraz.
 - Pola nieprzesłane w żądaniu otrzymują wartości domyślne opisane w sekcji 1.1 (`status`, `priority`, `tags`, `dependencies`, `requiresApproval`). Pozostałe pola pozostają nieustawione.
-- Przesłanie `null` na polu, które nie jest wymagane, ale nie jest też jawnie "czyszczalne" (patrz sekcja 2.4), skutkuje błędem walidacji tego pola — nie jest po cichu traktowane jak brak wartości.
+- Znaczenie `null` w treści żądania zależy od konkretnego pola — patrz sekcja 2.4.
 - Powodzenie zwraca `201` z pełnym obiektem zadania (włącznie z nadanym `id`).
 
 ### 2.2 Aktualizacja zadania (`PUT /api/tasks/:id`)
@@ -62,16 +60,21 @@ Pole | Typ / dozwolone wartości | Uwagi
 
 ### 2.3 Automatyczne ustawianie `completedAt`
 
-- Gdy `status` zadania (przy tworzeniu lub aktualizacji) jest ustawiany na `"done"`, a żądanie **nie** zawiera jawnie `completedAt`, backend ustawia je automatycznie na bieżący czas.
-- Jeśli żądanie jawnie przesyła `completedAt` razem ze `status: "done"`, ta wartość jest zachowana.
-- Gdy `status` jest ustawiany na cokolwiek innego niż `"done"` (`"todo"` lub `"in-progress"`), `completedAt` jest czyszczone — niezależnie od tego, co było wcześniej zapisane.
+- Wynikowa wartość `completedAt` zależy od statusu **po** zapisaniu żądania:
+  - jeśli status wynikowy to `"done"`, a żądanie nie przesyła jawnie `completedAt` — używana jest już zapisana wartość `completedAt` (jeśli zadanie było już `"done"` i miało tę datę ustawioną wcześniej), a dopiero gdy takiej wartości brak, backend ustawia ją na bieżący czas. Innymi słowy: zaktualizowanie zadania, które jest już `"done"`, bez zmiany tego pola, **nie** nadpisuje istniejącej daty ukończenia nową wartością.
+  - jeśli żądanie jawnie przesyła `completedAt` razem ze statusem wynikowym `"done"`, ta wartość jest zachowana.
+  - jeśli status wynikowy to cokolwiek innego niż `"done"` (`"todo"` lub `"in-progress"`), `completedAt` jest czyszczone — niezależnie od tego, co było wcześniej zapisane.
 - `completedAt` nie może zostać ustawione na `null` bezpośrednio przez klienta (patrz sekcja 2.4) — jedyny sposób jego wyczyszczenia to zmiana statusu na inny niż `"done"`.
 
-### 2.4 Pola, które można wyczyścić przez `null`
+### 2.4 Znaczenie `null` — osobno dla tworzenia i aktualizacji
 
-Przy `PUT /api/tasks/:id`, wysłanie `null` czyści (usuwa) wartość **tylko** dla pól: `description`, `dueDate`, `assigneeId`, `taskType`, `estimatedHours`, `severity`, `approver`.
+Dla obu operacji ten sam zestaw pól ma szczególne traktowanie `null`: `description`, `dueDate`, `assigneeId`, `taskType`, `estimatedHours`, `severity`, `approver`. Dla pozostałych pól (`title`, `status`, `priority`, `completedAt`, `tags`, `dependencies`, `requiresApproval`) `null` jest zawsze błędem walidacji, niezależnie od operacji. Tablice (`tags`, `dependencies`) czyści się wysyłając pustą tablicę `[]`, nie `null`.
 
-Dla pozostałych pól (`title`, `status`, `priority`, `completedAt`, `tags`, `dependencies`, `requiresApproval`) wysłanie `null` jest błędem walidacji (`"<pole> cannot be null"`), a nie sposobem na wyczyszczenie wartości. Tablice (`tags`, `dependencies`) czyści się wysyłając pustą tablicę `[]`.
+Sposób, w jaki `null` na tych polach jest obsługiwany, różni się jednak między tworzeniem a aktualizacją:
+
+**Tworzenie (`POST /api/tasks`)** — przesłanie `null` na jednym z tych pól jest akceptowane bez błędu walidacji i traktowane tak samo, jak brak tej wartości. Utworzone zadanie może mieć takie pole zapisane jako `null` (widoczne jako `null` w odpowiedzi API), a nie po prostu nieobecne.
+
+**Aktualizacja (`PUT /api/tasks/:id`)** — przesłanie `null` na jednym z tych pól **czyści** (usuwa) dotychczasową wartość — pole znika z zapisanego zadania, tak jakby nigdy nie zostało ustawione. Przesłanie `null` na którymkolwiek z pozostałych pól jest odrzucane z komunikatem `"<pole> cannot be null"`, zanim jeszcze zostaną sprawdzone pozostałe reguły walidacji.
 
 ### 2.5 Usuwanie zadania (`DELETE /api/tasks/:id`)
 
@@ -162,7 +165,7 @@ Widok Tasks ma pięć zakładek: **Active**, **Grid View**, **Table**, **Archive
 
 - Pokazuje zadania ze statusem innym niż `"done"`.
 - Filtry dostępne tylko w tej zakładce: **Assignee** (Wszyscy / Nieprzypisane / konkretny użytkownik), **Status** (All / To Do / In Progress — bez opcji „Done”, bo zakładka i tak wyklucza zadania zakończone), **Priority** (All / Low / Medium / High).
-- Filtry Status i Priority ustawione w tej zakładce **pozostają aktywne również w zakładkach Grid View i Archive** (współdzielony stan filtrów), mimo że te zakładki nie pokazują kontrolek do ich zmiany. Filtr Assignee działa wyłącznie w zakładce Active.
+- Filtry Status i Priority ustawione w tej zakładce **pozostają aktywne również w zakładkach Grid View, Table i Archive** (współdzielony stan filtrów), mimo że te zakładki nie pokazują kontrolek do ich zmiany. Filtr Assignee działa wyłącznie w zakładce Active.
 - Paginacja: 5 zadań na stronę.
 - Przycisk „Quick Add” pokazuje/ukrywa uproszczony formularz tworzenia zadania (tylko: tytuł, opis, status, priorytet, termin, przypisanie — patrz sekcja 7.2).
 - Pusta lista po zastosowaniu filtrów pokazuje komunikat „No tasks match your criteria”.
@@ -179,7 +182,7 @@ Widok Tasks ma pięć zakładek: **Active**, **Grid View**, **Table**, **Archive
 - Tabela z sortowaniem po kolumnach: Title, Status, Priority, Due date, Assignee (kliknięcie nagłówka przełącza kierunek sortowania).
 - Edycja „inline” bezpośrednio w komórkach — ale tylko dla pól: `title`, `status`, `priority`, `dueDate`, `assigneeId`. Pozostałe pola zadania (typ, `severity`, `estimatedHours`, `tags`, `dependencies`, `requiresApproval`, `approver`) nie są tu ani widoczne, ani edytowalne.
 - Zaznaczanie wielu wierszy (checkboxy) i masowe usuwanie zaznaczonych zadań; po operacji pokazywany jest komunikat z liczbą usuniętych zadań (a przy częściowym niepowodzeniu — ile się nie udało usunąć).
-- Podlega tym samym filtrom, co reszta listy w danej zakładce nadrzędnej (dziedziczy przefiltrowaną listę z Active).
+- Podlega współdzielonym filtrom Status/Priority opisanym w sekcji 6.1, ale **nie** jest ograniczona do zadań o statusie innym niż `"done"` — w przeciwieństwie do zakładki Active, Table pokazuje również zadania zakończone (chyba że filtr Status akurat je wyklucza).
 
 ### 6.4 Archive
 
@@ -233,3 +236,9 @@ Strona Users nie udostępnia żadnej akcji usuwania ani edycji użytkownika — 
 ## 9. Trwałość danych
 
 Aplikacja nie używa bazy danych — dane (`tasks`, `users`) są trzymane w pamięci procesu backendu i inicjalizowane stałym zestawem danych startowych przy starcie. Restart backendu (`npm run dev` / `npm run dev:server`) resetuje wszystkie zmiany wykonane przez UI lub API do stanu początkowego.
+
+---
+
+## 10. Dane startowe (seed data)
+
+Zadania i użytkownicy, z którymi aplikacja startuje, to przykładowe dane demonstracyjne. Tytuły i opisy zadań w danych startowych są fikcyjne i służą wyłącznie do zilustrowania różnych kombinacji statusu, priorytetu, typu i przypisania — **nie są listą funkcji dostępnych w aplikacji**. Zestaw ten obejmuje zadania w każdym statusie i priorytecie, zadania nieprzypisane oraz zadania zakończone zarówno przed, jak i po progu 30 dni opisanym w sekcji 5, tak aby można było zaobserwować pełne zachowanie list, filtrów, wyszukiwania, dashboardu i archiwum opisane w tym dokumencie.
