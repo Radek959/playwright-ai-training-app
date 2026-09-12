@@ -17,6 +17,8 @@ npm install
 npm run dev
 ```
 
+📄 **Product documentation:** [`docs/dokumentacja-produktowa.md`](./docs/dokumentacja-produktowa.md) (Polish) describes the application's expected behavior — tasks, users, search, archiving and validation rules.
+
 Created and maintained by **Radosław Wasik**.
 
 📘 **Learning Playwright?**

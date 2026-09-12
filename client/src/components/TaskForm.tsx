@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useAppError } from "../context/AppErrorContext";
 import { mapFieldErrors, toApiError } from "../utils/apiError";
+import { buildQuickTaskPayload } from "../utils/taskFormPayload";
 import type { Task, TaskPriority, TaskStatus, User } from "../types";
 
 type Props = {
@@ -62,7 +63,7 @@ export function TaskForm({ onCreated }: Props) {
       const res = await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, description, status, priority, dueDate, assigneeId })
+        body: JSON.stringify(buildQuickTaskPayload({ title, description, status, priority, dueDate, assigneeId }))
       });
       if (!res.ok) {
         const apiError = await toApiError(res, `Create failed: ${res.status}`);
