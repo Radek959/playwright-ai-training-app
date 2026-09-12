@@ -27,7 +27,7 @@ Check out the free [Playwright Starter Pack](https://starter.rwasik.pl/) with us
 ## Features
 
 * 📋 **Task Management** — Create, edit and organize tasks with priority levels
-* 👥 **User Management** — Manage team members with avatars and roles
+* 👥 **User Management** — Add and remove team members and view their roles (roles are set when a user is created; there is no UI to edit an existing user's role)
 * 📊 **Dashboard** — View statistics and analytics
 * 🎨 **Modern UI** — Responsive interface built with Tailwind CSS
 * 🔄 **Dynamic Data Management** — Application state handled with React
@@ -97,8 +97,8 @@ npm run dev
 
 This starts:
 
-* **Backend:** http://localhost:3001
-* **Frontend:** http://localhost:5173
+* **Frontend (UI):** http://localhost:5173 — open this in your browser
+* **Backend (API):** http://localhost:3001 — not a page to open directly; `/` returns `Cannot GET /`. Useful addresses are `/api/health` (health check) and `/api-docs` (Swagger UI)
 
 Open the frontend in your browser:
 
@@ -126,13 +126,25 @@ npm run dev:client
 
 ## API Documentation
 
-After starting the application, Swagger documentation is available at:
+After starting the backend, Swagger documentation is available at:
 
 ```text
 http://localhost:3001/api-docs
 ```
 
 You can use it to explore the API, inspect endpoints and send requests directly from the browser.
+
+A basic health check endpoint is also available at:
+
+```text
+http://localhost:3001/api/health
+```
+
+---
+
+## Data Persistence
+
+The application does not use a database. Tasks and users are stored in memory on the backend and are seeded with fixed sample data on startup. Any changes made through the UI or API (creating, editing or deleting tasks and users) are lost when the backend restarts, and the original sample data is restored.
 
 ---
 
@@ -210,7 +222,7 @@ Runs the TypeScript compiler (no emit) for both the client and the server.
 npm run test
 ```
 
-Runs the server's Vitest unit test suite (business-logic and validation functions only — no React component tests, no Playwright/browser tests).
+Runs the Vitest unit test suites for both the server (business-logic and validation functions) and the client (no Playwright/browser tests).
 
 ```bash
 npm run check
@@ -226,6 +238,7 @@ npm run build
 npm run preview
 npm run lint
 npm run typecheck
+npm run test
 ```
 
 ### Server

@@ -153,6 +153,25 @@
         }
       }
     },
+    "/api/health": {
+      "get": {
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "Service is up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "status": { "type": "string", "enum": ["ok"] } },
+                  "required": ["status"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/users/{id}": {
       "delete": {
         "summary": "Delete user",
@@ -177,7 +196,7 @@
           "description": { "type": "string", "nullable": true },
           "status": { "type": "string", "enum": ["todo", "in-progress", "done"] },
           "priority": { "type": "string", "enum": ["low", "medium", "high"] },
-          "dueDate": { "type": "string", "format": "date-time", "nullable": true },
+          "dueDate": { "type": "string", "nullable": true, "description": "ISO 8601 date or date-time, e.g. '2024-01-01' or '2024-01-01T00:00:00.000Z'." },
           "completedAt": { "type": "string", "format": "date-time", "description": "Set automatically when status becomes done unless provided explicitly; cleared when status is not done." },
           "assigneeId": { "type": "string", "nullable": true },
           "coverImage": { "type": "string", "nullable": true },
@@ -198,7 +217,7 @@
           "description": { "type": "string" },
           "status": { "type": "string", "enum": ["todo", "in-progress", "done"] },
           "priority": { "type": "string", "enum": ["low", "medium", "high"] },
-          "dueDate": { "type": "string", "format": "date-time" },
+          "dueDate": { "type": "string", "description": "Any value parseable as a JavaScript Date, e.g. an ISO 8601 date ('2024-01-01') or date-time ('2024-01-01T00:00:00.000Z')." },
           "completedAt": { "type": "string", "format": "date-time", "description": "Optional. Only honored when status is 'done'; null is rejected." },
           "assigneeId": { "type": "string", "description": "Must reference an existing user. Optional (Quick Add can omit it)." },
           "taskType": { "type": "string", "enum": ["bug", "feature", "research"] },
@@ -219,7 +238,7 @@
           "description": { "type": "string", "nullable": true, "description": "Pass null to clear." },
           "status": { "type": "string", "enum": ["todo", "in-progress", "done"] },
           "priority": { "type": "string", "enum": ["low", "medium", "high"] },
-          "dueDate": { "type": "string", "format": "date-time", "nullable": true, "description": "Pass null to clear." },
+          "dueDate": { "type": "string", "nullable": true, "description": "Any value parseable as a JavaScript Date, e.g. an ISO 8601 date ('2024-01-01') or date-time ('2024-01-01T00:00:00.000Z'). Pass null to clear." },
           "completedAt": { "type": "string", "format": "date-time", "description": "Derived from status; null is rejected. To clear it, set status away from 'done' instead." },
           "assigneeId": { "type": "string", "nullable": true, "description": "Pass null to unassign." },
           "taskType": { "type": "string", "enum": ["bug", "feature", "research"], "nullable": true, "description": "Pass null to clear." },
