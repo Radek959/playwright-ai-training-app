@@ -83,6 +83,13 @@ export function TaskEditModal({ task, open, users, onClose, onSave }: Props) {
       if (err instanceof ApiError) {
         const { mapped } = mapFieldErrors(err.details, KNOWN_FIELDS);
         setFieldErrors(mapped);
+        // The API rejected the status change because of incomplete
+        // dependencies, so the task's real status is still whatever it was
+        // before this submit. Revert just the status field to match —
+        // leaving it on "done" would show a value that was never saved.
+        if (err.blockingDependencies.length > 0) {
+          setStatus(task.status);
+        }
       }
       setSaveError(err instanceof Error ? err.message : "Failed to save the task");
     } finally {
