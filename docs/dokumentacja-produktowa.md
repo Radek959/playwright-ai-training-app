@@ -78,7 +78,7 @@ Sposób, w jaki `null` na tych polach jest obsługiwany, różni się jednak mi�
 
 ### 2.5 Usuwanie zadania (`DELETE /api/tasks/:id`)
 
-- Zadanie jest usuwane bezwarunkowo — **nie ma żadnej blokady** związanej z tym, że inne zadania mają je w swoich `dependencies`. Usunięcie zadania, od którego zależą inne zadania, pozostawia w tych innych zadaniach nieistniejący już identyfikator w tablicy `dependencies`.
+- Zadanie jest usuwane bezwarunkowo — **nie ma żadnej blokady** związanej z tym, że inne zadania mają je w swoich `dependencies`. Po usunięciu zadania, jego identyfikator jest automatycznie usuwany z tablic `dependencies` wszystkich pozostałych zadań (zachowanie spójności referencji).
 - Nieistniejące `id` zwraca `404`. Powodzenie zwraca `204` bez treści.
 
 ### 2.6 Zależności (`dependencies`) — czym są, a czym nie są
@@ -102,7 +102,7 @@ Sposób, w jaki `null` na tych polach jest obsługiwany, różni się jednak mi�
 - **Brak w UI**: interfejs nie udostępnia żadnego przycisku ani akcji usuwania użytkownika — endpoint jest dostępny wyłącznie przez bezpośrednie wywołanie API.
 - Reguła biznesowa: jeśli usuwany użytkownik ma przypisane zadania o statusie innym niż `"done"` (czyli `"todo"` lub `"in-progress"`), żądanie zwraca `409 Conflict` z ciałem `{ "error": "Cannot delete user with active tasks", "conflictingTasks": [{ "id", "title" }, ...] }` i użytkownik **nie** zostaje usunięty.
 - Jeśli wszystkie przypisane zadania mają status `"done"` (lub użytkownik nie ma żadnych przypisanych zadań), usunięcie się powiedzie (`204`).
-- Usunięcie użytkownika **nie** czyści ani nie modyfikuje `assigneeId` w zadaniach, które do niego się odwoływały (nie dotyczy to przypadku sukcesu opisanego wyżej, bo w takim przypadku pozostają tylko zadania `"done"` — te zadania nadal będą wskazywać na usuniętego już użytkownika).
+- Usunięcie użytkownika powoduje automatyczne wyczyszczenie pola `assigneeId` w pozostałych zadaniach, które nadal na niego wskazywały (czyli w zadaniach o statusie `"done"`).
 - Nie istnieje endpoint do edycji użytkownika (`PUT`/`PATCH`) — po utworzeniu nazwy, e-maila, roli ani awatara nie da się zmienić ani przez UI, ani przez udokumentowane API.
 
 ---

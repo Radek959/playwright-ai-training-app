@@ -114,8 +114,18 @@ tasksRouter.put("/:id", (req, res) => {
 });
 
 tasksRouter.delete("/:id", (req, res) => {
-  const idx = tasks.findIndex((t) => t.id === req.params.id);
+  const taskId = req.params.id;
+  const idx = tasks.findIndex((t) => t.id === taskId);
   if (idx === -1) return res.status(404).json({ error: "not found" });
+  
   tasks.splice(idx, 1);
+  
+  // Remove deleted task ID from dependencies of all other tasks
+  for (const t of tasks) {
+    if (t.dependencies) {
+      t.dependencies = t.dependencies.filter((depId) => depId !== taskId);
+    }
+  }
+  
   res.status(204).end();
 });
