@@ -1,19 +1,25 @@
 export type ApiFieldError = { field: string; message: string };
 
+export type BlockingDependency = { id: string; title: string; status: string };
+
 /**
  * Error thrown for a failed API response. Carries the structured
  * `details[]` the server returns for validation failures (each with a
  * `field` and `message`) alongside a human-readable summary message, so
  * callers can map errors onto individual form controls instead of only
- * showing a generic banner.
+ * showing a generic banner. `blockingDependencies` is populated for the
+ * 409 a task's `dependencies` rule returns, so callers can list the
+ * specific tasks blocking completion instead of only the summary message.
  */
 export class ApiError extends Error {
   details: ApiFieldError[];
+  blockingDependencies: BlockingDependency[];
 
-  constructor(message: string, details: ApiFieldError[] = []) {
+  constructor(message: string, details: ApiFieldError[] = [], blockingDependencies: BlockingDependency[] = []) {
     super(message);
     this.name = "ApiError";
     this.details = details;
+    this.blockingDependencies = blockingDependencies;
   }
 }
 
@@ -26,21 +32,39 @@ function isFieldError(value: unknown): value is ApiFieldError {
   );
 }
 
+function isBlockingDependency(value: unknown): value is BlockingDependency {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).id === "string" &&
+    typeof (value as Record<string, unknown>).title === "string" &&
+    typeof (value as Record<string, unknown>).status === "string"
+  );
+}
+
 /**
  * Builds an ApiError from a failed fetch Response, preserving any
- * field-level validation details the server included.
+ * field-level validation details or blocking-dependency info the server
+ * included.
  */
 export async function toApiError(res: Response, fallback: string): Promise<ApiError> {
   try {
     const data = await res.json();
     const details = Array.isArray(data?.details) ? data.details.filter(isFieldError) : [];
-    const message =
+    const blockingDependencies = Array.isArray(data?.blockingDependencies)
+      ? data.blockingDependencies.filter(isBlockingDependency)
+      : [];
+    const baseMessage =
       details.length > 0
         ? details.map((d: ApiFieldError) => d.message).join("; ")
         : typeof data?.error === "string"
         ? data.error
         : fallback;
-    return new ApiError(message, details);
+    const message =
+      blockingDependencies.length > 0
+        ? `${baseMessage}: ${blockingDependencies.map((d: BlockingDependency) => `${d.title} (${d.status})`).join(", ")}`
+        : baseMessage;
+    return new ApiError(message, details, blockingDependencies);
   } catch {
     return new ApiError(fallback, []);
   }

@@ -195,4 +195,39 @@ describe("TaskDetails", () => {
       expect(screen.getByText("Failed to load task: Internal Server Error")).toBeInTheDocument();
     });
   });
+
+  it("marks non-done dependencies as blocking while keeping done ones unmarked", async () => {
+    const taskWithMixedDeps = {
+      id: "task-mixed",
+      title: "Task With Mixed Deps",
+      status: "todo",
+      priority: "medium",
+      requiresApproval: false,
+      dependencies: ["dep-done", "dep-blocking"]
+    };
+    const depDone = { id: "dep-done", title: "Finished dependency", status: "done", priority: "low" };
+    const depBlocking = { id: "dep-blocking", title: "Unfinished dependency", status: "in-progress", priority: "low" };
+
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url === "/api/tasks/task-mixed") return Promise.resolve(new Response(JSON.stringify(taskWithMixedDeps)));
+      if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify([])));
+      if (url === "/api/tasks/dep-done") return Promise.resolve(new Response(JSON.stringify(depDone)));
+      if (url === "/api/tasks/dep-blocking") return Promise.resolve(new Response(JSON.stringify(depBlocking)));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+
+    renderComponent("task-mixed");
+
+    await waitFor(() => {
+      expect(screen.getByText("Task With Mixed Deps")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId("dependency-blocking-dep-done")).not.toBeInTheDocument();
+    expect(screen.getByTestId("dependency-blocking-dep-blocking")).toBeInTheDocument();
+
+    const links = screen.getAllByRole("link", { name: "View details" });
+    expect(links).toHaveLength(2);
+    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/tasks/dep-done", "/tasks/dep-blocking"]);
+  });
 });

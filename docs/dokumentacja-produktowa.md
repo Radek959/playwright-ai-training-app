@@ -84,7 +84,11 @@ Sposób, w jaki `null` na tych polach jest obsługiwany, różni się jednak mi�
 ### 2.6 Zależności (`dependencies`) — czym są, a czym nie są
 
 - `dependencies` to tablica identyfikatorów innych zadań, walidowana wyłącznie pod kątem tego, że każdy identyfikator istnieje i nie jest identyfikatorem samego zadania.
-- **Aplikacja nie egzekwuje żadnej logiki blokującej** na podstawie zależności: zadanie z niezakończonymi zależnościami można swobodnie oznaczyć jako `"done"`, edytować czy usunąć. Pole służy wyłącznie do przechowania i wyświetlenia powiązania.
+- **Reguła biznesowa ukończenia zadania**: zadania nie można oznaczyć jako `"done"`, dopóki wszystkie zadania wskazane w jego `dependencies` nie mają statusu `"done"`. Reguła jest egzekwowana zarówno przy tworzeniu (`POST /api/tasks`), jak i przy aktualizacji (`PUT /api/tasks/:id`) zadania — w tym drugim przypadku dotyczy każdej sytuacji, w której wynikowy (scalony) stan zadania ma status `"done"`: zarówno gdy status zmienia się na `"done"`, jak i wtedy, gdy zadanie pozostaje `"done"`, a zmienia się tylko jego lista `dependencies`.
+  - Zadanie bez zależności (`dependencies: []` lub brak pola) może zostać ukończone bez żadnych dodatkowych warunków.
+  - Sprawdzane są wyłącznie **bezpośrednie** zależności — zależności zależności nie są brane pod uwagę.
+  - Jeśli wszystkie bezpośrednie zależności mają status `"done"`, operacja się powodzi tak jak dotychczas.
+  - Jeśli przynajmniej jedna bezpośrednia zależność ma status inny niż `"done"`, żądanie jest odrzucane z kodem `409 Conflict` i ciałem postaci `{ "error": "Cannot complete task with incomplete dependencies", "blockingDependencies": [{ "id", "title", "status" }, ...] }`, gdzie `blockingDependencies` zawiera wyłącznie te bezpośrednie zależności, których status nie jest `"done"` (zależności już ukończone są pomijane). Zadanie w takim wypadku **nie** zostaje utworzone (przy `POST`) ani zmienione w żaden sposób — łącznie ze statusem i `completedAt` — (przy `PUT`).
 
 ### 2.7 `requiresApproval` / `approver` — czym są, a czym nie są
 
@@ -180,7 +184,7 @@ Widok Tasks ma pięć zakładek: **Active**, **Grid View**, **Table**, **Archive
 ### 6.3 Table
 
 - Tabela z sortowaniem po kolumnach: Title, Status, Priority, Due date, Assignee (kliknięcie nagłówka przełącza kierunek sortowania).
-- Edycja „inline” bezpośrednio w komórkach — ale tylko dla pól: `title`, `status`, `priority`, `dueDate`, `assigneeId`. Pozostałe pola zadania (typ, `severity`, `estimatedHours`, `tags`, `dependencies`, `requiresApproval`, `approver`) nie są tu ani widoczne, ani edytowalne.
+- Edycja „inline” bezpośrednio w komórkach — ale tylko dla pól: `title`, `status`, `priority`, `dueDate`, `assigneeId`. Pozostałe pola zadania (typ, `severity`, `estimatedHours`, `tags`, `dependencies`, `requiresApproval`, `approver`) nie są tu ani widoczne, ani edytowalne. Jeśli zmiana statusu na `"done"` zostanie odrzucona przez API (`409`, patrz sekcja 2.6), komórka statusu pokazuje treść błędu pod polem, a status w tabeli pozostaje bez zmian — operację można ponowić od razu.
 - Zaznaczanie wielu wierszy (checkboxy) i masowe usuwanie zaznaczonych zadań; po operacji pokazywany jest komunikat z liczbą usuniętych zadań (a przy częściowym niepowodzeniu — ile się nie udało usunąć). Zaznaczenie dotyczy wyłącznie zadań aktualnie widocznych w tabeli: opcja „Select all” zaznacza tylko widoczne wiersze, licznik zaznaczonych rekordów i stan pośredni checkboxa „Select all” liczone są tylko względem widocznych zadań, a masowe usuwanie działa wyłącznie na identyfikatorach zadań nadal widocznych w tabeli w chwili wykonania operacji. Jeśli w wyniku zmiany filtrów lub innego zestawu zadań któreś z zaznaczonych wcześniej zadań przestaje być widoczne, jest automatycznie usuwane z zaznaczenia.
 - Podlega współdzielonym filtrom Status/Priority opisanym w sekcji 6.1, ale **nie** jest ograniczona do zadań o statusie innym niż `"done"` — w przeciwieństwie do zakładki Active, Table pokazuje również zadania zakończone (chyba że filtr Status akurat je wyklucza).
 
@@ -199,6 +203,7 @@ Widok Tasks ma pięć zakładek: **Active**, **Grid View**, **Table**, **Archive
 - Dostępny pod osobnym adresem `/tasks/:id`, ładuje i prezentuje pełne dane zadania na podstawie odpowiedzi z API.
 - Wyświetla wszystkie właściwości modelu zadania w tym rozszerzone pola niedostępne w uproszczonych formularzach (m.in. typ zadania, severity, tagi, logikę zatwierdzania, godziny, powiązania).
 - Wskazuje powiązania: rozwiązując pole `assigneeId` na dane z listy użytkowników, a przy `approver` korzystając z zamkniętego zestawu wartości tekstowych (nie identyfikatorów), pokazując przyjazną etykietę i oryginalną wartość. Zależności pomiędzy zadaniami pozwalają na swobodne przechodzenie między widokami zależnych zadań (linki do powiązanych rekordów).
+- Przy każdej zależności pokazywany jest jej aktualny status. Zależności o statusie innym niż `"done"` są dodatkowo oznaczone jako blokujące ukończenie zadania (zgodnie z regułą opisaną w sekcji 2.6) — link do szczegółów danej zależności pozostaje dostępny niezależnie od jej statusu.
 - Puste pola opcjonalne są jawnie oznaczane jako brak wartości ("Not set"), zamiast być ukrywane.
 - Prezentuje adres URL miniatury `coverImage` (w formie klikalnego linku), oprócz wyświetlenia samego obrazu.
 - Służy wyłącznie do odczytu – wszelka edycja realizowana jest z innych widoków przez akcje przypisane kartom lub wierszom tabel.

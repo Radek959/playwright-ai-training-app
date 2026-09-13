@@ -166,3 +166,42 @@ describe("TaskTable selection safety", () => {
     expect((screen.getByTestId("select-b") as HTMLInputElement).checked).toBe(true);
   });
 });
+
+describe("TaskTable inline status editing", () => {
+  it("shows the API error and keeps the previous status when a status change is rejected", async () => {
+    const taskA = makeTask("a", "Task A");
+    const onUpdate = vi.fn().mockRejectedValue(new Error("Cannot complete task with incomplete dependencies: Dep 1 (todo)"));
+    renderTable([taskA], { onUpdate });
+
+    const statusSelect = screen.getByTestId("edit-status-a") as HTMLSelectElement;
+    fireEvent.change(statusSelect, { target: { value: "done" } });
+
+    expect(onUpdate).toHaveBeenCalledWith("a", "status", "done");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("error-a-status")).toHaveTextContent(
+        "Cannot complete task with incomplete dependencies: Dep 1 (todo)"
+      )
+    );
+
+    // The task prop never changed (the parent didn't apply the update), so
+    // the select still reflects the task's real, previous status.
+    expect(statusSelect.value).toBe("todo");
+  });
+
+  it("clears a previous status error and allows retrying once the update succeeds", async () => {
+    const taskA = makeTask("a", "Task A");
+    const onUpdate = vi.fn().mockRejectedValueOnce(new Error("Cannot complete task with incomplete dependencies"));
+    onUpdate.mockResolvedValueOnce(undefined);
+    renderTable([taskA], { onUpdate });
+
+    const statusSelect = screen.getByTestId("edit-status-a") as HTMLSelectElement;
+    fireEvent.change(statusSelect, { target: { value: "done" } });
+    await waitFor(() => expect(screen.getByTestId("error-a-status")).toBeInTheDocument());
+
+    fireEvent.change(statusSelect, { target: { value: "done" } });
+    await waitFor(() => expect(screen.queryByTestId("error-a-status")).not.toBeInTheDocument());
+
+    expect(onUpdate).toHaveBeenCalledTimes(2);
+  });
+});

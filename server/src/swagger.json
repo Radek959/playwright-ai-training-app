@@ -24,6 +24,7 @@
       },
       "post": {
         "summary": "Create task",
+        "description": "Creating a task with status 'done' requires every id in 'dependencies' to already reference a task whose status is 'done'; otherwise the request is rejected with 409 (see TaskCompletionBlockedResponse) and no task is created.",
         "requestBody": {
           "required": true,
           "content": {
@@ -43,6 +44,12 @@
             "description": "Validation error",
             "content": {
               "application/json": { "schema": { "$ref": "#/components/schemas/ValidationErrorResponse" } }
+            }
+          },
+          "409": {
+            "description": "status is 'done' but at least one direct dependency is not yet 'done'",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/TaskCompletionBlockedResponse" } }
             }
           }
         }
@@ -85,7 +92,7 @@
       },
       "put": {
         "summary": "Update task",
-        "description": "id is not an updatable field and any attempt to set it (or any other field outside TaskUpdateInput) returns 400.",
+        "description": "id is not an updatable field and any attempt to set it (or any other field outside TaskUpdateInput) returns 400. Whenever the resulting task (existing fields merged with the patch) has status 'done' — whether status is changing to 'done' now or the task was already 'done' and only 'dependencies' changed — every id in the resulting 'dependencies' must reference a task whose status is 'done'; otherwise the request is rejected with 409 (see TaskCompletionBlockedResponse) and the task is left completely unchanged.",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
@@ -103,7 +110,13 @@
               "application/json": { "schema": { "$ref": "#/components/schemas/ValidationErrorResponse" } }
             }
           },
-          "404": { "description": "Not found" }
+          "404": { "description": "Not found" },
+          "409": {
+            "description": "Resulting status is 'done' but at least one direct dependency is not yet 'done'",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/TaskCompletionBlockedResponse" } }
+            }
+          }
         }
       },
       "delete": {
@@ -204,7 +217,7 @@
           "taskType": { "type": "string", "enum": ["bug", "feature", "research"], "nullable": true },
           "estimatedHours": { "type": "number", "nullable": true },
           "tags": { "type": "array", "items": { "type": "string" } },
-          "dependencies": { "type": "array", "items": { "type": "string" }, "description": "IDs of other tasks this task depends on." },
+          "dependencies": { "type": "array", "items": { "type": "string" }, "description": "IDs of other tasks this task depends on. A task cannot have status 'done' while any of these directly referenced tasks is not itself 'done'." },
           "severity": { "type": "string", "enum": ["critical", "major", "minor"], "nullable": true, "description": "Required when taskType is bug." },
           "requiresApproval": { "type": "boolean" },
           "approver": { "type": "string", "nullable": true, "description": "Required when requiresApproval is true." }
@@ -224,13 +237,13 @@
           "taskType": { "type": "string", "enum": ["bug", "feature", "research"] },
           "estimatedHours": { "type": "number", "minimum": 1 },
           "tags": { "type": "array", "items": { "type": "string" } },
-          "dependencies": { "type": "array", "items": { "type": "string" }, "description": "Must reference existing task IDs." },
+          "dependencies": { "type": "array", "items": { "type": "string" }, "description": "Must reference existing task IDs. If status is 'done', every referenced task must already be 'done' (see TaskCompletionBlockedResponse)." },
           "severity": { "type": "string", "enum": ["critical", "major", "minor"] },
           "requiresApproval": { "type": "boolean" },
           "approver": { "type": "string" }
         },
         "required": ["title"],
-        "description": "Business rules: bug requires severity; research requires estimatedHours >= 1; high priority tasks with estimatedHours cannot exceed 24; requiresApproval=true requires approver."
+        "description": "Business rules: bug requires severity; research requires estimatedHours >= 1; high priority tasks with estimatedHours cannot exceed 24; requiresApproval=true requires approver; status 'done' requires every direct dependency to already be 'done'."
       },
       "TaskUpdateInput": {
         "type": "object",
@@ -245,13 +258,13 @@
           "taskType": { "type": "string", "enum": ["bug", "feature", "research"], "nullable": true, "description": "Pass null to clear." },
           "estimatedHours": { "type": "number", "minimum": 1, "nullable": true, "description": "Pass null to clear." },
           "tags": { "type": "array", "items": { "type": "string" }, "description": "Send [] to clear; null is not accepted for array fields." },
-          "dependencies": { "type": "array", "items": { "type": "string" }, "description": "Send [] to clear; null is not accepted for array fields." },
+          "dependencies": { "type": "array", "items": { "type": "string" }, "description": "Send [] to clear; null is not accepted for array fields. If the resulting task's status is 'done', every referenced task must already be 'done' (see TaskCompletionBlockedResponse)." },
           "severity": { "type": "string", "enum": ["critical", "major", "minor"], "nullable": true, "description": "Pass null to clear." },
           "requiresApproval": { "type": "boolean" },
           "approver": { "type": "string", "nullable": true, "description": "Pass null to clear." }
         },
         "additionalProperties": false,
-        "description": "Partial update. Only these fields may be sent; any other field (including id) is rejected with 400. Fields marked nullable accept null to clear the stored value (required fields such as title/status/priority do not accept null). Fields are merged with the existing task before the same business rules as TaskCreateInput are re-validated."
+        "description": "Partial update. Only these fields may be sent; any other field (including id) is rejected with 400. Fields marked nullable accept null to clear the stored value (required fields such as title/status/priority do not accept null). Fields are merged with the existing task before the same business rules as TaskCreateInput are re-validated, including: if the resulting status is 'done', every direct dependency must already be 'done'."
       },
       "ValidationErrorResponse": {
         "type": "object",
@@ -268,6 +281,26 @@
             }
           }
         }
+      },
+      "TaskCompletionBlockedResponse": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string", "enum": ["Cannot complete task with incomplete dependencies"] },
+          "blockingDependencies": {
+            "type": "array",
+            "description": "Only the direct dependencies (from 'dependencies') whose status is not 'done'; dependencies that are already 'done' are omitted.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "title": { "type": "string" },
+                "status": { "type": "string", "enum": ["todo", "in-progress"] }
+              },
+              "required": ["id", "title", "status"]
+            }
+          }
+        },
+        "required": ["error", "blockingDependencies"]
       },
       "User": {
         "type": "object",

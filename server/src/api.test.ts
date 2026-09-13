@@ -157,6 +157,142 @@ describe("API Integration Tests", () => {
     });
   });
 
+  describe("Task dependency completion rule", () => {
+    it("creates a done task with no dependencies", async () => {
+      const response = await request(app).post("/api/tasks").send({ title: "No deps task", status: "done" });
+      expect(response.status).toBe(201);
+      expect(response.body.status).toBe("done");
+      expect(response.body.completedAt).toBeDefined();
+    });
+
+    it("creates a done task when all dependencies are already done", async () => {
+      const dep = await request(app).post("/api/tasks").send({ title: "Dependency one", status: "done" });
+      expect(dep.status).toBe(201);
+
+      const response = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Done task with done dep", status: "done", dependencies: [dep.body.id] });
+
+      expect(response.status).toBe(201);
+      expect(response.body.status).toBe("done");
+    });
+
+    it("returns 409 when creating a done task with an active dependency", async () => {
+      const dep = await request(app).post("/api/tasks").send({ title: "Active dependency", status: "todo" });
+      expect(dep.status).toBe(201);
+
+      const response = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Blocked done task", status: "done", dependencies: [dep.body.id] });
+
+      expect(response.status).toBe(409);
+      expect(response.body.error).toBe("Cannot complete task with incomplete dependencies");
+      expect(response.body.blockingDependencies).toEqual([
+        { id: dep.body.id, title: "Active dependency", status: "todo" }
+      ]);
+
+      // The task must not have been created.
+      const search = await request(app).get(`/api/tasks/search?q=Blocked done task`);
+      expect(search.body).toEqual([]);
+    });
+
+    it("returns 409 when updating an existing task's status to done with an active dependency", async () => {
+      const dep = await request(app).post("/api/tasks").send({ title: "Still in progress", status: "in-progress" });
+      const task = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Task to complete", status: "todo", dependencies: [dep.body.id] });
+
+      const response = await request(app).put(`/api/tasks/${task.body.id}`).send({ status: "done" });
+
+      expect(response.status).toBe(409);
+      expect(response.body.error).toBe("Cannot complete task with incomplete dependencies");
+      expect(response.body.blockingDependencies).toEqual([
+        { id: dep.body.id, title: "Still in progress", status: "in-progress" }
+      ]);
+    });
+
+    it("reports every blocking dependency and omits the ones already done", async () => {
+      const doneDep = await request(app).post("/api/tasks").send({ title: "Already done", status: "done" });
+      const todoDep = await request(app).post("/api/tasks").send({ title: "Still todo", status: "todo" });
+      const inProgressDep = await request(app).post("/api/tasks").send({ title: "Still in progress", status: "in-progress" });
+
+      const response = await request(app)
+        .post("/api/tasks")
+        .send({
+          title: "Task with mixed deps",
+          status: "done",
+          dependencies: [doneDep.body.id, todoDep.body.id, inProgressDep.body.id]
+        });
+
+      expect(response.status).toBe(409);
+      expect(response.body.blockingDependencies).toEqual([
+        { id: todoDep.body.id, title: "Still todo", status: "todo" },
+        { id: inProgressDep.body.id, title: "Still in progress", status: "in-progress" }
+      ]);
+    });
+
+    it("does not change status or completedAt when a PUT is rejected for incomplete dependencies", async () => {
+      const dep = await request(app).post("/api/tasks").send({ title: "Blocking dep", status: "todo" });
+      const task = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Task that stays todo", status: "todo", dependencies: [dep.body.id] });
+
+      const response = await request(app).put(`/api/tasks/${task.body.id}`).send({ status: "done" });
+      expect(response.status).toBe(409);
+
+      const fetched = await request(app).get(`/api/tasks/${task.body.id}`);
+      expect(fetched.body.status).toBe("todo");
+      expect(fetched.body.completedAt).toBeUndefined();
+    });
+
+    it("allows completing a task once its dependency is completed first", async () => {
+      const dep = await request(app).post("/api/tasks").send({ title: "Dependency to finish", status: "todo" });
+      const task = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Waiting on dependency", status: "todo", dependencies: [dep.body.id] });
+
+      const blocked = await request(app).put(`/api/tasks/${task.body.id}`).send({ status: "done" });
+      expect(blocked.status).toBe(409);
+
+      const completeDep = await request(app).put(`/api/tasks/${dep.body.id}`).send({ status: "done" });
+      expect(completeDep.status).toBe(200);
+
+      const retry = await request(app).put(`/api/tasks/${task.body.id}`).send({ status: "done" });
+      expect(retry.status).toBe(200);
+      expect(retry.body.status).toBe("done");
+      expect(retry.body.completedAt).toBeDefined();
+    });
+
+    it("rejects adding an active dependency to a task that remains done", async () => {
+      const doneTask = await request(app).post("/api/tasks").send({ title: "Already completed", status: "done" });
+      const activeDep = await request(app).post("/api/tasks").send({ title: "Not yet done", status: "in-progress" });
+
+      const response = await request(app)
+        .put(`/api/tasks/${doneTask.body.id}`)
+        .send({ dependencies: [activeDep.body.id] });
+
+      expect(response.status).toBe(409);
+      expect(response.body.blockingDependencies).toEqual([
+        { id: activeDep.body.id, title: "Not yet done", status: "in-progress" }
+      ]);
+
+      const fetched = await request(app).get(`/api/tasks/${doneTask.body.id}`);
+      expect(fetched.body.dependencies ?? []).toEqual([]);
+    });
+
+    it("allows a normal update of an already-done task that keeps it valid", async () => {
+      const doneTask = await request(app).post("/api/tasks").send({ title: "Completed task", status: "done" });
+
+      const response = await request(app)
+        .put(`/api/tasks/${doneTask.body.id}`)
+        .send({ title: "Completed task, renamed" });
+
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe("done");
+      expect(response.body.title).toBe("Completed task, renamed");
+    });
+  });
+
   describe("Users API", () => {
     it("fetches list of users", async () => {
       const response = await request(app).get("/api/users");
