@@ -3,7 +3,8 @@ import { useSearchParams } from "react-router-dom";
 import { TaskCard } from "../components/TaskCard";
 import { TaskForm } from "../components/TaskForm";
 import { TaskEditModal } from "../components/TaskEditModal";
-import { TaskWizard, TaskDraft } from "../components/TaskWizard";
+import { TaskWizard } from "../components/TaskWizard";
+import type { TaskCreatePayload } from "../utils/taskFormModel";
 import { TaskTable } from "../components/TaskTable";
 import { TaskSearch } from "../components/TaskSearch";
 import { TaskGridItem } from "../components/TaskGridItem";
@@ -332,7 +333,7 @@ export default function Tasks() {
     setEditing(null);
   };
 
-  const handleCreate = async (draft: TaskDraft): Promise<void> => {
+  const handleCreate = async (draft: TaskCreatePayload): Promise<void> => {
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -739,6 +740,7 @@ export default function Tasks() {
         task={editing}
         open={Boolean(editing)}
         users={users}
+        existingTasks={tasks}
         onClose={() => setEditing(null)}
         onSave={async (patch) => {
           try {

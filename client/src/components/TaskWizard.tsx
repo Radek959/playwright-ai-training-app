@@ -1,18 +1,27 @@
 import { useRef, useState } from "react";
 import { Dialog } from "./Dialog";
+import { TaskDependencyPicker } from "./TaskDependencyPicker";
 import { APPROVERS } from "../utils/approvers";
-import { buildTaskWizardPayload } from "../utils/taskWizardPayload";
-import type { TaskDraft } from "../utils/taskWizardPayload";
+import {
+  buildTaskCreatePayload,
+  emptyTaskFormValues,
+  parseTagsInput,
+  validateTaskForm,
+  type TaskCreatePayload,
+  type TaskFormErrors,
+  type TaskFormField,
+  type TaskFormValues
+} from "../utils/taskFormModel";
 import type { Task, TaskPriority, TaskSeverity, TaskType, User } from "../types";
 
-export type { TaskDraft };
+export type { TaskCreatePayload };
 
 type WizardStep = 1 | 2 | 3;
 
 type Props = {
   users: User[];
   existingTasks: Task[];
-  onComplete: (task: TaskDraft) => Promise<void>;
+  onComplete: (task: TaskCreatePayload) => Promise<void>;
   onClose: () => void;
 };
 
@@ -24,59 +33,45 @@ const STEP_LABELS: Record<WizardStep, string> = {
   3: "Summary"
 };
 
+// Which form fields each step is responsible for. Validation itself lives in
+// the shared model (validateTaskForm) so the wizard and the edit modal can
+// never drift apart from each other or from the API contract.
+const STEP_FIELDS: Record<1 | 2, TaskFormField[]> = {
+  1: ["title", "priority", "taskType"],
+  2: ["assigneeId", "estimatedHours", "severity", "approver", "dependencies"]
+};
+
 export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props) {
   const [step, setStep] = useState<WizardStep>(1);
-  const [draft, setDraft] = useState<TaskDraft>({ taskType: "feature", status: "todo" });
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [values, setValues] = useState<TaskFormValues>(() => emptyTaskFormValues());
+  const [errors, setErrors] = useState<TaskFormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const firstFieldRef = useRef<HTMLSelectElement>(null);
 
-  const validateStep1 = () => {
-    const newErrors: Record<string, string> = {};
-    if (!draft.title || draft.title.length < 3) {
-      newErrors.title = "Title must be at least 3 characters";
-    }
-    if (!draft.priority) {
-      newErrors.priority = "Choose a priority";
-    }
-    if (!draft.taskType) {
-      newErrors.taskType = "Choose a task type";
-    }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+  const setValue = <K extends keyof TaskFormValues>(field: K, value: TaskFormValues[K]) => {
+    setValues((prev) => ({ ...prev, [field]: value }));
   };
 
-  const validateStep2 = () => {
-    const newErrors: Record<string, string> = {};
-    if (!draft.assigneeId) {
-      newErrors.assigneeId = "You must assign this task";
+  const validateAll = (): TaskFormErrors =>
+    validateTaskForm(values, {
+      mode: "create",
+      availableTaskIds: existingTasks.map((t) => t.id)
+    });
+
+  const validateStep = (which: 1 | 2) => {
+    const all = validateAll();
+    const stepErrors: TaskFormErrors = {};
+    for (const field of STEP_FIELDS[which]) {
+      if (all[field]) stepErrors[field] = all[field];
     }
-    if (draft.estimatedHours !== undefined && draft.estimatedHours < 1) {
-      newErrors.estimatedHours = "Minimum 1 hour";
-    }
-    // Contextual rule: High priority tasks must be estimated at <= 24h.
-    if (draft.priority === "high" && draft.estimatedHours && draft.estimatedHours > 24) {
-      newErrors.estimatedHours = "High priority tasks cannot exceed 24h";
-    }
-    // Bugs must have a severity.
-    if (draft.taskType === "bug" && !draft.severity) {
-      newErrors.severity = "Bugs require a severity level";
-    }
-    // Research tasks must have an hour estimate.
-    if (draft.taskType === "research" && !draft.estimatedHours) {
-      newErrors.estimatedHours = "Research tasks require a time estimate";
-    }
-    if (draft.requiresApproval && !draft.approver) {
-      newErrors.approver = "Select an approver";
-    }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    setErrors(stepErrors);
+    return Object.keys(stepErrors).length === 0;
   };
 
   const nextStep = () => {
-    if (step === 1 && !validateStep1()) return;
-    if (step === 2 && !validateStep2()) return;
+    if (step === 1 && !validateStep(1)) return;
+    if (step === 2 && !validateStep(2)) return;
     if (step < 3) setStep((s) => (s + 1) as WizardStep);
   };
 
@@ -86,11 +81,15 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
 
   const submit = async () => {
     if (isSubmitting) return;
-    if (!validateStep1() || !validateStep2()) return;
+    const all = validateAll();
+    if (Object.keys(all).length > 0) {
+      setErrors(all);
+      return;
+    }
     setIsSubmitting(true);
     setSubmitError(null);
     try {
-      await onComplete(buildTaskWizardPayload(draft));
+      await onComplete(buildTaskCreatePayload(values));
       onClose();
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Failed to create the task");
@@ -138,8 +137,8 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                 ref={firstFieldRef}
                 data-testid="task-type-select"
                 className="w-full border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
-                value={draft.taskType || "feature"}
-                onChange={(e) => setDraft({ ...draft, taskType: e.target.value as TaskType })}
+                value={values.taskType || "feature"}
+                onChange={(e) => setValue("taskType", e.target.value as TaskType)}
                 aria-invalid={Boolean(errors.taskType)}
                 aria-describedby={errors.taskType ? errorId("taskType") : undefined}
               >
@@ -162,8 +161,8 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                 id="task-title-input"
                 data-testid="task-title-input"
                 className="w-full border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
-                value={draft.title || ""}
-                onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                value={values.title}
+                onChange={(e) => setValue("title", e.target.value)}
                 placeholder="Enter a title..."
                 aria-invalid={Boolean(errors.title)}
                 aria-describedby={errors.title ? errorId("title") : undefined}
@@ -184,8 +183,8 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                 id="task-description-input"
                 data-testid="task-description-input"
                 className="w-full border rounded px-3 py-2 h-24 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
-                value={draft.description || ""}
-                onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                value={values.description}
+                onChange={(e) => setValue("description", e.target.value)}
                 placeholder="Describe the task..."
               />
             </div>
@@ -198,8 +197,8 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                 id="task-priority-select"
                 data-testid="task-priority-select"
                 className="w-full border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
-                value={draft.priority || ""}
-                onChange={(e) => setDraft({ ...draft, priority: e.target.value as TaskPriority })}
+                value={values.priority}
+                onChange={(e) => setValue("priority", e.target.value as TaskPriority | "")}
                 aria-invalid={Boolean(errors.priority)}
                 aria-describedby={errors.priority ? errorId("priority") : undefined}
                 required
@@ -216,7 +215,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
               )}
             </div>
 
-            {draft.priority === "high" && (
+            {values.priority === "high" && (
               <div className="bg-yellow-50 border border-yellow-300 rounded p-3 text-sm" data-testid="high-priority-warning" role="status">
                 High priority tasks should be completed within 24h
               </div>
@@ -236,8 +235,8 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                 id="task-assignee-select"
                 data-testid="task-assignee-select"
                 className="w-full border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
-                value={draft.assigneeId || ""}
-                onChange={(e) => setDraft({ ...draft, assigneeId: e.target.value })}
+                value={values.assigneeId}
+                onChange={(e) => setValue("assigneeId", e.target.value)}
                 aria-invalid={Boolean(errors.assigneeId)}
                 aria-describedby={errors.assigneeId ? errorId("assigneeId") : undefined}
                 required
@@ -258,18 +257,17 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
 
             <div>
               <label htmlFor="task-hours-input" className="block text-sm font-semibold mb-1">
-                Estimated time (hours) {draft.taskType === "research" && "*"}
+                Estimated time (hours) {values.taskType === "research" && "*"}
               </label>
               <input
                 id="task-hours-input"
                 type="number"
-                min="1"
+                min="0"
+                step="any"
                 data-testid="task-hours-input"
                 className="w-full border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
-                value={draft.estimatedHours ?? ""}
-                onChange={(e) =>
-                  setDraft({ ...draft, estimatedHours: e.target.value === "" ? undefined : Number(e.target.value) })
-                }
+                value={values.estimatedHours}
+                onChange={(e) => setValue("estimatedHours", e.target.value)}
                 aria-invalid={Boolean(errors.estimatedHours)}
                 aria-describedby={errors.estimatedHours ? errorId("estimatedHours") : undefined}
               />
@@ -290,13 +288,13 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                 autoComplete="off"
                 data-testid="task-due-date-input"
                 className="w-full border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
-                value={draft.dueDate || ""}
-                onChange={(e) => setDraft({ ...draft, dueDate: e.target.value })}
+                value={values.dueDate}
+                onChange={(e) => setValue("dueDate", e.target.value)}
               />
             </div>
 
             {/* Conditional: severity for Bug */}
-            {draft.taskType === "bug" && (
+            {values.taskType === "bug" && (
               <div data-testid="severity-field">
                 <label htmlFor="task-severity-select" className="block text-sm font-semibold mb-1">
                   Severity *
@@ -304,8 +302,8 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                 <select
                   id="task-severity-select"
                   className="w-full border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
-                  value={draft.severity || ""}
-                  onChange={(e) => setDraft({ ...draft, severity: e.target.value as TaskSeverity })}
+                  value={values.severity}
+                  onChange={(e) => setValue("severity", e.target.value as TaskSeverity | "")}
                   data-testid="task-severity-select"
                   aria-invalid={Boolean(errors.severity)}
                   aria-describedby={errors.severity ? errorId("severity") : undefined}
@@ -330,8 +328,8 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                 <input
                   id="requires-approval-checkbox"
                   type="checkbox"
-                  checked={draft.requiresApproval || false}
-                  onChange={(e) => setDraft({ ...draft, requiresApproval: e.target.checked })}
+                  checked={values.requiresApproval}
+                  onChange={(e) => setValue("requiresApproval", e.target.checked)}
                   data-testid="requires-approval-checkbox"
                 />
                 <span className="text-sm">Requires manager approval</span>
@@ -339,7 +337,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
             </div>
 
             {/* Conditional: approver */}
-            {draft.requiresApproval && (
+            {values.requiresApproval && (
               <div data-testid="approver-field">
                 <label htmlFor="task-approver-select" className="block text-sm font-semibold mb-1">
                   Approver *
@@ -347,8 +345,8 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                 <select
                   id="task-approver-select"
                   className="w-full border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
-                  value={draft.approver || ""}
-                  onChange={(e) => setDraft({ ...draft, approver: e.target.value })}
+                  value={values.approver}
+                  onChange={(e) => setValue("approver", e.target.value)}
                   data-testid="task-approver-select"
                   aria-invalid={Boolean(errors.approver)}
                   aria-describedby={errors.approver ? errorId("approver") : undefined}
@@ -375,30 +373,19 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                 id="task-tags-input"
                 className="w-full border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
                 placeholder="backend, urgent, api"
-                value={draft.tags?.join(", ") || ""}
-                onChange={(e) => setDraft({ ...draft, tags: e.target.value.split(",").map((t) => t.trim()).filter(Boolean) })}
+                value={values.tags.join(", ")}
+                onChange={(e) => setValue("tags", parseTagsInput(e.target.value))}
                 data-testid="task-tags-input"
               />
             </div>
 
-            <div>
-              <label htmlFor="task-dependencies-input" className="block text-sm font-semibold mb-1">
-                Dependencies (IDs of other tasks)
-              </label>
-              <input
-                id="task-dependencies-input"
-                className="w-full border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
-                placeholder="task-123, task-456"
-                value={draft.dependencies?.join(", ") || ""}
-                onChange={(e) =>
-                  setDraft({ ...draft, dependencies: e.target.value.split(",").map((t) => t.trim()).filter(Boolean) })
-                }
-                data-testid="task-dependencies-input"
-              />
-              <p className="text-xs text-gray-600 mt-1">
-                Available tasks: {existingTasks.map((t) => t.id).join(", ") || "none"}
-              </p>
-            </div>
+            <TaskDependencyPicker
+              idPrefix="wizard"
+              tasks={existingTasks}
+              value={values.dependencies}
+              onChange={(next) => setValue("dependencies", next)}
+              error={errors.dependencies}
+            />
           </div>
         )}
 
@@ -408,44 +395,44 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
 
             <div className="bg-gray-50 rounded p-4 space-y-3" data-testid="wizard-summary">
               <div>
-                <span className="font-semibold">Type:</span> <span className="text-gray-700">{draft.taskType}</span>
+                <span className="font-semibold">Type:</span> <span className="text-gray-700">{values.taskType}</span>
               </div>
               <div>
-                <span className="font-semibold">Title:</span> <span className="text-gray-700">{draft.title}</span>
+                <span className="font-semibold">Title:</span> <span className="text-gray-700">{values.title}</span>
               </div>
               <div>
-                <span className="font-semibold">Priority:</span> <span className="text-gray-700">{draft.priority}</span>
+                <span className="font-semibold">Priority:</span> <span className="text-gray-700">{values.priority}</span>
               </div>
               <div>
                 <span className="font-semibold">Assigned to:</span>{" "}
-                <span className="text-gray-700">{users.find((u) => u.id === draft.assigneeId)?.name || "—"}</span>
+                <span className="text-gray-700">{users.find((u) => u.id === values.assigneeId)?.name || "—"}</span>
               </div>
               <div>
                 <span className="font-semibold">Estimated time:</span>{" "}
-                <span className="text-gray-700">{draft.estimatedHours || "—"}h</span>
+                <span className="text-gray-700">{values.estimatedHours || "—"}h</span>
               </div>
               <div>
-                <span className="font-semibold">Due date:</span> <span className="text-gray-700">{draft.dueDate || "—"}</span>
+                <span className="font-semibold">Due date:</span> <span className="text-gray-700">{values.dueDate || "—"}</span>
               </div>
-              {draft.taskType === "bug" && (
+              {values.taskType === "bug" && (
                 <div>
-                  <span className="font-semibold">Severity:</span> <span className="text-gray-700">{draft.severity}</span>
+                  <span className="font-semibold">Severity:</span> <span className="text-gray-700">{values.severity}</span>
                 </div>
               )}
-                {draft.requiresApproval && (
+                {values.requiresApproval && (
                   <div>
-                    <span className="font-semibold">Approver:</span> <span className="text-gray-700">{draft.approver ? (APPROVERS[draft.approver] ? `${APPROVERS[draft.approver]} (${draft.approver})` : draft.approver) : "—"}</span>
+                    <span className="font-semibold">Approver:</span> <span className="text-gray-700">{values.approver ? (APPROVERS[values.approver] ? `${APPROVERS[values.approver]} (${values.approver})` : values.approver) : "—"}</span>
                   </div>
                 )}
-              {draft.tags && draft.tags.length > 0 && (
+              {values.tags.length > 0 && (
                 <div>
-                  <span className="font-semibold">Tags:</span> <span className="text-gray-700">{draft.tags.join(", ")}</span>
+                  <span className="font-semibold">Tags:</span> <span className="text-gray-700">{values.tags.join(", ")}</span>
                 </div>
               )}
-              {draft.dependencies && draft.dependencies.length > 0 && (
+              {values.dependencies.length > 0 && (
                 <div>
                   <span className="font-semibold">Dependencies:</span>{" "}
-                  <span className="text-gray-700">{draft.dependencies.join(", ")}</span>
+                  <span className="text-gray-700">{values.dependencies.join(", ")}</span>
                 </div>
               )}
             </div>
