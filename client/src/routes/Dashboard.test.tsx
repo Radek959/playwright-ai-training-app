@@ -1,15 +1,18 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi, beforeEach, MockInstance } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach, MockInstance } from "vitest";
 import Dashboard from "./Dashboard";
 import { AppErrorProvider } from "../context/AppErrorContext";
 import type { Task, User } from "../types";
 
 const users: User[] = [{ id: "u1", name: "Alice", email: "alice@example.com", role: "admin" }];
 
+// Frozen "now" for this whole file (see beforeEach/afterEach below), so the
+// overdue count never depends on the day/time the test suite actually runs.
+const NOW = new Date("2026-06-15T12:00:00.000Z");
 const DAY_MS = 24 * 60 * 60 * 1000;
 function daysFromNow(n: number): string {
-  return new Date(Date.now() + n * DAY_MS).toISOString();
+  return new Date(NOW.getTime() + n * DAY_MS).toISOString();
 }
 function daysAgo(n: number): string {
   return daysFromNow(-n);
@@ -53,8 +56,14 @@ function renderDashboard() {
 describe("Dashboard overdue stat", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
     fetchSpy = vi.spyOn(globalThis, "fetch");
     mockFetch();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("counts only overdue, non-done tasks", async () => {

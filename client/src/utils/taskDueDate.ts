@@ -41,3 +41,30 @@ export function isTaskOverdue(task: Pick<Task, "dueDate" | "status">, now: numbe
 export function isTaskDueSoon(task: Pick<Task, "dueDate" | "status">, now: number = Date.now()): boolean {
   return getTaskDueStatus(task, now) === "soon";
 }
+
+export type FormattedDueDate = {
+  /** Calendar date formatted in UTC, independent of the local timezone (e.g. "6/15/2026"). */
+  display: string;
+  /** Full ISO timestamp, suitable for a <time dateTime="..."> attribute. */
+  iso: string;
+};
+
+/**
+ * Formats a dueDate's UTC calendar day, matching the day getTaskDueStatus
+ * classifies against. Deliberately does not use toLocaleDateString()/
+ * toLocaleString() (which format in the local timezone) so the displayed
+ * date never shifts by a day relative to the classification in a timezone
+ * west or east of UTC. Returns null for a missing or unparsable dueDate.
+ */
+export function formatDueDateUtc(dateStr: string | undefined): FormattedDueDate | null {
+  if (!dateStr) return null;
+  const ms = new Date(dateStr).getTime();
+  if (Number.isNaN(ms)) return null;
+
+  return {
+    display: new Intl.DateTimeFormat(undefined, { year: "numeric", month: "numeric", day: "numeric", timeZone: "UTC" }).format(
+      ms
+    ),
+    iso: new Date(ms).toISOString()
+  };
+}

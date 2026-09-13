@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
-import { describe, expect, it, vi, beforeEach, MockInstance } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach, MockInstance } from "vitest";
 import Tasks from "./Tasks";
 import { AppErrorProvider, useAppError } from "../context/AppErrorContext";
 import type { Task, User } from "../types";
@@ -10,9 +10,13 @@ const users: User[] = [
   { id: "u2", name: "Bob", email: "bob@example.com", role: "editor" }
 ];
 
+// Frozen "now" for every test in this file (see the beforeEach/afterEach
+// pairs below) so due-date classification and its displayed date never
+// depend on the day/time/timezone the test suite actually runs in.
+const NOW = new Date("2026-06-15T12:00:00.000Z");
 const DAY_MS = 24 * 60 * 60 * 1000;
 function daysFromNow(n: number): string {
-  return new Date(Date.now() + n * DAY_MS).toISOString();
+  return new Date(NOW.getTime() + n * DAY_MS).toISOString();
 }
 function daysAgo(n: number): string {
   return daysFromNow(-n);
@@ -128,8 +132,14 @@ function activePanel() {
 describe("Tasks view URL state", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
     fetchSpy = vi.spyOn(globalThis, "fetch");
     mockFetch();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("restores the active tab and its filters/page from the URL on load", async () => {
@@ -406,8 +416,14 @@ describe("Tasks view URL state", () => {
 describe("Tasks view due-date filter", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
     fetchSpy = vi.spyOn(globalThis, "fetch");
     mockFetch();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("restores due=overdue from the URL, selects the control and shows only overdue tasks", async () => {
@@ -505,5 +521,27 @@ describe("Tasks view due-date filter", () => {
     expect((screen.getByLabelText("Filter by priority") as HTMLSelectElement).value).toBe("high");
     expect((screen.getByLabelText("Filter by due date") as HTMLSelectElement).value).toBe("all");
     expect(activePanel().getByTestId("task-card-t5")).toBeInTheDocument();
+  });
+
+  it("shows the Overdue label with the exact due date on the Active tab's task card", async () => {
+    renderTasks();
+    await waitForActiveTabLoaded();
+
+    // t1's dueDate is daysAgo(1) relative to the frozen NOW (2026-06-15), so
+    // its UTC calendar day is 2026-06-14.
+    const card = activePanel().getByTestId("task-card-t1");
+    const label = within(card).getByTestId("due-date-label");
+    expect(label).toHaveTextContent("Overdue · Due: 6/14/2026");
+  });
+
+  it("shows the Due soon label with the exact due date in Grid View", async () => {
+    renderTasks(["/tasks?tab=grid"]);
+    await waitFor(() => expect(screen.getByTestId("tab-grid")).toHaveAttribute("aria-selected", "true"));
+
+    // t6's dueDate is daysFromNow(2) relative to the frozen NOW, so its UTC
+    // calendar day is 2026-06-17.
+    const gridItem = screen.getByTestId("task-grid-item-t6");
+    const label = within(gridItem).getByTestId("due-date-label");
+    expect(label).toHaveTextContent("Due soon · Due: 6/17/2026");
   });
 });

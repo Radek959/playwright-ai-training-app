@@ -383,7 +383,7 @@ export function TaskTable({ tasks, users, sortKey, sortDir, onSortChange, onUpda
                           {cellErrors[dueDateErrorKey]}
                         </p>
                       )}
-                      <DueDateLabel task={task} className="inline-block mt-1 px-2 py-0.5 rounded text-xs" />
+                      <DueDateLabel task={task} showDate={false} className="inline-block mt-1 px-2 py-0.5 rounded text-xs" />
                     </td>
 
                     {/* Assignee - Editable */}

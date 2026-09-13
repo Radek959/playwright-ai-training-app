@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { UserDetails } from "./UserDetails";
-import { vi, describe, it, expect, beforeEach, MockInstance } from "vitest";
+import { vi, describe, it, expect, beforeEach, afterEach, MockInstance } from "vitest";
 
 const mockUser = {
   id: "user-1",
@@ -31,10 +31,18 @@ function renderComponent(id = "user-1") {
   );
 }
 
+const NOW = new Date("2026-06-15T12:00:00.000Z");
+
 describe("UserDetails", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
     fetchSpy = vi.spyOn(globalThis, "fetch");
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   function mockFetches(userStatus = 200) {
@@ -76,6 +84,13 @@ describe("UserDetails", () => {
     const taskLinks = screen.getAllByRole("link", { name: /View details for/ });
     expect(taskLinks.length).toBe(3);
     expect(taskLinks[0]).toHaveAttribute("href", "/tasks/task-1");
+
+    // task-1's dueDate (2024-12-31, well before the frozen "now") is overdue;
+    // the assigned-task list must still show the exact due date next to it.
+    const taskItem = screen.getByText("Active todo task").closest("li");
+    expect(taskItem).not.toBeNull();
+    const dueLabel = within(taskItem as HTMLElement).getByTestId("due-date-label");
+    expect(dueLabel).toHaveTextContent("Overdue · Due: 12/31/2024");
   });
 
   it("shows a sensible empty state when the user has no assigned tasks, with genuine zero stats", async () => {

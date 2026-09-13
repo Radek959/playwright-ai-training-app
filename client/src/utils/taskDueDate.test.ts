@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { getTaskDueStatus, isTaskDueSoon, isTaskOverdue } from "./taskDueDate";
+import { afterEach, describe, expect, it } from "vitest";
+import { formatDueDateUtc, getTaskDueStatus, isTaskDueSoon, isTaskOverdue } from "./taskDueDate";
+
+// This browser-targeted project's tsconfig has no Node types; process.env is
+// still available at runtime under Vitest (a Node process), so this test
+// file (only) declares the minimal shape it needs to toggle TZ.
+declare const process: { env: Record<string, string | undefined> };
 
 const NOW = Date.UTC(2026, 5, 15, 12, 30, 0); // 2026-06-15T12:30:00Z
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -69,5 +74,45 @@ describe("isTaskOverdue / isTaskDueSoon", () => {
     expect(isTaskOverdue({ dueDate: isoDaysFromNow(1), status: "todo" }, NOW)).toBe(false);
     expect(isTaskDueSoon({ dueDate: isoDaysFromNow(2), status: "todo" }, NOW)).toBe(true);
     expect(isTaskDueSoon({ dueDate: isoDaysFromNow(-1), status: "todo" }, NOW)).toBe(false);
+  });
+});
+
+describe("formatDueDateUtc", () => {
+  const originalTZ = process.env.TZ;
+
+  afterEach(() => {
+    process.env.TZ = originalTZ;
+  });
+
+  it("returns null for a missing or invalid dueDate", () => {
+    expect(formatDueDateUtc(undefined)).toBeNull();
+    expect(formatDueDateUtc("not-a-date")).toBeNull();
+  });
+
+  it("keeps the full ISO timestamp for the <time> dateTime attribute", () => {
+    expect(formatDueDateUtc("2026-06-15T00:00:00.000Z")?.iso).toBe("2026-06-15T00:00:00.000Z");
+  });
+
+  it("formats a midnight-UTC dueDate as the same calendar day getTaskDueStatus classifies against", () => {
+    const dueDate = "2026-06-15T00:00:00.000Z";
+    // Classified relative to a `now` that is also June 15 UTC -> "soon".
+    expect(getTaskDueStatus({ dueDate, status: "todo" }, Date.UTC(2026, 5, 15))).toBe("soon");
+    expect(formatDueDateUtc(dueDate)?.display).toBe("6/15/2026");
+  });
+
+  it("formats the same UTC calendar day regardless of the local timezone (west or east of UTC)", () => {
+    const dueDate = "2026-06-15T00:00:00.000Z";
+
+    process.env.TZ = "Pacific/Kiritimati"; // UTC+14, east of UTC
+    const eastResult = formatDueDateUtc(dueDate);
+
+    process.env.TZ = "Etc/GMT+12"; // UTC-12, west of UTC
+    const westResult = formatDueDateUtc(dueDate);
+
+    // A local-time based formatter (toLocaleDateString/toLocaleString) would
+    // shift this date by a day in one of these two zones; the UTC-forced
+    // formatter must not.
+    expect(eastResult).toEqual(westResult);
+    expect(westResult?.display).toBe("6/15/2026");
   });
 });

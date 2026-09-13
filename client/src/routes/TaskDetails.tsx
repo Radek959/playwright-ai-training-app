@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { useAppError } from "../context/AppErrorContext";
 import { getApproverLabel } from "../utils/approvers";
 import { DueDateLabel } from "../components/DueDateLabel";
+import { formatDueDateUtc } from "../utils/taskDueDate";
 import type { Task, User } from "../types";
 
 export function TaskDetails() {
@@ -118,6 +119,17 @@ export function TaskDetails() {
     }
   };
 
+  // Due Date specifically is rendered via the UTC calendar day (matching
+  // getTaskDueStatus's classification) rather than renderDate's local-
+  // timezone toLocaleString(), so the date shown here can never disagree
+  // with the Overdue/Due soon label next to it.
+  const renderDueDate = (dateStr?: string) => {
+    if (!dateStr) return "Not set";
+    const formatted = formatDueDateUtc(dateStr);
+    if (!formatted) return dateStr;
+    return <time dateTime={formatted.iso}>{formatted.display}</time>;
+  };
+
   const renderValue = (value: string | number | undefined | null) => {
     if (value === undefined || value === null || value === "") return "Not set";
     return String(value);
@@ -193,8 +205,8 @@ export function TaskDetails() {
             <div>
               <dt className="text-sm font-medium text-gray-500">Due Date</dt>
               <dd className="mt-1 text-gray-900 flex flex-wrap items-center gap-2">
-                <span>{renderDate(task.dueDate)}</span>
-                <DueDateLabel task={task} className="px-2 py-0.5 rounded text-xs" />
+                <span>{renderDueDate(task.dueDate)}</span>
+                <DueDateLabel task={task} showDate={false} className="px-2 py-0.5 rounded text-xs" />
               </dd>
             </div>
             <div>

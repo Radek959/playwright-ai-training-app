@@ -257,13 +257,33 @@ describe("TaskTable controlled sorting", () => {
 });
 
 describe("TaskTable due-date presentation and editing", () => {
-  it("shows an Overdue label next to the due-date cell without disturbing the editable input", () => {
+  it("shows an Overdue label (status only, no repeated date) next to the due-date cell without disturbing the editable input", () => {
     const overdue: Task = { id: "a", title: "Task A", status: "todo", priority: "medium", dueDate: "2020-01-01T00:00:00Z" };
     renderTable([overdue]);
 
-    expect(screen.getByText("Overdue")).toBeInTheDocument();
+    const label = screen.getByTestId("due-date-label");
+    expect(label).toHaveTextContent("Overdue");
+    // The editable input already shows the date, so the label must not
+    // repeat it (no "Due:" text alongside "Overdue").
+    expect(label.textContent).not.toMatch(/Due:/);
+
     const input = screen.getByTestId("edit-dueDate-a") as HTMLInputElement;
     expect(input.value).toBe("2020-01-01");
+  });
+
+  it("does not add a redundant label for a scheduled (non-overdue, non-soon) dueDate", () => {
+    const scheduled: Task = {
+      id: "a",
+      title: "Task A",
+      status: "todo",
+      priority: "medium",
+      dueDate: "2099-01-01T00:00:00Z"
+    };
+    renderTable([scheduled]);
+
+    expect(screen.queryByTestId("due-date-label")).not.toBeInTheDocument();
+    const input = screen.getByTestId("edit-dueDate-a") as HTMLInputElement;
+    expect(input.value).toBe("2099-01-01");
   });
 
   it("still commits a dueDate edit through onUpdate (no regression)", async () => {

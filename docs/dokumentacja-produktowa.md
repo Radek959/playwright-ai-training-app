@@ -334,33 +334,34 @@ Podobnie jak archiwizacja (sekcja 5), klasyfikacja terminu zadania jest **wyłą
 Każde zadanie ma dokładnie jeden z czterech stanów terminu, wyliczany względem bieżącego momentu (`now`):
 
 1. **Overdue (opóźnione)** — zadanie ma poprawne `dueDate`, jego status jest inny niż `"done"`, a dzień terminu (patrz niżej) jest wcześniejszy niż dzisiejszy dzień.
-2. **Due soon (zbliżający się termin)** — zadanie ma poprawne `dueDate`, jego status jest inny niż `"done"`, dzień terminu mieści się w przedziale od dzisiaj do `dzisiaj + 3 dni` włącznie (trzydniowe okno), i zadanie nie jest już `overdue` (te dwa stany się wykluczają).
-3. **Scheduled (termin ustawiony, bez ostrzeżenia)** — zadanie ma poprawne `dueDate`, ale nie kwalifikuje się do żadnego z powyższych: albo ma status `"done"` (zadania zakończone nigdy nie są oznaczane jako opóźnione ani zbliżające się do terminu, niezależnie od tego, jak odległe jest ich `dueDate`), albo termin wypada później niż `dzisiaj + 3 dni`.
+2. **Due soon (zbliżający się termin)** — zadanie ma poprawne `dueDate`, jego status jest inny niż `"done"`, dzień terminu mieści się w zakresie do trzech dni naprzód, obejmującym dzisiaj oraz dni +1, +2 i +3, i zadanie nie jest już `overdue` — te dwa stany wzajemnie się wykluczają, więc opóźnione zadanie nigdy nie trafia też do `soon`.
+3. **Scheduled (termin ustawiony, bez ostrzeżenia)** — zadanie ma poprawne `dueDate`, ale nie kwalifikuje się do żadnego z powyższych: albo ma status `"done"` (zadania zakończone nigdy nie są oznaczane jako opóźnione ani zbliżające się do terminu, niezależnie od tego, jak odległe jest ich `dueDate`), albo termin wypada później niż wspomniany zakres do trzech dni naprzód.
 4. **Brak ostrzeżenia / brak danych** — zadanie nie ma ustawionego `dueDate`, albo wartość `dueDate` nie daje się sparsować jako poprawna data. W tym przypadku UI nie pokazuje żadnej etykiety terminu (ani ostrzeżenia, ani „Due: …”).
 
-**Porównanie dni kalendarzowych UTC**: zarówno `dueDate`, jak i `now`, są sprowadzane do początku swojego dnia w strefie UTC (`00:00:00.000Z` tego dnia) przed porównaniem. Dzięki temu:
+**Porównanie dni kalendarzowych UTC**: zarówno `dueDate`, jak i `now`, są sprowadzane do początku swojego dnia w strefie UTC (`00:00:00.000Z` tego dnia) przed porównaniem, a dokładna data prezentowana w UI (patrz 11.2) jest formatowana według tego samego dnia kalendarzowego UTC — nigdy przez `toLocaleDateString()`/`toLocaleString()` w lokalnej strefie czasowej, co mogłoby przesunąć wyświetlaną datę o jeden dzień względem dnia użytego do klasyfikacji. Dzięki temu:
 
-- godzina zapisana w `dueDate` nigdy nie wpływa na klasyfikację w obrębie tego samego dnia (termin o `23:59Z` i termin o `00:01Z` tego samego dnia dają ten sam wynik);
-- wynik nie zależy od strefy czasowej środowiska, w którym działa przeglądarka czy testy — porównanie zawsze odbywa się w UTC, nie w czasie lokalnym.
-
-**Trzydniowe okno** dla `soon` obejmuje dzień dzisiejszy oraz trzy kolejne dni kalendarzowe (`dzisiaj`, `dzisiaj+1`, `dzisiaj+2`, `dzisiaj+3`) — termin przypadający czwartego dnia lub później jest traktowany jako `scheduled` (brak ostrzeżenia).
+- godzina zapisana w `dueDate` nigdy nie wpływa na klasyfikację ani na wyświetlaną datę w obrębie tego samego dnia (termin o `23:59Z` i termin o `00:01Z` tego samego dnia dają ten sam wynik i tę samą wyświetlaną datę);
+- wynik i wyświetlana data nie zależą od strefy czasowej środowiska, w którym działa przeglądarka czy testy — zarówno porównanie, jak i formatowanie, zawsze odbywają się w UTC, nigdy w czasie lokalnym; dotyczy to wyłącznie prezentacji `dueDate` — `completedAt` nadal jest formatowane jak dotychczas (`toLocaleString()`, sekcja 6.6).
 
 ### 11.2 Prezentacja w UI
 
-Wszędzie tam, gdzie prezentowane jest zadanie lub jego termin, stan terminu jest pokazywany jako **tekst** (nie tylko kolor), dzięki czemu jest dostępny również dla czytników ekranu:
+Wszędzie tam, gdzie prezentowane jest zadanie lub jego termin, stan terminu jest pokazywany jako **tekst** (nie tylko kolor), dzięki czemu jest dostępny również dla czytników ekranu. Etykiety `Overdue` i `Due soon` **nie usuwają dokładnej daty** — w miejscach, gdzie nie jest ona pokazana osobno (karta zadania, kafelek Grid View, lista zadań przypisanych użytkownikowi), etykieta zawiera zarówno stan, jak i dokładną datę terminu:
 
-- **Overdue** — tekst „Overdue”, styl w odcieniach czerwieni.
-- **Due soon** — tekst „Due soon”, styl w odcieniach bursztynu/amber.
+- **Overdue** — tekst „Overdue · Due: <data>”, styl w odcieniach czerwieni.
+- **Due soon** — tekst „Due soon · Due: <data>”, styl w odcieniach bursztynu/amber.
 - **Scheduled** — zwykłe „Due: <data>” bez dodatkowego stylu ostrzegawczego.
 - **Brak ostrzeżenia / brak danych** — nic nie jest renderowane (tak jak dotychczas, gdy zadanie nie ma `dueDate`).
 
-Etykieta pojawia się w każdym miejscu, w którym dotychczas prezentowany był termin zadania (lub gdzie powinien być prezentowany zgodnie z pozostałymi elementami tego samego widoku):
+W dwóch miejscach dokładna data terminu jest już widoczna obok etykiety z innego źródła (edytowalne pole `dueDate` w Table, pełna data w polu „Due Date” w szczegółach zadania) — tam etykieta pokazuje **wyłącznie stan** („Overdue”/„Due soon”, bez powtórzonej daty), a dla stanu `scheduled` w ogóle nic nie renderuje, żeby nie duplikować tej samej daty:
+
+- kolumnie „Due date” w **Table** — obok pola edycji `dueDate` (edycja terminu w tabeli działa dokładnie tak jak dotychczas, patrz sekcja 6.3 — etykieta jest wyłącznie dodatkową prezentacją tekstową stanu, bez daty);
+- widoku szczegółów zadania (`/tasks/:id`, patrz 6.6) — obok pełnej daty w polu „Due Date”, która jest formatowana według dnia kalendarzowego UTC (patrz wyżej), etykieta pokazuje tylko stan.
+
+W pozostałych miejscach — bez osobno widocznej daty — etykieta zawiera pełne „Overdue · Due: <data>” / „Due soon · Due: <data>”:
 
 - karcie zadania w zakładce **Active**;
 - kafelku **Grid View**;
-- kolumnie „Due date” w **Table** — obok pola edycji `dueDate` (edycja terminu w tabeli działa dokładnie tak jak dotychczas, patrz sekcja 6.3 — etykieta jest wyłącznie dodatkową prezentacją tekstową);
-- liście zadań przypisanych użytkownikowi na `/users/:id` (sekcje „Active tasks” / „Completed tasks”, patrz 6.7);
-- widoku szczegółów zadania (`/tasks/:id`, patrz 6.6) — obok pełnej daty w polu „Due Date”.
+- liście zadań przypisanych użytkownikowi na `/users/:id` (sekcje „Active tasks” / „Completed tasks”, patrz 6.7).
 
 ### 11.3 Filtr „Filter by due date” i parametr `due`
 
@@ -371,8 +372,8 @@ Stan tego filtra jest częścią udostępnialnego stanu URL widoku Tasks (sekcja
 | Wartość | Znaczenie |
 |---|---|
 | `all` (domyślna, pomijana w URL) | Brak filtrowania po terminie. |
-| `overdue` | Tylko zadania w stanie `overdue` (sekcja 11.1). |
-| `soon` | Tylko zadania w stanie `soon` (sekcja 11.1). |
+| `overdue` | Tylko zadania opóźnione (stan `overdue`, sekcja 11.1). |
+| `soon` | Tylko zadania zbliżające się do terminu (stan `soon`, sekcja 11.1) — **z wyłączeniem** zadań już opóźnionych; te trzeba wybrać osobno przez `due=overdue`. |
 
 Podobnie jak pozostałe filtry Active, `due` obowiązuje wyłącznie w tej zakładce, jest usuwany z URL po przejściu do zakładki, która go nie obsługuje, a jawna zmiana kontrolki resetuje stronę do 1 i tworzy nowy wpis w historii przeglądarki (Wstecz/Dalej odtwarzają wybór). Nieznana wartość `due` (inna niż `overdue`/`soon`/`all`) jest normalizowana do `all` niezależnie od stanu pobierania danych — tak jak `status`/`priority`.
 
