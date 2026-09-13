@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach, MockInstance } from "vitest";
 import Tasks from "./Tasks";
-import { AppErrorProvider } from "../context/AppErrorContext";
+import { AppErrorProvider, useAppError } from "../context/AppErrorContext";
 import type { Task, User } from "../types";
 
 const users: User[] = [
@@ -32,14 +32,14 @@ function jsonResponse(body: unknown) {
   return Promise.resolve(new Response(JSON.stringify(body)));
 }
 
-function mockFetch(options: { usersResponse?: Promise<Response> } = {}) {
+function mockFetch(options: { usersResponse?: Promise<Response>; tasksResponse?: Promise<Response> } = {}) {
   fetchSpy.mockImplementation((input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("/api/users")) {
       return options.usersResponse ?? jsonResponse(users);
     }
     if (url.includes("/api/tasks")) {
-      return jsonResponse(tasks);
+      return options.tasksResponse ?? jsonResponse(tasks);
     }
     return Promise.reject(new Error(`Unexpected fetch: ${url}`));
   });
@@ -48,6 +48,14 @@ function mockFetch(options: { usersResponse?: Promise<Response> } = {}) {
 function LocationProbe() {
   const location = useLocation();
   return <div data-testid="location-probe">{location.pathname + location.search}</div>;
+}
+
+// Tasks.tsx reports fetch failures via useAppError() (rendered as a banner
+// elsewhere, in App.tsx) rather than in its own markup, so tests that need
+// to know a failed request has settled read it directly through this probe.
+function ErrorProbe() {
+  const { error } = useAppError();
+  return <div data-testid="error-probe">{error ?? ""}</div>;
 }
 
 function NavControls() {
@@ -65,6 +73,7 @@ function renderTasks(initialEntries: string[] = ["/tasks"]) {
     <AppErrorProvider>
       <MemoryRouter initialEntries={initialEntries}>
         <LocationProbe />
+        <ErrorProbe />
         <NavControls />
         <Routes>
           <Route path="/tasks" element={<Tasks />} />
@@ -76,6 +85,14 @@ function renderTasks(initialEntries: string[] = ["/tasks"]) {
 
 function locationSearch() {
   return screen.getByTestId("location-probe").textContent?.replace("/tasks", "") ?? "";
+}
+
+function errorProbeText() {
+  return screen.getByTestId("error-probe").textContent ?? "";
+}
+
+async function waitForFetchError() {
+  await waitFor(() => expect(errorProbeText()).not.toBe(""));
 }
 
 // Waits until the Active tab has finished its first data load: either at
@@ -302,5 +319,76 @@ describe("Tasks view URL state", () => {
     // Sorting: click Status header, which changes the sort key in the URL.
     fireEvent.click(screen.getByTestId("sort-header-status"));
     await waitFor(() => expect(locationSearch()).toBe("?tab=table&sort=status"));
+  });
+
+  it("keeps a valid assignee filter in the URL when GET /api/users fails, instead of normalizing it away", async () => {
+    mockFetch({ usersResponse: Promise.resolve(new Response("Internal Server Error", { status: 500 })) });
+
+    renderTasks(["/tasks?assignee=u1"]);
+    await waitForActiveTabLoaded();
+    await waitForFetchError();
+
+    // Tasks did load successfully, and assignee=u1 is still applied to them.
+    expect(activePanel().getByTestId("task-card-t1")).toBeInTheDocument();
+    expect(activePanel().queryByTestId("task-card-t2")).not.toBeInTheDocument();
+    // A failed users request must not be mistaken for "no such user" and
+    // strip the filter from the URL.
+    expect(locationSearch()).toBe("?assignee=u1");
+  });
+
+  it("keeps the page number in the URL when GET /api/tasks fails, instead of clamping it against an empty list", async () => {
+    mockFetch({ tasksResponse: Promise.resolve(new Response("Internal Server Error", { status: 500 })) });
+
+    renderTasks(["/tasks?page=2"]);
+    await waitForFetchError();
+
+    // A failed tasks request must not be mistaken for "there are no results"
+    // and correct page=2 down to 1.
+    expect(locationSearch()).toBe("?page=2");
+  });
+
+  it("still corrects a page number beyond range once GET /api/tasks succeeds (no regression)", async () => {
+    renderTasks(["/tasks?page=99"]);
+    await waitForActiveTabLoaded();
+
+    await waitFor(() => expect(locationSearch()).toBe("?page=2"));
+    expect(activePanel().getByTestId("task-card-t6")).toBeInTheDocument();
+    expect(activePanel().getByTestId("task-card-t7")).toBeInTheDocument();
+  });
+
+  it("still normalizes an assignee id absent from a successfully loaded user list (no regression)", async () => {
+    renderTasks(["/tasks?assignee=no-such-user"]);
+    await waitForActiveTabLoaded();
+
+    await waitFor(() => expect(locationSearch()).toBe(""));
+    expect(screen.getByTestId("filter-assignee-all")).toHaveAttribute("aria-pressed", "true");
+    expect(activePanel().getByTestId("task-card-t1")).toBeInTheDocument();
+  });
+
+  it("navigates tabs with the keyboard and updates focus and the URL", async () => {
+    renderTasks();
+    await waitForActiveTabLoaded();
+
+    const activeTabBtn = screen.getByTestId("tab-active");
+    activeTabBtn.focus();
+    expect(document.activeElement).toBe(activeTabBtn);
+
+    fireEvent.keyDown(activeTabBtn, { key: "ArrowRight" });
+    await waitFor(() => expect(locationSearch()).toBe("?tab=grid"));
+    const gridTabBtn = screen.getByTestId("tab-grid");
+    expect(gridTabBtn).toHaveAttribute("aria-selected", "true");
+    expect(document.activeElement).toBe(gridTabBtn);
+
+    fireEvent.keyDown(gridTabBtn, { key: "End" });
+    await waitFor(() => expect(locationSearch()).toBe("?tab=analytics"));
+    const analyticsTabBtn = screen.getByTestId("tab-analytics");
+    expect(analyticsTabBtn).toHaveAttribute("aria-selected", "true");
+    expect(document.activeElement).toBe(analyticsTabBtn);
+
+    fireEvent.keyDown(analyticsTabBtn, { key: "Home" });
+    await waitFor(() => expect(locationSearch()).toBe(""));
+    const activeTabBtnAgain = screen.getByTestId("tab-active");
+    expect(activeTabBtnAgain).toHaveAttribute("aria-selected", "true");
+    expect(document.activeElement).toBe(activeTabBtnAgain);
   });
 });

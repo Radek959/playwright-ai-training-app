@@ -27,6 +27,11 @@ import {
   type TasksUrlState
 } from "./tasksUrlState";
 
+// "success" is the only state in which fetched data may be used to validate
+// or correct the URL (assignee vs. users, page vs. task count) — "loading"
+// and "error" must leave whatever the URL already says alone.
+type LoadState = "loading" | "success" | "error";
+
 function normalizeTask(raw: Partial<Task>): Task {
   return {
     id: raw.id!,
@@ -61,8 +66,13 @@ export default function Tasks() {
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [tasksLoaded, setTasksLoaded] = useState(false);
-  const [usersLoaded, setUsersLoaded] = useState(false);
+  // Distinct from a boolean "loaded" flag: URL validation that depends on
+  // the fetched data (assignee vs. the user list, page vs. the task count)
+  // must only run once a request has actually *succeeded* — a failed
+  // request or bad payload must not be treated as "there is no data", which
+  // would otherwise strip a perfectly valid URL parameter.
+  const [tasksLoadState, setTasksLoadState] = useState<LoadState>("loading");
+  const [usersLoadState, setUsersLoadState] = useState<LoadState>("loading");
   const [search, _setSearch] = useState<string>("");
   const pageSize = 5;
   const [editing, setEditing] = useState<Task | null>(null);
@@ -89,7 +99,7 @@ export default function Tasks() {
   const statusFilter = activeTab === "active" ? parseStatusFilter(searchParams.get("status")) : "all";
   const priorityFilter = activeTab === "active" ? parsePriorityFilter(searchParams.get("priority")) : "all";
   const assigneeRaw = activeTab === "active" ? parseAssigneeFilter(searchParams.get("assignee")) : "all";
-  const assigneeFilter = isAssigneeFilterValid(assigneeRaw, users, usersLoaded) ? assigneeRaw : "all";
+  const assigneeFilter = isAssigneeFilterValid(assigneeRaw, users, usersLoadState === "success") ? assigneeRaw : "all";
   const pageRaw = activeTab === "active" ? parsePage(searchParams.get("page")) : 1;
   const sortKey = activeTab === "table" ? parseSortKey(searchParams.get("sort")) : "title";
   const sortDir = activeTab === "table" ? parseSortDir(searchParams.get("order")) : "asc";
@@ -182,13 +192,15 @@ export default function Tasks() {
         if (!Array.isArray(data)) throw new Error("Unexpected payload");
         if (!cancelled) {
           setTasks(data.map(normalizeTask));
+          setTasksLoadState("success");
           tasksOk = true;
           clearErrorIfBothOk();
         }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Fetch error");
-      } finally {
-        if (!cancelled) setTasksLoaded(true);
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Fetch error");
+          setTasksLoadState("error");
+        }
       }
     };
 
@@ -200,13 +212,15 @@ export default function Tasks() {
         if (!Array.isArray(data)) throw new Error("Unexpected payload");
         if (!cancelled) {
           setUsers(data);
+          setUsersLoadState("success");
           usersOk = true;
           clearErrorIfBothOk();
         }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Fetch error");
-      } finally {
-        if (!cancelled) setUsersLoaded(true);
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Fetch error");
+          setUsersLoadState("error");
+        }
       }
     };
 
@@ -255,12 +269,13 @@ export default function Tasks() {
     return result;
   }, [enriched, activeTab, assigneeFilter, statusFilter, priorityFilter, search]);
 
-  // Pagination only exists on the Active tab. Once the task list has loaded,
-  // clamp the requested page into range; before that, leave it alone so an
-  // out-of-range page from a shared link isn't "corrected" to 1 based on the
-  // still-empty initial task list.
+  // Pagination only exists on the Active tab. Only clamp the requested page
+  // into range once the task list has been *successfully* fetched — while
+  // it's still loading, or if the fetch failed, `filtered` is an empty
+  // placeholder and clamping against it would wrongly "correct" a valid
+  // page number down to 1.
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const pageClamped = tasksLoaded ? Math.min(Math.max(pageRaw, 1), totalPages) : pageRaw;
+  const pageClamped = tasksLoadState === "success" ? Math.min(Math.max(pageRaw, 1), totalPages) : pageRaw;
   const paginated = filtered.slice((pageClamped - 1) * pageSize, pageClamped * pageSize);
 
   // Single source of normalization: whenever the parsed-and-corrected state
