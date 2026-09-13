@@ -3,6 +3,7 @@ import { useState } from "react";
 import Tasks from "./routes/Tasks";
 import Users from "./routes/Users";
 import Dashboard from "./routes/Dashboard";
+import { TaskDetails } from "./routes/TaskDetails";
 import { Dialog } from "./components/Dialog";
 import { useAppError } from "./context/AppErrorContext";
 
@@ -239,6 +240,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/tasks" element={<Tasks />} />
+              <Route path="/tasks/:id" element={<TaskDetails />} />
               <Route path="/users" element={<Users />} />
             </Routes>
           </div>

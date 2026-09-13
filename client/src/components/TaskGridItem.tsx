@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { UserAvatar } from "./UserAvatar";
 import type { TaskWithAssignee } from "../types";
 
@@ -22,17 +23,17 @@ const statusLabels = {
 
 export function TaskGridItem({ task, onClick }: Props) {
   const className =
-    "w-full text-left bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden group border border-gray-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600";
+    "w-full text-left bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden group border border-gray-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 flex flex-col";
   const testId = `task-grid-item-${task.id}`;
 
-  const content = (
-    <>
+  return (
+    <div className={className} data-testid={testId}>
       {/* Cover Image */}
       <div className="relative h-40 bg-gradient-to-br from-indigo-100 to-purple-100 overflow-hidden">
         {task.coverImage ? (
           <img
             src={task.coverImage}
-            alt={onClick ? "" : task.title}
+            alt={task.title}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             data-testid="task-cover-image"
           />
@@ -53,48 +54,51 @@ export function TaskGridItem({ task, onClick }: Props) {
       </div>
 
       {/* Content */}
-      <div className="p-5">
-        <h3 className="font-semibold text-gray-900 text-lg mb-2 line-clamp-2 group-hover:text-indigo-600 transition-colors">
+      <div className="p-5 flex-1 flex flex-col">
+        <h3 className="font-semibold text-gray-900 text-lg mb-2 line-clamp-2 transition-colors">
           {task.title}
         </h3>
 
         {task.description && <p className="text-sm text-gray-600 mb-4 line-clamp-2">{task.description}</p>}
 
-        {/* Footer */}
-        <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-          <span className="text-xs font-medium text-gray-500">
-            {statusLabels[task.status]}
-            {task.taskType && ` · ${task.taskType}`}
-          </span>
+        <div className="mt-auto">
+          {/* Status & Assignee */}
+          <div className="flex items-center justify-between pt-3 border-t border-gray-100 mb-3">
+            <span className="text-xs font-medium text-gray-500">
+              {statusLabels[task.status]}
+              {task.taskType && ` • ${task.taskType}`}
+            </span>
 
-          {task.assigneeName && (
-            <div className="flex items-center gap-2">
-              <UserAvatar src={task.assigneeAvatarUrl} name={task.assigneeName} size="sm" />
-              <span className="text-xs font-medium text-gray-700">{task.assigneeName}</span>
-            </div>
-          )}
+            {task.assigneeName && (
+              <div className="flex items-center gap-2">
+                <UserAvatar src={task.assigneeAvatarUrl} name={task.assigneeName} size="sm" />
+                <span className="text-xs font-medium text-gray-700">{task.assigneeName}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+            {onClick && (
+              <button
+                type="button"
+                onClick={onClick}
+                className="text-sm px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600 transition-colors"
+                aria-label={`Edit task: ${task.title}`}
+              >
+                Edit
+              </button>
+            )}
+            <Link
+              to={`/tasks/${task.id}`}
+              className="text-sm px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600 transition-colors"
+              aria-label={`View details for ${task.title}`}
+            >
+              View details
+            </Link>
+          </div>
         </div>
       </div>
-    </>
-  );
-
-  if (onClick) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        aria-label={`Open task ${task.title}, ${statusLabels[task.status]}, ${task.priority} priority`}
-        className={className}
-        data-testid={testId}
-      >
-        {content}
-      </button>
-    );
-  }
-
-  return (
-    <div className={className} data-testid={testId}>
-      {content}
     </div>
   );
 }

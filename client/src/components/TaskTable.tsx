@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAppError } from "../context/AppErrorContext";
 import type { Task, TaskPriority, TaskStatus, User } from "../types";
 
@@ -399,14 +400,23 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
 
                     {/* Actions */}
                     <td className="border-b p-3">
-                      <button
-                        onClick={() => handleRowDelete(task.id, task.title)}
-                        data-testid={`delete-${task.id}`}
-                        className="text-red-600 hover:underline text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600 rounded"
-                        aria-label={`Delete task: ${task.title}`}
-                      >
-                        Delete
-                      </button>
+                      <div className="flex gap-3">
+                        <Link
+                          to={`/tasks/${task.id}`}
+                          className="text-indigo-600 hover:underline text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600 rounded"
+                          aria-label={`View details for ${task.title}`}
+                        >
+                          View details
+                        </Link>
+                        <button
+                          onClick={() => handleRowDelete(task.id, task.title)}
+                          data-testid={`delete-${task.id}`}
+                          className="text-red-600 hover:underline text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600 rounded"
+                          aria-label={`Delete task: ${task.title}`}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
