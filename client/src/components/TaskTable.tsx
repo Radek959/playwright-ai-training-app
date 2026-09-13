@@ -3,12 +3,15 @@ import { Link } from "react-router-dom";
 import { useAppError } from "../context/AppErrorContext";
 import type { Task, TaskPriority, TaskStatus, User } from "../types";
 
-type SortKey = "title" | "priority" | "dueDate" | "assigneeId" | "status";
-type SortDir = "asc" | "desc";
+export type SortKey = "title" | "priority" | "dueDate" | "assigneeId" | "status";
+export type SortDir = "asc" | "desc";
 
 type Props = {
   tasks: Task[];
   users: User[];
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onSortChange: (key: SortKey) => void;
   onUpdate: (id: string, field: string, value: unknown) => void | Promise<void>;
   onDelete: (id: string) => void | Promise<void>;
   onBulkDelete: (ids: string[]) => Promise<string[]>;
@@ -22,10 +25,8 @@ const COLUMN_LABELS: Record<SortKey, string> = {
   assigneeId: "Assignee"
 };
 
-export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Props) {
+export function TaskTable({ tasks, users, sortKey, sortDir, onSortChange, onUpdate, onDelete, onBulkDelete }: Props) {
   const { setError, clearError } = useAppError();
-  const [sortKey, setSortKey] = useState<SortKey>("title");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [savingCell, setSavingCell] = useState<string | null>(null);
@@ -63,15 +64,6 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
       pendingFocusRestoreId.current = null;
     }
   }, [editingCell]);
-
-  const toggleSort = (key: SortKey) => {
-    if (sortKey === key) {
-      setSortDir(sortDir === "asc" ? "desc" : "asc");
-    } else {
-      setSortKey(key);
-      setSortDir("asc");
-    }
-  };
 
   const sorted = [...tasks].sort((a, b) => {
     let aVal: string = (a[sortKey] as string | undefined) ?? "";
@@ -226,7 +218,7 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
                 <th key={key} className="border-b p-3 text-left" scope="col" aria-sort={ariaSortFor(key)}>
                   <button
                     type="button"
-                    onClick={() => toggleSort(key)}
+                    onClick={() => onSortChange(key)}
                     className="flex items-center justify-between gap-2 w-full font-semibold hover:text-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 rounded"
                     data-testid={`sort-header-${key}`}
                   >

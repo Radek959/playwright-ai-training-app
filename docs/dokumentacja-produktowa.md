@@ -170,11 +170,13 @@ Zakładka **Archive** w widoku Tasks pokazuje wyłącznie zadania spełniające 
 
 Widok Tasks ma pięć zakładek: **Active**, **Grid View**, **Table**, **Archive**, **Analytics**.
 
+Cały odtwarzalny stan tego widoku (aktywna zakładka, filtry, strona, sortowanie tabeli) jest trzymany wyłącznie w parametrach adresu URL — komponent nie utrzymuje równoległego stanu React dla tych wartości, więc nie mogą się one rozjechać z adresem. Pełny opis kontraktu parametrów, wartości domyślnych i obsługi błędnych adresów znajduje się w sekcji 6.7.
+
 ### 6.1 Active
 
 - Pokazuje zadania ze statusem innym niż `"done"`.
 - Filtry dostępne tylko w tej zakładce: **Assignee** (Wszyscy / Nieprzypisane / konkretny użytkownik), **Status** (All / To Do / In Progress — bez opcji „Done”, bo zakładka i tak wyklucza zadania zakończone), **Priority** (All / Low / Medium / High).
-- Filtry Status i Priority ustawione w tej zakładce **pozostają aktywne również w zakładkach Grid View, Table i Archive** (współdzielony stan filtrów), mimo że te zakładki nie pokazują kontrolek do ich zmiany. Filtr Assignee działa wyłącznie w zakładce Active.
+- Filtry Status, Priority i Assignee, a także paginacja, dotyczą **wyłącznie** zakładki Active — nie wpływają na Grid View, Table, Archive ani Analytics. Dzięki temu żaden filtr nie zawęża wyników w miejscu, gdzie użytkownik nie widzi (i nie może zmienić) odpowiadającej mu kontrolki.
 - Paginacja: 5 zadań na stronę.
 - Przycisk „Quick Add” pokazuje/ukrywa uproszczony formularz tworzenia zadania (tylko: tytuł, opis, status, priorytet, termin, przypisanie — patrz sekcja 7.2).
 - Pusta lista po zastosowaniu filtrów pokazuje komunikat „No tasks match your criteria”.
@@ -182,20 +184,20 @@ Widok Tasks ma pięć zakładek: **Active**, **Grid View**, **Table**, **Archive
 ### 6.2 Grid View
 
 - Pokazuje zadania jako karty z miniaturą (`coverImage`, jeśli ustawiony — w przeciwnym razie ikona zastępcza), plakietką priorytetu, statusem, typem zadania oraz osobą przypisaną.
-- Podlega filtrom Status/Priority współdzielonym z zakładką Active (patrz wyżej), ale **nie** filtruje po statusie „nie done” — może pokazywać zadania zakończone.
-- Brak paginacji — pokazywane są wszystkie pasujące zadania naraz.
+- Pokazuje wszystkie zadania (bez filtrowania po statusie, priorytecie ani przypisaniu — patrz 6.1) i bez ograniczenia do zadań „nie done”; może więc pokazywać zadania zakończone.
+- Brak paginacji — pokazywane są wszystkie zadania naraz.
 - Kliknięcie karty otwiera modal edycji zadania.
 
 ### 6.3 Table
 
-- Tabela z sortowaniem po kolumnach: Title, Status, Priority, Due date, Assignee (kliknięcie nagłówka przełącza kierunek sortowania).
+- Tabela z sortowaniem po kolumnach: Title, Status, Priority, Due date, Assignee (kliknięcie nagłówka przełącza kierunek sortowania; pole i kierunek sortowania są odtwarzalne z adresu URL — patrz 6.7).
 - Edycja „inline” bezpośrednio w komórkach — ale tylko dla pól: `title`, `status`, `priority`, `dueDate`, `assigneeId`. Pozostałe pola zadania (typ, `severity`, `estimatedHours`, `tags`, `dependencies`, `requiresApproval`, `approver`) nie są tu ani widoczne, ani edytowalne. Jeśli zmiana statusu na `"done"` zostanie odrzucona przez API (`409`, patrz sekcja 2.6), komórka statusu pokazuje treść błędu pod polem, a status w tabeli pozostaje bez zmian — operację można ponowić od razu.
-- Zaznaczanie wielu wierszy (checkboxy) i masowe usuwanie zaznaczonych zadań; po operacji pokazywany jest komunikat z liczbą usuniętych zadań (a przy częściowym niepowodzeniu — ile się nie udało usunąć). Zaznaczenie dotyczy wyłącznie zadań aktualnie widocznych w tabeli: opcja „Select all” zaznacza tylko widoczne wiersze, licznik zaznaczonych rekordów i stan pośredni checkboxa „Select all” liczone są tylko względem widocznych zadań, a masowe usuwanie działa wyłącznie na identyfikatorach zadań nadal widocznych w tabeli w chwili wykonania operacji. Jeśli w wyniku zmiany filtrów lub innego zestawu zadań któreś z zaznaczonych wcześniej zadań przestaje być widoczne, jest automatycznie usuwane z zaznaczenia.
-- Podlega współdzielonym filtrom Status/Priority opisanym w sekcji 6.1, ale **nie** jest ograniczona do zadań o statusie innym niż `"done"` — w przeciwieństwie do zakładki Active, Table pokazuje również zadania zakończone (chyba że filtr Status akurat je wyklucza).
+- Zaznaczanie wielu wierszy (checkboxy) i masowe usuwanie zaznaczonych zadań; po operacji pokazywany jest komunikat z liczbą usuniętych zadań (a przy częściowym niepowodzeniu — ile się nie udało usunąć). Zaznaczenie dotyczy wyłącznie zadań aktualnie widocznych w tabeli: opcja „Select all” zaznacza tylko widoczne wiersze, licznik zaznaczonych rekordów i stan pośredni checkboxa „Select all” liczone są tylko względem widocznych zadań, a masowe usuwanie działa wyłącznie na identyfikatorach zadań nadal widocznych w tabeli w chwili wykonania operacji. Jeśli w wyniku zmiany filtrów lub innego zestawu zadań któreś z zaznaczonych wcześniej zadań przestaje być widoczne, jest automatycznie usuwane z zaznaczenia. Zaznaczenie wierszy, edycja komórek i sam fakt otwarcia modala/formularza nie są zapisywane w URL.
+- Pokazuje wszystkie zadania (bez filtrowania po statusie, priorytecie ani przypisaniu — patrz 6.1), w tym zadania zakończone — w przeciwieństwie do zakładki Active, Table nie wyklucza statusu `"done"`.
 
 ### 6.4 Archive
 
-- Pokazuje wyłącznie zadania spełniające regułę archiwizacji z sekcji 5, po zastosowaniu współdzielonych filtrów Status/Priority.
+- Pokazuje wyłącznie zadania spełniające regułę archiwizacji z sekcji 5. Nie podlega filtrom Status/Priority/Assignee (patrz 6.1).
 - Pusty stan pokazuje komunikat „Archive is Empty” wraz z opisem „Completed tasks are automatically archived after 30 days.”
 
 ### 6.5 Analytics
@@ -238,6 +240,36 @@ Widok Tasks ma pięć zakładek: **Active**, **Grid View**, **Table**, **Archive
 - **Konflikt (`409`)**: modal pozostaje otwarty, użytkownik nie znika z widoku, a wewnątrz modalu pokazywany jest zarówno komunikat główny („Cannot delete user with active tasks”), jak i lista blokujących zadań (`conflictingTasks`) — każde z tytułem, statusem i linkiem „View details” do `/tasks/:id`. Zamknięcie i ponowne otwarcie modalu czyści poprzedni błąd; kolejne kliknięcie „Delete user” zawsze wysyła nowe żądanie.
 - **Użytkownik już nie istnieje (`404`)** podczas próby usunięcia: modal pokazuje informację, że użytkownik już nie istnieje, wraz z linkiem powrotu do `/users`.
 - **Błąd sieciowy lub `5xx`**: modal pozostaje otwarty z komunikatem błędu i możliwością ponowienia — operacja nie jest traktowana tak, jakby zwróciła `409`, ani jakby się powiodła.
+
+### 6.9 Udostępnialny stan widoku Tasks (parametry URL)
+
+Adres `/tasks` jednoznacznie opisuje aktualnie wyświetlany widok: aktywną zakładkę, filtry (tam, gdzie mają zastosowanie — patrz 6.1–6.4), numer strony i sortowanie tabeli. URL jest jedynym źródłem prawdy dla tego stanu — komponent nie trzyma równoległego stanu Reacta dla tych wartości. Skopiowanie adresu, otwarcie go w nowej karcie, odświeżenie strony oraz przyciski Wstecz/Dalej przeglądarki zawsze odtwarzają dokładnie to, co było widoczne (bez pełnego przeładowania SPA w przypadku Wstecz/Dalej i zmiany zakładki/filtrów/strony/sortowania).
+
+**Parametry i obsługiwane wartości** (każdy zapisywany tylko wtedy, gdy różni się od wartości domyślnej):
+
+| Parametr | Zakładka | Wartości | Domyślna (pomijana w URL) |
+|---|---|---|---|
+| `tab` | wszystkie | `active`, `grid`, `table`, `archived`, `analytics` | `active` |
+| `status` | tylko `active` | `todo`, `in-progress` | `all` |
+| `priority` | tylko `active` | `low`, `medium`, `high` | `all` |
+| `assignee` | tylko `active` | `unassigned` lub identyfikator użytkownika | `all` |
+| `page` | tylko `active` | liczba całkowita ≥ 1 | `1` |
+| `sort` | tylko `table` | `title`, `status`, `priority`, `dueDate`, `assigneeId` | `title` |
+| `order` | tylko `table` | `asc`, `desc` | `asc` |
+
+Przykłady: `/tasks?status=in-progress&priority=high&assignee=user-1&page=2` (zakładka Active, domyślna) oraz `/tasks?tab=table&sort=dueDate&order=asc`.
+
+**Filtry i paginacja per zakładka** — zgodnie z decyzją opisaną w 6.1–6.4, filtry Status/Priority/Assignee oraz paginacja dotyczą wyłącznie zakładki Active; pole wyszukiwania (`TaskSearch`) nigdy nie trafia do URL, bo to osobny mechanizm (patrz sekcja 4) niezwiązany z listą/tabelą/kartami. Sortowanie (`sort`/`order`) dotyczy wyłącznie zakładki Table — `TaskTable` nie ma już własnego, niezależnego stanu sortowania; pole i kierunek są przekazywane do niego jako kontrolowane propsy z widoku `Tasks`, sterowane przez URL.
+
+**Zmiana zakładki** usuwa z URL parametry nieobsługiwane przez nową zakładkę (np. przejście z Active do Grid View czyści `status`/`priority`/`assignee`/`page`; przejście na Active ustawia stronę na 1). Zaznaczenie wierszy tabeli, otwarte modale/formularze i treść pola wyszukiwania nigdy nie trafiają do URL.
+
+**Paginacja**: po zmianie dowolnego filtra lub zakładki strona wraca na 1. Jeśli numer strony w URL wykracza poza liczbę dostępnych stron (również po utworzeniu, edycji lub usunięciu zadania, gdy zmienia się liczba wyników), zostaje on skorygowany do ostatniej dostępnej strony (a przynajmniej do strony 1) — użytkownik nigdy nie zostaje na pustej stronie, jeśli wcześniejsze strony mają wyniki. Korekta czeka na zakończenie pierwszego pobrania zadań z API, aby nie „poprawić” strony na 1 tylko dlatego, że lista jest jeszcze pusta w trakcie ładowania.
+
+**Błędne parametry** nigdy nie powodują awarii ani niewyjaśnionego pustego widoku: nieznana zakładka, nieznany status/priorytet, nieprawidłowy numer strony (tekst, zero, liczba ujemna, ułamek) oraz nieobsługiwane pole/kierunek sortowania wracają do wartości domyślnej. Identyfikator w `assignee`, który nie odpowiada żadnemu użytkownikowi, jest usuwany (filtr wraca do „All assignees”) — ale dopiero **po** zakończeniu pobierania listy użytkowników z `GET /api/users`; dopóki lista się ładuje, dowolny identyfikator w `assignee` jest traktowany jako potencjalnie poprawny i nie jest usuwany, żeby nie tracić poprawnego filtra z udostępnionego linku tylko dlatego, że `/api/users` jeszcze nie odpowiedział (z tego samego powodu zadania i użytkownicy są od siebie pobierani niezależnie, a nie w ramach jednego wspólnego `Promise.all`, który opóźniałby wyświetlenie zadań do czasu odpowiedzi obu żądań). W każdym z tych przypadków adres jest normalizowany przez `history.replaceState` (bez dodawania wpisu do historii), tak aby URL zawsze odpowiadał temu, co faktycznie widać na ekranie; nie jest przy tym pokazywany żaden globalny komunikat błędu.
+
+**Historia przeglądarki**: jawna zmiana zakładki, filtra, strony lub sortowania (klik, wybór z listy, klawiatura) tworzy nowy wpis w historii (możliwy do cofnięcia przyciskiem Wstecz). Automatyczna normalizacja błędnych parametrów oraz korekta strony poza zakresem używają `replace` i nie tworzą dodatkowego wpisu. Nawigacja klawiaturą między zakładkami (strzałki, Home, End) działa tak jak dotychczas i również aktualizuje URL jako jawna zmiana zakładki.
+
+Świadome ograniczenie: obie ścieżki wywołujące zmianę URL (jawna akcja użytkownika i automatyczna korekta uruchamiana efektem po doładowaniu danych) mogą się teoretycznie nałożyć, jeśli użytkownik kliknie inną zakładkę dokładnie w tej samej klatce renderowania, w której kończy się ładowanie danych wymagające korekty strony. Jest to skrajnie mało prawdopodobne w normalnym użytkowaniu (wymaga interakcji w oknie pojedynczych milisekund) i nie zostało zaadresowane dodatkową synchronizacją.
 
 ---
 
