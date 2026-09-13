@@ -1,4 +1,4 @@
-import { TaskStatus } from "./data.js";
+import { Task, TaskStatus } from "./data.js";
 import { ValidationError } from "./validation.js";
 
 /**
@@ -61,4 +61,29 @@ export function applyAllowedUpdate(
   if (errors.length > 0) return { ok: false, errors };
 
   return { ok: true, merged };
+}
+
+export type BlockingDependency = { id: string; title: string; status: TaskStatus };
+
+/**
+ * Returns the direct dependencies (from `dependencyIds`) that are not yet
+ * "done", in the shape the 409 response reports them. A task can only be
+ * completed once every dependency it directly lists is done; dependencies
+ * of dependencies are not considered. Shared by both task creation and
+ * task update so the rule can't drift between the two routes.
+ */
+export function findBlockingDependencies(
+  dependencyIds: string[] | undefined,
+  tasks: Pick<Task, "id" | "title" | "status">[]
+): BlockingDependency[] {
+  if (!dependencyIds || dependencyIds.length === 0) return [];
+
+  const blocking: BlockingDependency[] = [];
+  for (const depId of dependencyIds) {
+    const dep = tasks.find((t) => t.id === depId);
+    if (dep && dep.status !== "done") {
+      blocking.push({ id: dep.id, title: dep.title, status: dep.status });
+    }
+  }
+  return blocking;
 }

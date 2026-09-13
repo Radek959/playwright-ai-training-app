@@ -8,7 +8,7 @@ import {
   buildTaskCreateCandidate,
   validateTaskFields
 } from "../validation.js";
-import { applyAllowedUpdate, resolveCompletedAt } from "../taskLifecycle.js";
+import { applyAllowedUpdate, findBlockingDependencies, resolveCompletedAt } from "../taskLifecycle.js";
 
 export const tasksRouter = Router();
 
@@ -57,6 +57,14 @@ tasksRouter.post("/", (req, res) => {
   }
 
   const status = candidate.status as Task["status"];
+
+  if (status === "done") {
+    const blockingDependencies = findBlockingDependencies(candidate.dependencies as string[] | undefined, tasks);
+    if (blockingDependencies.length > 0) {
+      return res.status(409).json({ error: "Cannot complete task with incomplete dependencies", blockingDependencies });
+    }
+  }
+
   const completedAt = resolveCompletedAt(status, candidate.completedAt as string | undefined);
 
   const task: Task = {
@@ -101,7 +109,16 @@ tasksRouter.put("/:id", (req, res) => {
     return res.status(400).json({ error: "Validation failed", details: errors });
   }
 
-  const completedAt = resolveCompletedAt(merged.status as Task["status"], merged.completedAt as string | undefined);
+  const resultStatus = merged.status as Task["status"];
+
+  if (resultStatus === "done") {
+    const blockingDependencies = findBlockingDependencies(merged.dependencies as string[] | undefined, tasks);
+    if (blockingDependencies.length > 0) {
+      return res.status(409).json({ error: "Cannot complete task with incomplete dependencies", blockingDependencies });
+    }
+  }
+
+  const completedAt = resolveCompletedAt(resultStatus, merged.completedAt as string | undefined);
 
   const updated: Task = {
     ...(merged as Task),

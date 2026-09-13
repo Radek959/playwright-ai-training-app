@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyAllowedUpdate, resolveCompletedAt } from "./taskLifecycle.js";
+import { applyAllowedUpdate, findBlockingDependencies, resolveCompletedAt } from "./taskLifecycle.js";
 import { TASK_UPDATE_FIELDS, NULLABLE_TASK_FIELDS } from "./validation.js";
 
 describe("resolveCompletedAt", () => {
@@ -75,5 +75,34 @@ describe("applyAllowedUpdate", () => {
       const result = applyAllowedUpdate(existing, { completedAt: null }, TASK_UPDATE_FIELDS, NULLABLE_TASK_FIELDS);
       expect(result).toEqual({ ok: false, errors: [{ field: "completedAt", message: "completedAt cannot be null" }] });
     });
+  });
+});
+
+describe("findBlockingDependencies", () => {
+  const allTasks = [
+    { id: "d1", title: "Done dependency", status: "done" as const },
+    { id: "d2", title: "In progress dependency", status: "in-progress" as const },
+    { id: "d3", title: "Todo dependency", status: "todo" as const }
+  ];
+
+  it("returns an empty array when there are no dependencies", () => {
+    expect(findBlockingDependencies(undefined, allTasks)).toEqual([]);
+    expect(findBlockingDependencies([], allTasks)).toEqual([]);
+  });
+
+  it("returns an empty array when every dependency is done", () => {
+    expect(findBlockingDependencies(["d1"], allTasks)).toEqual([]);
+  });
+
+  it("returns every non-done dependency and omits done ones", () => {
+    const result = findBlockingDependencies(["d1", "d2", "d3"], allTasks);
+    expect(result).toEqual([
+      { id: "d2", title: "In progress dependency", status: "in-progress" },
+      { id: "d3", title: "Todo dependency", status: "todo" }
+    ]);
+  });
+
+  it("ignores dependency ids that no longer resolve to a task", () => {
+    expect(findBlockingDependencies(["missing"], allTasks)).toEqual([]);
   });
 });

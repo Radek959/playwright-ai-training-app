@@ -247,11 +247,29 @@ export function TaskDetails() {
           <ul className="space-y-2">
             {task.dependencies.map(depId => {
               const depTask = dependencies.find(d => d.id === depId);
+              const isBlocking = Boolean(depTask && depTask.status !== "done");
               return (
-                <li key={depId} className="bg-gray-50 p-3 rounded border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <li
+                  key={depId}
+                  className={`p-3 rounded border flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                    isBlocking ? "bg-red-50 border-red-200" : "bg-gray-50 border-gray-100"
+                  }`}
+                  data-testid={`dependency-${depId}`}
+                >
                   <div>
                     <span className="font-medium text-gray-900">{depTask ? depTask.title : depId}</span>
                     {depTask && <span className="ml-2 text-gray-500 text-sm font-mono">({depId})</span>}
+                    {depTask && (
+                      <span className="ml-2 text-sm text-gray-700 capitalize">— {depTask.status}</span>
+                    )}
+                    {isBlocking && (
+                      <span
+                        className="ml-2 inline-block bg-red-100 text-red-800 text-xs font-semibold px-2 py-0.5 rounded"
+                        data-testid={`dependency-blocking-${depId}`}
+                      >
+                        Blocking completion
+                      </span>
+                    )}
                   </div>
                   <Link to={`/tasks/${depId}`} className="text-indigo-600 hover:underline text-sm whitespace-nowrap">
                     View details
