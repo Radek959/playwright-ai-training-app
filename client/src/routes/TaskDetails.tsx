@@ -3,17 +3,38 @@ import { useParams, Link } from "react-router-dom";
 import { useAppError } from "../context/AppErrorContext";
 import { getApproverLabel } from "../utils/approvers";
 import { DueDateLabel } from "../components/DueDateLabel";
+import { TaskEditModal } from "../components/TaskEditModal";
 import { formatDueDateUtc } from "../utils/taskDueDate";
-import type { Task, User } from "../types";
+import { toApiError } from "../utils/apiError";
+import type { Task, TaskUpdateInput, User } from "../types";
+
+/**
+ * Loads the tasks a dependency list refers to. Returns an empty list when the
+ * task has no dependencies, so a cleared list never leaves stale entries on
+ * screen after a save.
+ */
+async function fetchDependencyTasks(dependencyIds: string[] | undefined): Promise<Task[]> {
+  if (!dependencyIds || dependencyIds.length === 0) return [];
+  const results = await Promise.all(
+    dependencyIds.map((depId) =>
+      fetch(`/api/tasks/${depId}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null)
+    )
+  );
+  return results.filter(Boolean) as Task[];
+}
 
 export function TaskDetails() {
   const { id } = useParams<{ id: string }>();
   const [task, setTask] = useState<Task | null>(null);
   const [users, setUsers] = useState<User[]>([]);
+  const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [dependencies, setDependencies] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
   const { setError, clearError } = useAppError();
 
   const loadData = useCallback(async () => {
@@ -49,16 +70,19 @@ export function TaskDetails() {
         console.warn("Failed to fetch users", err);
       }
 
-      // Fetch dependencies if any
-      if (taskData.dependencies && taskData.dependencies.length > 0) {
-        const depsPromises = taskData.dependencies.map(depId =>
-          fetch(`/api/tasks/${depId}`)
-            .then(r => r.ok ? r.json() : null)
-            .catch(() => null)
-        );
-        const depsData = await Promise.all(depsPromises);
-        setDependencies(depsData.filter(Boolean) as Task[]);
+      // The full task list only powers the edit modal's dependency picker,
+      // so a failure here must not break the read-only details view.
+      try {
+        const tasksRes = await fetch("/api/tasks");
+        if (tasksRes.ok) {
+          const tasksData = await tasksRes.json();
+          if (Array.isArray(tasksData)) setAllTasks(tasksData as Task[]);
+        }
+      } catch (err) {
+        console.warn("Failed to fetch tasks", err);
       }
+
+      setDependencies(await fetchDependencyTasks(taskData.dependencies));
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error loading task details";
       setFetchError(msg);
@@ -71,6 +95,41 @@ export function TaskDetails() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  /**
+   * Saves the edit modal's patch. The view is refreshed from the API's
+   * response (never from optimistically guessed local state), the dependency
+   * list is re-resolved so it matches what was actually stored, and the modal
+   * is only closed once the request succeeded — a rejected save leaves the
+   * last successfully saved version on screen with the modal still open, and
+   * the URL never changes either way.
+   */
+  const handleSave = async (patch: TaskUpdateInput) => {
+    if (!task) return;
+    let res: Response;
+    try {
+      res = await fetch(`/api/tasks/${task.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch)
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Update error";
+      setError(message);
+      throw err instanceof Error ? err : new Error(message);
+    }
+    if (!res.ok) {
+      const apiError = await toApiError(res, `Update failed: ${res.status}`);
+      setError(apiError.message);
+      throw apiError;
+    }
+    const updated = (await res.json()) as Task;
+    setTask(updated);
+    setAllTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    setDependencies(await fetchDependencyTasks(updated.dependencies));
+    setIsEditing(false);
+    clearError();
+  };
 
   if (loading) {
     return (
@@ -152,8 +211,20 @@ export function TaskDetails() {
         {task.coverImage && (
           <img src={task.coverImage} alt="" className="w-full h-48 object-cover rounded-lg mb-6" />
         )}
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">{task.title}</h1>
-        <p className="text-sm text-gray-500 font-mono">ID: {task.id}</p>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">{task.title}</h1>
+            <p className="text-sm text-gray-500 font-mono">ID: {task.id}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsEditing(true)}
+            data-testid="open-edit-task-btn"
+            className="self-start bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-800"
+          >
+            Edit task
+          </button>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -298,6 +369,17 @@ export function TaskDetails() {
           <p className="text-gray-900">Not set</p>
         )}
       </section>
+
+      {/* The very same modal the task list uses — the details view adds an
+          entry point to it rather than a second, parallel edit form. */}
+      <TaskEditModal
+        task={isEditing ? task : null}
+        open={isEditing}
+        users={users}
+        existingTasks={allTasks}
+        onClose={() => setIsEditing(false)}
+        onSave={handleSave}
+      />
     </div>
   );
 }
