@@ -1,25 +1,13 @@
 import { useRef, useState } from "react";
 import { Dialog } from "./Dialog";
 import { APPROVERS } from "../utils/approvers";
-import type { Task, TaskPriority, TaskSeverity, TaskStatus, TaskType, User } from "../types";
+import { buildTaskWizardPayload } from "../utils/taskWizardPayload";
+import type { TaskDraft } from "../utils/taskWizardPayload";
+import type { Task, TaskPriority, TaskSeverity, TaskType, User } from "../types";
+
+export type { TaskDraft };
 
 type WizardStep = 1 | 2 | 3;
-
-export type TaskDraft = {
-  title?: string;
-  description?: string;
-  priority?: TaskPriority;
-  status?: TaskStatus;
-  dueDate?: string;
-  assigneeId?: string;
-  estimatedHours?: number;
-  tags?: string[];
-  dependencies?: string[];
-  taskType?: TaskType;
-  severity?: TaskSeverity;
-  requiresApproval?: boolean;
-  approver?: string;
-};
 
 type Props = {
   users: User[];
@@ -64,7 +52,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
     if (!draft.assigneeId) {
       newErrors.assigneeId = "You must assign this task";
     }
-    if (draft.estimatedHours && draft.estimatedHours < 1) {
+    if (draft.estimatedHours !== undefined && draft.estimatedHours < 1) {
       newErrors.estimatedHours = "Minimum 1 hour";
     }
     // Contextual rule: High priority tasks must be estimated at <= 24h.
@@ -102,7 +90,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
     setIsSubmitting(true);
     setSubmitError(null);
     try {
-      await onComplete(draft);
+      await onComplete(buildTaskWizardPayload(draft));
       onClose();
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Failed to create the task");
@@ -278,8 +266,10 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                 min="1"
                 data-testid="task-hours-input"
                 className="w-full border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
-                value={draft.estimatedHours || ""}
-                onChange={(e) => setDraft({ ...draft, estimatedHours: Number(e.target.value) })}
+                value={draft.estimatedHours ?? ""}
+                onChange={(e) =>
+                  setDraft({ ...draft, estimatedHours: e.target.value === "" ? undefined : Number(e.target.value) })
+                }
                 aria-invalid={Boolean(errors.estimatedHours)}
                 aria-describedby={errors.estimatedHours ? errorId("estimatedHours") : undefined}
               />

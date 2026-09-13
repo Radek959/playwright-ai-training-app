@@ -36,6 +36,22 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
   const pendingFocusRestoreId = useRef<string | null>(null);
 
   useEffect(() => {
+    setSelectedIds((prev) => {
+      const visibleIds = new Set(tasks.map((t) => t.id));
+      const next = new Set<string>();
+      let changed = false;
+      prev.forEach((id) => {
+        if (visibleIds.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [tasks]);
+
+  useEffect(() => {
     if (editingCell) {
       titleEditInputRef.current?.focus();
       titleEditInputRef.current?.select();
@@ -91,11 +107,15 @@ export function TaskTable({ tasks, users, onUpdate, onDelete, onBulkDelete }: Pr
   };
 
   const handleBulkDelete = async () => {
-    const ids = Array.from(selectedIds);
+    const visibleIds = new Set(tasks.map((t) => t.id));
+    const ids = Array.from(selectedIds).filter((id) => visibleIds.has(id));
+    if (ids.length === 0) return;
     const deletedIds = await onBulkDelete(ids);
     setSelectedIds((prev) => {
-      const next = new Set(prev);
-      for (const id of deletedIds) next.delete(id);
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (!deletedIds.includes(id) && visibleIds.has(id)) next.add(id);
+      });
       return next;
     });
     if (deletedIds.length === ids.length) {
