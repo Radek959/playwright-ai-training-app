@@ -255,3 +255,55 @@ describe("TaskTable controlled sorting", () => {
     expect(screen.getByTestId("sort-header-title").closest("th")).toHaveAttribute("aria-sort", "none");
   });
 });
+
+describe("TaskTable due-date presentation and editing", () => {
+  it("shows an Overdue label (status only, no repeated date) next to the due-date cell without disturbing the editable input", () => {
+    const overdue: Task = { id: "a", title: "Task A", status: "todo", priority: "medium", dueDate: "2020-01-01T00:00:00Z" };
+    renderTable([overdue]);
+
+    const label = screen.getByTestId("due-date-label");
+    expect(label).toHaveTextContent("Overdue");
+    // The editable input already shows the date, so the label must not
+    // repeat it (no "Due:" text alongside "Overdue").
+    expect(label.textContent).not.toMatch(/Due:/);
+
+    const input = screen.getByTestId("edit-dueDate-a") as HTMLInputElement;
+    expect(input.value).toBe("2020-01-01");
+  });
+
+  it("does not add a redundant label for a scheduled (non-overdue, non-soon) dueDate", () => {
+    const scheduled: Task = {
+      id: "a",
+      title: "Task A",
+      status: "todo",
+      priority: "medium",
+      dueDate: "2099-01-01T00:00:00Z"
+    };
+    renderTable([scheduled]);
+
+    expect(screen.queryByTestId("due-date-label")).not.toBeInTheDocument();
+    const input = screen.getByTestId("edit-dueDate-a") as HTMLInputElement;
+    expect(input.value).toBe("2099-01-01");
+  });
+
+  it("still commits a dueDate edit through onUpdate (no regression)", async () => {
+    const taskA = makeTask("a", "Task A");
+    const { onUpdate } = renderTable([taskA]);
+
+    const input = screen.getByTestId("edit-dueDate-a") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "2030-06-01" } });
+
+    await waitFor(() =>
+      expect(onUpdate).toHaveBeenCalledWith("a", "dueDate", new Date("2030-06-01").toISOString())
+    );
+  });
+
+  it("keeps the default title-ascending sort order (no regression)", () => {
+    const taskB = makeTask("b", "Bravo");
+    const taskA = makeTask("a", "Alpha");
+    renderTable([taskB, taskA]);
+
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(rows.map((r) => r.getAttribute("data-testid"))).toEqual(["task-row-a", "task-row-b"]);
+  });
+});

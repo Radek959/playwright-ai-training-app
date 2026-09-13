@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useAppError } from "../context/AppErrorContext";
+import { DueDateLabel } from "./DueDateLabel";
 import type { TaskWithAssignee } from "../types";
 
 type Task = TaskWithAssignee;
@@ -47,7 +48,7 @@ export function TaskCard({
         <div className="flex gap-2 flex-wrap text-xs text-slate-600">
           <Badge label={task.status} tone={task.status === "done" ? "green" : task.status === "in-progress" ? "blue" : "gray"} />
           <Badge label={`P: ${task.priority}`} tone={task.priority === "high" ? "red" : task.priority === "medium" ? "yellow" : "gray"} />
-          {task.dueDate && <Badge label={`Due: ${new Date(task.dueDate).toLocaleDateString()}`} tone="slate" />}
+          <DueDateLabel task={task} className="px-2 py-0.5 rounded text-[11px]" />
           {task.assigneeName && <Badge label={`Owner: ${task.assigneeName}`} tone="indigo" />}
           {task.taskType && <Badge label={task.taskType} tone="slate" />}
           {task.severity && <Badge label={`Severity: ${task.severity}`} tone={task.severity === "critical" ? "red" : task.severity === "major" ? "yellow" : "gray"} />}

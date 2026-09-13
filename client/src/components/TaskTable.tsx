@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAppError } from "../context/AppErrorContext";
+import { DueDateLabel } from "./DueDateLabel";
 import type { Task, TaskPriority, TaskStatus, User } from "../types";
 
 export type SortKey = "title" | "priority" | "dueDate" | "assigneeId" | "status";
@@ -382,6 +383,7 @@ export function TaskTable({ tasks, users, sortKey, sortDir, onSortChange, onUpda
                           {cellErrors[dueDateErrorKey]}
                         </p>
                       )}
+                      <DueDateLabel task={task} showDate={false} className="inline-block mt-1 px-2 py-0.5 rounded text-xs" />
                     </td>
 
                     {/* Assignee - Editable */}

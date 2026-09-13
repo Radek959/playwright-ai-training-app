@@ -3,6 +3,7 @@ import {
   buildTasksSearchParams,
   isAssigneeFilterValid,
   parseAssigneeFilter,
+  parseDueFilter,
   parsePage,
   parsePriorityFilter,
   parseSortDir,
@@ -61,6 +62,20 @@ describe("parseAssigneeFilter", () => {
   });
 });
 
+describe("parseDueFilter", () => {
+  it("accepts known values", () => {
+    expect(parseDueFilter("overdue")).toBe("overdue");
+    expect(parseDueFilter("soon")).toBe("soon");
+  });
+
+  it("falls back to 'all' for null or unknown values", () => {
+    expect(parseDueFilter(null)).toBe("all");
+    expect(parseDueFilter("")).toBe("all");
+    expect(parseDueFilter("later")).toBe("all");
+    expect(parseDueFilter("all")).toBe("all");
+  });
+});
+
 describe("parsePage", () => {
   it("parses positive integers", () => {
     expect(parsePage("1")).toBe(1);
@@ -115,6 +130,7 @@ describe("buildTasksSearchParams", () => {
       status: "all",
       priority: "all",
       assignee: "all",
+      due: "all",
       page: 1,
       sortKey: "title",
       sortDir: "asc"
@@ -128,11 +144,26 @@ describe("buildTasksSearchParams", () => {
       status: "in-progress",
       priority: "high",
       assignee: "u1",
+      due: "overdue",
       page: 2,
       sortKey: "title",
       sortDir: "asc"
     });
-    expect(params.toString()).toBe("status=in-progress&priority=high&assignee=u1&page=2");
+    expect(params.toString()).toBe("status=in-progress&priority=high&assignee=u1&due=overdue&page=2");
+  });
+
+  it("includes the due filter alone when other active-tab params are default", () => {
+    const params = buildTasksSearchParams({
+      tab: "active",
+      status: "all",
+      priority: "all",
+      assignee: "all",
+      due: "soon",
+      page: 1,
+      sortKey: "title",
+      sortDir: "asc"
+    });
+    expect(params.toString()).toBe("due=soon");
   });
 
   it("includes tab, sort and order for the table tab and drops active-only params", () => {
@@ -141,6 +172,7 @@ describe("buildTasksSearchParams", () => {
       status: "todo",
       priority: "low",
       assignee: "u1",
+      due: "overdue",
       page: 3,
       sortKey: "dueDate",
       sortDir: "desc"
@@ -155,6 +187,7 @@ describe("buildTasksSearchParams", () => {
         status: "todo",
         priority: "low",
         assignee: "u1",
+        due: "soon",
         page: 3,
         sortKey: "dueDate",
         sortDir: "desc"
@@ -167,6 +200,7 @@ describe("buildTasksSearchParams", () => {
         status: "all",
         priority: "all",
         assignee: "all",
+        due: "all",
         page: 1,
         sortKey: "title",
         sortDir: "asc"
@@ -179,6 +213,7 @@ describe("buildTasksSearchParams", () => {
         status: "all",
         priority: "all",
         assignee: "all",
+        due: "all",
         page: 1,
         sortKey: "title",
         sortDir: "asc"

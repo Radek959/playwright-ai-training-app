@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
-import { describe, expect, it, vi, beforeEach, MockInstance } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach, MockInstance } from "vitest";
 import Tasks from "./Tasks";
 import { AppErrorProvider, useAppError } from "../context/AppErrorContext";
 import type { Task, User } from "../types";
@@ -10,18 +10,32 @@ const users: User[] = [
   { id: "u2", name: "Bob", email: "bob@example.com", role: "editor" }
 ];
 
+// Frozen "now" for every test in this file (see the beforeEach/afterEach
+// pairs below) so due-date classification and its displayed date never
+// depend on the day/time/timezone the test suite actually runs in.
+const NOW = new Date("2026-06-15T12:00:00.000Z");
+const DAY_MS = 24 * 60 * 60 * 1000;
+function daysFromNow(n: number): string {
+  return new Date(NOW.getTime() + n * DAY_MS).toISOString();
+}
+function daysAgo(n: number): string {
+  return daysFromNow(-n);
+}
+
 // Titles are deliberately alphabetical so the Table tab's default
 // sort-by-title order doubles as an easy sanity check. All tab panels stay
 // mounted in the DOM at once (only `hidden`), so assertions below target a
 // specific task's data-testid rather than its title text, to avoid matching
 // the same task rendered simultaneously in Active/Grid/Table/Archive.
+// t1 is overdue, t5 is overdue (and high priority), t6 is due soon; the rest
+// have no dueDate and so never match an overdue/soon filter.
 const tasks: Task[] = [
-  { id: "t1", title: "Alpha", status: "todo", priority: "low", assigneeId: "u1" },
+  { id: "t1", title: "Alpha", status: "todo", priority: "low", assigneeId: "u1", dueDate: daysAgo(1) },
   { id: "t2", title: "Bravo", status: "todo", priority: "medium", assigneeId: "u2" },
   { id: "t3", title: "Charlie", status: "in-progress", priority: "high", assigneeId: "u1" },
   { id: "t4", title: "Delta", status: "in-progress", priority: "low" },
-  { id: "t5", title: "Echo", status: "todo", priority: "high", assigneeId: "u2" },
-  { id: "t6", title: "Foxtrot", status: "in-progress", priority: "medium" },
+  { id: "t5", title: "Echo", status: "todo", priority: "high", assigneeId: "u2", dueDate: daysAgo(2) },
+  { id: "t6", title: "Foxtrot", status: "in-progress", priority: "medium", dueDate: daysFromNow(2) },
   { id: "t7", title: "Golf", status: "todo", priority: "low", assigneeId: "u1" },
   { id: "t8", title: "Hotel", status: "done", priority: "high", assigneeId: "u1" }
 ];
@@ -118,8 +132,14 @@ function activePanel() {
 describe("Tasks view URL state", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
     fetchSpy = vi.spyOn(globalThis, "fetch");
     mockFetch();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("restores the active tab and its filters/page from the URL on load", async () => {
@@ -390,5 +410,138 @@ describe("Tasks view URL state", () => {
     const activeTabBtnAgain = screen.getByTestId("tab-active");
     expect(activeTabBtnAgain).toHaveAttribute("aria-selected", "true");
     expect(document.activeElement).toBe(activeTabBtnAgain);
+  });
+});
+
+describe("Tasks view due-date filter", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+    mockFetch();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("restores due=overdue from the URL, selects the control and shows only overdue tasks", async () => {
+    renderTasks(["/tasks?due=overdue"]);
+    await waitForActiveTabLoaded();
+
+    expect((screen.getByLabelText("Filter by due date") as HTMLSelectElement).value).toBe("overdue");
+    // t1 and t5 are overdue; t6 is due soon (not overdue) and the rest have no dueDate.
+    expect(activePanel().getByTestId("task-card-t1")).toBeInTheDocument();
+    expect(activePanel().getByTestId("task-card-t5")).toBeInTheDocument();
+    expect(activePanel().queryByTestId("task-card-t6")).not.toBeInTheDocument();
+    expect(activePanel().queryByTestId("task-card-t2")).not.toBeInTheDocument();
+  });
+
+  it("restores due=soon from the URL and shows only due-soon tasks", async () => {
+    renderTasks(["/tasks?due=soon"]);
+    await waitForActiveTabLoaded();
+
+    expect((screen.getByLabelText("Filter by due date") as HTMLSelectElement).value).toBe("soon");
+    expect(activePanel().getByTestId("task-card-t6")).toBeInTheDocument();
+    expect(activePanel().queryByTestId("task-card-t1")).not.toBeInTheDocument();
+    expect(activePanel().queryByTestId("task-card-t5")).not.toBeInTheDocument();
+  });
+
+  it("combines the due filter with priority, status and assignee filters", async () => {
+    // t5 (Echo) is the only overdue task that is also high priority, todo and assigned to u2.
+    renderTasks(["/tasks?due=overdue&priority=high&status=todo&assignee=u2"]);
+    await waitForActiveTabLoaded();
+
+    expect(activePanel().getByTestId("task-card-t5")).toBeInTheDocument();
+    expect(activePanel().queryByTestId("task-card-t1")).not.toBeInTheDocument();
+  });
+
+  it("updates the URL when the due filter control changes and resets the page to 1", async () => {
+    renderTasks(["/tasks?page=1"]);
+    await waitForActiveTabLoaded();
+
+    fireEvent.change(screen.getByLabelText("Filter by due date"), { target: { value: "overdue" } });
+    await waitFor(() => expect(locationSearch()).toBe("?due=overdue"));
+    expect(activePanel().getByTestId("task-card-t1")).toBeInTheDocument();
+  });
+
+  it("resets an existing page number to 1 when the due filter changes", async () => {
+    renderTasks(["/tasks?page=2"]);
+    await waitForActiveTabLoaded();
+
+    fireEvent.change(screen.getByLabelText("Filter by due date"), { target: { value: "soon" } });
+    await waitFor(() => expect(locationSearch()).toBe("?due=soon"));
+  });
+
+  it("omits the default due=all from the URL", async () => {
+    renderTasks(["/tasks?due=all"]);
+    await waitForActiveTabLoaded();
+
+    await waitFor(() => expect(locationSearch()).toBe(""));
+    expect((screen.getByLabelText("Filter by due date") as HTMLSelectElement).value).toBe("all");
+  });
+
+  it("normalizes an unknown due value back to 'all'", async () => {
+    renderTasks(["/tasks?due=someday"]);
+    await waitForActiveTabLoaded();
+
+    await waitFor(() => expect(locationSearch()).toBe(""));
+    expect((screen.getByLabelText("Filter by due date") as HTMLSelectElement).value).toBe("all");
+  });
+
+  it("drops the due parameter when navigating to a tab that doesn't support it", async () => {
+    renderTasks(["/tasks?due=overdue"]);
+    await waitForActiveTabLoaded();
+
+    fireEvent.click(screen.getByTestId("tab-grid"));
+    await waitFor(() => expect(locationSearch()).toBe("?tab=grid"));
+  });
+
+  it("restores the due filter after Back/Forward navigation", async () => {
+    renderTasks(["/tasks"]);
+    await waitForActiveTabLoaded();
+
+    fireEvent.change(screen.getByLabelText("Filter by due date"), { target: { value: "overdue" } });
+    await waitFor(() => expect(locationSearch()).toBe("?due=overdue"));
+
+    fireEvent.click(screen.getByText("go-back"));
+    await waitFor(() => expect(locationSearch()).toBe(""));
+
+    fireEvent.click(screen.getByText("go-forward"));
+    await waitFor(() => expect(locationSearch()).toBe("?due=overdue"));
+    expect((screen.getByLabelText("Filter by due date") as HTMLSelectElement).value).toBe("overdue");
+  });
+
+  it("keeps existing URL parameters working alongside the due filter (no regression)", async () => {
+    renderTasks(["/tasks?status=todo&priority=high"]);
+    await waitForActiveTabLoaded();
+
+    expect((screen.getByLabelText("Filter by status") as HTMLSelectElement).value).toBe("todo");
+    expect((screen.getByLabelText("Filter by priority") as HTMLSelectElement).value).toBe("high");
+    expect((screen.getByLabelText("Filter by due date") as HTMLSelectElement).value).toBe("all");
+    expect(activePanel().getByTestId("task-card-t5")).toBeInTheDocument();
+  });
+
+  it("shows the Overdue label with the exact due date on the Active tab's task card", async () => {
+    renderTasks();
+    await waitForActiveTabLoaded();
+
+    // t1's dueDate is daysAgo(1) relative to the frozen NOW (2026-06-15), so
+    // its UTC calendar day is 2026-06-14.
+    const card = activePanel().getByTestId("task-card-t1");
+    const label = within(card).getByTestId("due-date-label");
+    expect(label).toHaveTextContent("Overdue · Due: 6/14/2026");
+  });
+
+  it("shows the Due soon label with the exact due date in Grid View", async () => {
+    renderTasks(["/tasks?tab=grid"]);
+    await waitFor(() => expect(screen.getByTestId("tab-grid")).toHaveAttribute("aria-selected", "true"));
+
+    // t6's dueDate is daysFromNow(2) relative to the frozen NOW, so its UTC
+    // calendar day is 2026-06-17.
+    const gridItem = screen.getByTestId("task-grid-item-t6");
+    const label = within(gridItem).getByTestId("due-date-label");
+    expect(label).toHaveTextContent("Due soon · Due: 6/17/2026");
   });
 });
