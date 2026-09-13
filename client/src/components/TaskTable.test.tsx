@@ -255,3 +255,35 @@ describe("TaskTable controlled sorting", () => {
     expect(screen.getByTestId("sort-header-title").closest("th")).toHaveAttribute("aria-sort", "none");
   });
 });
+
+describe("TaskTable due-date presentation and editing", () => {
+  it("shows an Overdue label next to the due-date cell without disturbing the editable input", () => {
+    const overdue: Task = { id: "a", title: "Task A", status: "todo", priority: "medium", dueDate: "2020-01-01T00:00:00Z" };
+    renderTable([overdue]);
+
+    expect(screen.getByText("Overdue")).toBeInTheDocument();
+    const input = screen.getByTestId("edit-dueDate-a") as HTMLInputElement;
+    expect(input.value).toBe("2020-01-01");
+  });
+
+  it("still commits a dueDate edit through onUpdate (no regression)", async () => {
+    const taskA = makeTask("a", "Task A");
+    const { onUpdate } = renderTable([taskA]);
+
+    const input = screen.getByTestId("edit-dueDate-a") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "2030-06-01" } });
+
+    await waitFor(() =>
+      expect(onUpdate).toHaveBeenCalledWith("a", "dueDate", new Date("2030-06-01").toISOString())
+    );
+  });
+
+  it("keeps the default title-ascending sort order (no regression)", () => {
+    const taskB = makeTask("b", "Bravo");
+    const taskA = makeTask("a", "Alpha");
+    renderTable([taskB, taskA]);
+
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(rows.map((r) => r.getAttribute("data-testid"))).toEqual(["task-row-a", "task-row-b"]);
+  });
+});

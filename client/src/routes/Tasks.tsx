@@ -10,18 +10,21 @@ import { TaskGridItem } from "../components/TaskGridItem";
 import { useAppError } from "../context/AppErrorContext";
 import { isArchived } from "../utils/taskArchive";
 import { toApiError } from "../utils/apiError";
+import { getTaskDueStatus } from "../utils/taskDueDate";
 import type { Task, TaskUpdateInput, TaskWithAssignee, User } from "../types";
 import {
   TAB_ORDER,
   buildTasksSearchParams,
   isAssigneeFilterValid,
   parseAssigneeFilter,
+  parseDueFilter,
   parsePage,
   parsePriorityFilter,
   parseSortDir,
   parseSortKey,
   parseStatusFilter,
   parseTab,
+  type DueFilter,
   type SortKey,
   type TabView,
   type TasksUrlState
@@ -100,6 +103,7 @@ export default function Tasks() {
   const priorityFilter = activeTab === "active" ? parsePriorityFilter(searchParams.get("priority")) : "all";
   const assigneeRaw = activeTab === "active" ? parseAssigneeFilter(searchParams.get("assignee")) : "all";
   const assigneeFilter = isAssigneeFilterValid(assigneeRaw, users, usersLoadState === "success") ? assigneeRaw : "all";
+  const dueFilter = activeTab === "active" ? parseDueFilter(searchParams.get("due")) : "all";
   const pageRaw = activeTab === "active" ? parsePage(searchParams.get("page")) : 1;
   const sortKey = activeTab === "table" ? parseSortKey(searchParams.get("sort")) : "title";
   const sortDir = activeTab === "table" ? parseSortDir(searchParams.get("order")) : "asc";
@@ -110,6 +114,7 @@ export default function Tasks() {
       status: statusFilter,
       priority: priorityFilter,
       assignee: assigneeFilter,
+      due: dueFilter,
       page: pageRaw,
       sortKey,
       sortDir,
@@ -132,6 +137,10 @@ export default function Tasks() {
 
   const handleAssigneeFilterChange = (value: string) => {
     updateTasksUrl({ assignee: value, page: 1 });
+  };
+
+  const handleDueFilterChange = (value: DueFilter) => {
+    updateTasksUrl({ due: value, page: 1 });
   };
 
   const handlePageChange = (nextPage: number) => {
@@ -259,15 +268,16 @@ export default function Tasks() {
 
       if (statusFilter !== "all") result = result.filter((t) => t.status === statusFilter);
       if (priorityFilter !== "all") result = result.filter((t) => t.priority === priorityFilter);
+      if (dueFilter !== "all") result = result.filter((t) => getTaskDueStatus(t) === dueFilter);
     }
     // Grid View, Table and Analytics show every task on that dimension:
-    // Status/Priority/Assignee filtering has no visible control outside the
-    // Active tab, so it must not silently narrow their results either.
+    // Status/Priority/Assignee/Due-date filtering has no visible control
+    // outside the Active tab, so it must not silently narrow their results either.
 
     if (search) result = result.filter((t) => t.title.toLowerCase().includes(search.toLowerCase()));
 
     return result;
-  }, [enriched, activeTab, assigneeFilter, statusFilter, priorityFilter, search]);
+  }, [enriched, activeTab, assigneeFilter, statusFilter, priorityFilter, dueFilter, search]);
 
   // Pagination only exists on the Active tab. Only clamp the requested page
   // into range once the task list has been *successfully* fetched — while
@@ -290,6 +300,7 @@ export default function Tasks() {
       status: statusFilter,
       priority: priorityFilter,
       assignee: assigneeFilter,
+      due: dueFilter,
       page: pageClamped,
       sortKey,
       sortDir
@@ -297,7 +308,7 @@ export default function Tasks() {
     if (canonical.toString() !== searchParams.toString()) {
       setSearchParams(canonical, { replace: true });
     }
-  }, [searchParams, activeTab, statusFilter, priorityFilter, assigneeFilter, pageClamped, sortKey, sortDir, setSearchParams]);
+  }, [searchParams, activeTab, statusFilter, priorityFilter, assigneeFilter, dueFilter, pageClamped, sortKey, sortDir, setSearchParams]);
 
   const handleDelete = async (id: string) => {
     const res = await fetch(`/api/tasks/${id}`, {
@@ -499,6 +510,20 @@ export default function Tasks() {
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
+                  </select>
+                  <label className="sr-only" htmlFor="due-filter-select">
+                    Filter by due date
+                  </label>
+                  <select
+                    id="due-filter-select"
+                    aria-label="Filter by due date"
+                    className="flex-1 md:flex-none border border-gray-300 rounded-lg px-3 md:px-4 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[44px]"
+                    value={dueFilter}
+                    onChange={(e) => handleDueFilterChange(e.target.value as DueFilter)}
+                  >
+                    <option value="all">All deadlines</option>
+                    <option value="overdue">Overdue</option>
+                    <option value="soon">Due soon</option>
                   </select>
 
                   <button

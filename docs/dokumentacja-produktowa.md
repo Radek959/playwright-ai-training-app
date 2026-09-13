@@ -175,8 +175,8 @@ Cały odtwarzalny stan tego widoku (aktywna zakładka, filtry, strona, sortowani
 ### 6.1 Active
 
 - Pokazuje zadania ze statusem innym niż `"done"`.
-- Filtry dostępne tylko w tej zakładce: **Assignee** (Wszyscy / Nieprzypisane / konkretny użytkownik), **Status** (All / To Do / In Progress — bez opcji „Done”, bo zakładka i tak wyklucza zadania zakończone), **Priority** (All / Low / Medium / High).
-- Filtry Status, Priority i Assignee, a także paginacja, dotyczą **wyłącznie** zakładki Active — nie wpływają na Grid View, Table, Archive ani Analytics. Dzięki temu żaden filtr nie zawęża wyników w miejscu, gdzie użytkownik nie widzi (i nie może zmienić) odpowiadającej mu kontrolki.
+- Filtry dostępne tylko w tej zakładce: **Assignee** (Wszyscy / Nieprzypisane / konkretny użytkownik), **Status** (All / To Do / In Progress — bez opcji „Done”, bo zakładka i tak wyklucza zadania zakończone), **Priority** (All / Low / Medium / High), **Filter by due date** (All deadlines / Overdue / Due soon — patrz sekcja 11 dla dokładnych reguł klasyfikacji).
+- Filtry Status, Priority, Assignee i Filter by due date, a także paginacja, dotyczą **wyłącznie** zakładki Active — nie wpływają na Grid View, Table, Archive ani Analytics. Dzięki temu żaden filtr nie zawęża wyników w miejscu, gdzie użytkownik nie widzi (i nie może zmienić) odpowiadającej mu kontrolki. Wszystkie aktywne filtry tej zakładki (Status, Priority, Assignee, Filter by due date) są stosowane łącznie (logiczne AND).
 - Paginacja: 5 zadań na stronę.
 - Przycisk „Quick Add” pokazuje/ukrywa uproszczony formularz tworzenia zadania (tylko: tytuł, opis, status, priorytet, termin, przypisanie — patrz sekcja 7.2).
 - Pusta lista po zastosowaniu filtrów pokazuje komunikat „No tasks match your criteria”.
@@ -253,19 +253,22 @@ Adres `/tasks` jednoznacznie opisuje aktualnie wyświetlany widok: aktywną zak�
 | `status` | tylko `active` | `todo`, `in-progress` | `all` |
 | `priority` | tylko `active` | `low`, `medium`, `high` | `all` |
 | `assignee` | tylko `active` | `unassigned` lub identyfikator użytkownika | `all` |
+| `due` | tylko `active` | `overdue`, `soon` | `all` |
 | `page` | tylko `active` | liczba całkowita ≥ 1 | `1` |
 | `sort` | tylko `table` | `title`, `status`, `priority`, `dueDate`, `assigneeId` | `title` |
 | `order` | tylko `table` | `asc`, `desc` | `asc` |
 
-Przykłady: `/tasks?status=in-progress&priority=high&assignee=user-1&page=2` (zakładka Active, domyślna) oraz `/tasks?tab=table&sort=dueDate` (kanoniczny URL zakładki Table posortowanej po `dueDate` rosnąco — `order=asc` jest wartością domyślną, więc normalizacja usuwa go z adresu; adres z jawnie podanym `order=asc` zostanie sprowadzony do tej postaci).
+`due` odzwierciedla wybór kontrolki **Filter by due date** opisanej w 6.1 i wynika z klasyfikacji terminu zadania opisanej w sekcji 11 — `overdue` pokazuje tylko zadania opóźnione, `soon` tylko zadania zbliżające się do terminu (włącznie z zadaniami już opóźnionymi wykluczonymi z tej wartości — patrz sekcja 11). Podobnie jak `status`/`priority`/`assignee`, obowiązuje wyłącznie w zakładce Active i podlega tej samej normalizacji: nieznana wartość (inna niż `overdue`/`soon`) wraca do `all` i jest usuwana z adresu, a jawna zmiana kontrolki resetuje stronę do 1 i tworzy nowy wpis w historii przeglądarki (patrz akapit „Historia przeglądarki” niżej).
 
-**Filtry i paginacja per zakładka** — zgodnie z decyzją opisaną w 6.1–6.4, filtry Status/Priority/Assignee oraz paginacja dotyczą wyłącznie zakładki Active; pole wyszukiwania (`TaskSearch`) nigdy nie trafia do URL, bo to osobny mechanizm (patrz sekcja 4) niezwiązany z listą/tabelą/kartami. Sortowanie (`sort`/`order`) dotyczy wyłącznie zakładki Table — `TaskTable` nie ma już własnego, niezależnego stanu sortowania; pole i kierunek są przekazywane do niego jako kontrolowane propsy z widoku `Tasks`, sterowane przez URL.
+Przykłady: `/tasks?status=in-progress&priority=high&assignee=user-1&page=2` (zakładka Active, domyślna), `/tasks?priority=high&due=overdue` (zakładka Active, zadania o wysokim priorytecie i opóźnionym terminie) oraz `/tasks?tab=table&sort=dueDate` (kanoniczny URL zakładki Table posortowanej po `dueDate` rosnąco — `order=asc` jest wartością domyślną, więc normalizacja usuwa go z adresu; adres z jawnie podanym `order=asc` zostanie sprowadzony do tej postaci).
 
-**Zmiana zakładki** usuwa z URL parametry nieobsługiwane przez nową zakładkę (np. przejście z Active do Grid View czyści `status`/`priority`/`assignee`/`page`; przejście na Active ustawia stronę na 1). Zaznaczenie wierszy tabeli, otwarte modale/formularze i treść pola wyszukiwania nigdy nie trafiają do URL.
+**Filtry i paginacja per zakładka** — zgodnie z decyzją opisaną w 6.1–6.4, filtry Status/Priority/Assignee/Filter by due date oraz paginacja dotyczą wyłącznie zakładki Active; pole wyszukiwania (`TaskSearch`) nigdy nie trafia do URL, bo to osobny mechanizm (patrz sekcja 4) niezwiązany z listą/tabelą/kartami. Sortowanie (`sort`/`order`) dotyczy wyłącznie zakładki Table — `TaskTable` nie ma już własnego, niezależnego stanu sortowania; pole i kierunek są przekazywane do niego jako kontrolowane propsy z widoku `Tasks`, sterowane przez URL.
+
+**Zmiana zakładki** usuwa z URL parametry nieobsługiwane przez nową zakładkę (np. przejście z Active do Grid View czyści `status`/`priority`/`assignee`/`due`/`page`; przejście na Active ustawia stronę na 1). Zaznaczenie wierszy tabeli, otwarte modale/formularze i treść pola wyszukiwania nigdy nie trafiają do URL.
 
 **Paginacja**: po zmianie dowolnego filtra lub zakładki strona wraca na 1. Jeśli numer strony w URL wykracza poza liczbę dostępnych stron (również po utworzeniu, edycji lub usunięciu zadania, gdy zmienia się liczba wyników), zostaje on skorygowany do ostatniej dostępnej strony (a przynajmniej do strony 1) — użytkownik nigdy nie zostaje na pustej stronie, jeśli wcześniejsze strony mają wyniki. Ta korekta następuje wyłącznie po **udanym** (`GET /api/tasks` zwróciło poprawną tablicę) pobraniu zadań. Dopóki żądanie trwa albo zakończyło się błędem (sieciowym, `5xx` lub niepoprawnym payloadem), numer strony z URL pozostaje nietknięty — inaczej pusta lista wynikająca z trwającego ładowania lub z błędu zostałaby błędnie potraktowana jako „nie ma tylu wyników” i strona zostałaby bezpowrotnie sprowadzona do 1, mimo że po stronie serwera dane mogą się znaleźć (przy ponowieniu) na stronie, o którą pierwotnie proszono.
 
-**Błędne parametry** nigdy nie powodują awarii ani niewyjaśnionego pustego widoku: nieznana zakładka, nieznany status/priorytet, nieprawidłowy numer strony (tekst, zero, liczba ujemna, ułamek) oraz nieobsługiwane pole/kierunek sortowania wracają do wartości domyślnej niezależnie od stanu pobierania danych (nie zależą od żadnego zapytania do API). Identyfikator w `assignee`, który nie odpowiada żadnemu użytkownikowi, jest usuwany (filtr wraca do „All assignees”) — ale dopiero **po udanym** zakończeniu pobierania listy użytkowników z `GET /api/users` (poprawna odpowiedź z tablicą użytkowników, która nie zawiera tego identyfikatora). Dopóki żądanie do `/api/users` trwa, **lub zakończyło się błędem** (sieciowym, `5xx` czy niepoprawnym payloadem), dowolny identyfikator w `assignee` jest traktowany jako potencjalnie poprawny i nie jest usuwany — sam fakt, że żądanie się zakończyło, nie jest traktowany jako potwierdzenie, że zwrócone dane (w tym pusta lista przy błędzie) nadają się do walidacji URL; inaczej błąd pobrania użytkowników wyglądałby tak samo, jak lista, w której danego identyfikatora rzeczywiście nie ma, i poprawny filtr zostałby bezpowrotnie usunięty z udostępnionego linku. Z tego samego powodu zadania i użytkownicy są od siebie pobierani niezależnie, a nie w ramach jednego wspólnego `Promise.all`, który opóźniałby wyświetlenie zadań do czasu odpowiedzi obu żądań. Dotychczasowa prezentacja błędów API (komunikat w banerze błędu) działa bez zmian niezależnie od tego mechanizmu. W każdym z opisanych przypadków normalizacji adres jest zmieniany przez `history.replaceState` (bez dodawania wpisu do historii), tak aby URL zawsze odpowiadał temu, co faktycznie widać na ekranie; sama normalizacja nie pokazuje przy tym żadnego dodatkowego, globalnego komunikatu błędu.
+**Błędne parametry** nigdy nie powodują awarii ani niewyjaśnionego pustego widoku: nieznana zakładka, nieznany status/priorytet/wartość `due`, nieprawidłowy numer strony (tekst, zero, liczba ujemna, ułamek) oraz nieobsługiwane pole/kierunek sortowania wracają do wartości domyślnej niezależnie od stanu pobierania danych (nie zależą od żadnego zapytania do API). Identyfikator w `assignee`, który nie odpowiada żadnemu użytkownikowi, jest usuwany (filtr wraca do „All assignees”) — ale dopiero **po udanym** zakończeniu pobierania listy użytkowników z `GET /api/users` (poprawna odpowiedź z tablicą użytkowników, która nie zawiera tego identyfikatora). Dopóki żądanie do `/api/users` trwa, **lub zakończyło się błędem** (sieciowym, `5xx` czy niepoprawnym payloadem), dowolny identyfikator w `assignee` jest traktowany jako potencjalnie poprawny i nie jest usuwany — sam fakt, że żądanie się zakończyło, nie jest traktowany jako potwierdzenie, że zwrócone dane (w tym pusta lista przy błędzie) nadają się do walidacji URL; inaczej błąd pobrania użytkowników wyglądałby tak samo, jak lista, w której danego identyfikatora rzeczywiście nie ma, i poprawny filtr zostałby bezpowrotnie usunięty z udostępnionego linku. Z tego samego powodu zadania i użytkownicy są od siebie pobierani niezależnie, a nie w ramach jednego wspólnego `Promise.all`, który opóźniałby wyświetlenie zadań do czasu odpowiedzi obu żądań. Dotychczasowa prezentacja błędów API (komunikat w banerze błędu) działa bez zmian niezależnie od tego mechanizmu. W każdym z opisanych przypadków normalizacji adres jest zmieniany przez `history.replaceState` (bez dodawania wpisu do historii), tak aby URL zawsze odpowiadał temu, co faktycznie widać na ekranie; sama normalizacja nie pokazuje przy tym żadnego dodatkowego, globalnego komunikatu błędu.
 
 **Historia przeglądarki**: jawna zmiana zakładki, filtra, strony lub sortowania (klik, wybór z listy, klawiatura) tworzy nowy wpis w historii (możliwy do cofnięcia przyciskiem Wstecz). Automatyczna normalizacja błędnych parametrów oraz korekta strony poza zakresem używają `replace` i nie tworzą dodatkowego wpisu. Nawigacja klawiaturą między zakładkami (strzałki, Home, End) działa tak jak dotychczas i również aktualizuje URL jako jawna zmiana zakładki.
 
@@ -319,3 +322,62 @@ Aplikacja nie używa bazy danych — dane (`tasks`, `users`) są trzymane w pami
 ## 10. Dane startowe (seed data)
 
 Zadania i użytkownicy, z którymi aplikacja startuje, to przykładowe dane demonstracyjne. Tytuły i opisy zadań w danych startowych są fikcyjne i służą wyłącznie do zilustrowania różnych kombinacji statusu, priorytetu, typu i przypisania — **nie są listą funkcji dostępnych w aplikacji**. Zestaw ten obejmuje zadania w każdym statusie i priorytecie, zadania nieprzypisane oraz zadania zakończone zarówno przed, jak i po progu 30 dni opisanym w sekcji 5, tak aby można było zaobserwować pełne zachowanie list, filtrów, wyszukiwania, dashboardu i archiwum opisane w tym dokumencie.
+
+---
+
+## 11. Terminy zadań: Overdue / Due soon
+
+Podobnie jak archiwizacja (sekcja 5), klasyfikacja terminu zadania jest **wyłącznie logiką frontendową**, wyliczaną na podstawie już istniejącego pola `dueDate` — API i model danych zadania (sekcja 1.1) nie zyskują żadnego nowego pola, endpointu ani reguły walidacji. Cała logika żyje w jednym współdzielonym miejscu po stronie klienta i jest używana identycznie przez listę Active, Grid View, Table, listę zadań przypisanych użytkownikowi (`/users/:id`), szczegóły zadania oraz dashboard — nigdzie nie ma osobnej, powielonej implementacji porównywania dat.
+
+### 11.1 Reguły klasyfikacji
+
+Każde zadanie ma dokładnie jeden z czterech stanów terminu, wyliczany względem bieżącego momentu (`now`):
+
+1. **Overdue (opóźnione)** — zadanie ma poprawne `dueDate`, jego status jest inny niż `"done"`, a dzień terminu (patrz niżej) jest wcześniejszy niż dzisiejszy dzień.
+2. **Due soon (zbliżający się termin)** — zadanie ma poprawne `dueDate`, jego status jest inny niż `"done"`, dzień terminu mieści się w przedziale od dzisiaj do `dzisiaj + 3 dni` włącznie (trzydniowe okno), i zadanie nie jest już `overdue` (te dwa stany się wykluczają).
+3. **Scheduled (termin ustawiony, bez ostrzeżenia)** — zadanie ma poprawne `dueDate`, ale nie kwalifikuje się do żadnego z powyższych: albo ma status `"done"` (zadania zakończone nigdy nie są oznaczane jako opóźnione ani zbliżające się do terminu, niezależnie od tego, jak odległe jest ich `dueDate`), albo termin wypada później niż `dzisiaj + 3 dni`.
+4. **Brak ostrzeżenia / brak danych** — zadanie nie ma ustawionego `dueDate`, albo wartość `dueDate` nie daje się sparsować jako poprawna data. W tym przypadku UI nie pokazuje żadnej etykiety terminu (ani ostrzeżenia, ani „Due: …”).
+
+**Porównanie dni kalendarzowych UTC**: zarówno `dueDate`, jak i `now`, są sprowadzane do początku swojego dnia w strefie UTC (`00:00:00.000Z` tego dnia) przed porównaniem. Dzięki temu:
+
+- godzina zapisana w `dueDate` nigdy nie wpływa na klasyfikację w obrębie tego samego dnia (termin o `23:59Z` i termin o `00:01Z` tego samego dnia dają ten sam wynik);
+- wynik nie zależy od strefy czasowej środowiska, w którym działa przeglądarka czy testy — porównanie zawsze odbywa się w UTC, nie w czasie lokalnym.
+
+**Trzydniowe okno** dla `soon` obejmuje dzień dzisiejszy oraz trzy kolejne dni kalendarzowe (`dzisiaj`, `dzisiaj+1`, `dzisiaj+2`, `dzisiaj+3`) — termin przypadający czwartego dnia lub później jest traktowany jako `scheduled` (brak ostrzeżenia).
+
+### 11.2 Prezentacja w UI
+
+Wszędzie tam, gdzie prezentowane jest zadanie lub jego termin, stan terminu jest pokazywany jako **tekst** (nie tylko kolor), dzięki czemu jest dostępny również dla czytników ekranu:
+
+- **Overdue** — tekst „Overdue”, styl w odcieniach czerwieni.
+- **Due soon** — tekst „Due soon”, styl w odcieniach bursztynu/amber.
+- **Scheduled** — zwykłe „Due: <data>” bez dodatkowego stylu ostrzegawczego.
+- **Brak ostrzeżenia / brak danych** — nic nie jest renderowane (tak jak dotychczas, gdy zadanie nie ma `dueDate`).
+
+Etykieta pojawia się w każdym miejscu, w którym dotychczas prezentowany był termin zadania (lub gdzie powinien być prezentowany zgodnie z pozostałymi elementami tego samego widoku):
+
+- karcie zadania w zakładce **Active**;
+- kafelku **Grid View**;
+- kolumnie „Due date” w **Table** — obok pola edycji `dueDate` (edycja terminu w tabeli działa dokładnie tak jak dotychczas, patrz sekcja 6.3 — etykieta jest wyłącznie dodatkową prezentacją tekstową);
+- liście zadań przypisanych użytkownikowi na `/users/:id` (sekcje „Active tasks” / „Completed tasks”, patrz 6.7);
+- widoku szczegółów zadania (`/tasks/:id`, patrz 6.6) — obok pełnej daty w polu „Due Date”.
+
+### 11.3 Filtr „Filter by due date” i parametr `due`
+
+W zakładce **Active** (sekcja 6.1) dostępna jest dodatkowa kontrolka **Filter by due date** z trzema opcjami: **All deadlines** (domyślna), **Overdue**, **Due soon**. Filtr współdziała łącznie (logiczne AND) z filtrami Status, Priority i Assignee opisanymi w 6.1 — a więc np. `priority=high&due=overdue` pokazuje wyłącznie zadania jednocześnie o wysokim priorytecie i opóźnione.
+
+Stan tego filtra jest częścią udostępnialnego stanu URL widoku Tasks (sekcja 6.9), w parametrze `due`:
+
+| Wartość | Znaczenie |
+|---|---|
+| `all` (domyślna, pomijana w URL) | Brak filtrowania po terminie. |
+| `overdue` | Tylko zadania w stanie `overdue` (sekcja 11.1). |
+| `soon` | Tylko zadania w stanie `soon` (sekcja 11.1). |
+
+Podobnie jak pozostałe filtry Active, `due` obowiązuje wyłącznie w tej zakładce, jest usuwany z URL po przejściu do zakładki, która go nie obsługuje, a jawna zmiana kontrolki resetuje stronę do 1 i tworzy nowy wpis w historii przeglądarki (Wstecz/Dalej odtwarzają wybór). Nieznana wartość `due` (inna niż `overdue`/`soon`/`all`) jest normalizowana do `all` niezależnie od stanu pobierania danych — tak jak `status`/`priority`.
+
+### 11.4 Dashboard
+
+Dashboard (`/dashboard`) pokazuje dodatkową statystykę **Overdue** obok istniejących kafelków (Total Tasks, In Progress, High Priority, Completion) — licznik zadań w stanie `overdue` (sekcja 11.1), liczony na podstawie tej samej reguły klasyfikacji co lista i oznaczenia, na **wszystkich** zadaniach pobranych z API (bez uwzględniania filtrów innych widoków, analogicznie do pozostałych statystyk dashboardu).
+
+Kafelek „Overdue” jest dostępnym linkiem (`<a>` z czytelną nazwą) prowadzącym do `/tasks?due=overdue` — po przejściu użytkownik trafia do zakładki Active z filtrem Filter by due date ustawionym na „Overdue”, pokazującym dokładnie ten sam zestaw zadań, który wliczono do licznika.

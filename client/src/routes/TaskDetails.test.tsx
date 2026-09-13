@@ -230,4 +230,57 @@ describe("TaskDetails", () => {
     expect(links).toHaveLength(2);
     expect(links.map((l) => l.getAttribute("href"))).toEqual(["/tasks/dep-done", "/tasks/dep-blocking"]);
   });
+
+  it("shows the same due-date classification as the task list (Overdue for a past, non-done dueDate)", async () => {
+    const overdueTask = {
+      id: "task-overdue",
+      title: "Overdue Task",
+      status: "todo",
+      priority: "medium",
+      requiresApproval: false,
+      dueDate: "2020-01-01T00:00:00Z"
+    };
+
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url === "/api/tasks/task-overdue") return Promise.resolve(new Response(JSON.stringify(overdueTask)));
+      if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify([])));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+
+    renderComponent("task-overdue");
+
+    await waitFor(() => {
+      expect(screen.getByText("Overdue Task")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Overdue")).toBeInTheDocument();
+  });
+
+  it("does not show an overdue/soon label for a done task with a past dueDate", async () => {
+    const doneTask = {
+      id: "task-done",
+      title: "Finished Task",
+      status: "done",
+      priority: "medium",
+      requiresApproval: false,
+      dueDate: "2020-01-01T00:00:00Z"
+    };
+
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url === "/api/tasks/task-done") return Promise.resolve(new Response(JSON.stringify(doneTask)));
+      if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify([])));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+
+    renderComponent("task-done");
+
+    await waitFor(() => {
+      expect(screen.getByText("Finished Task")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Overdue")).not.toBeInTheDocument();
+    expect(screen.queryByText("Due soon")).not.toBeInTheDocument();
+  });
 });

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAppError } from "../context/AppErrorContext";
 import { StatCard } from "../components/StatCard";
 import { UserAvatar } from "../components/UserAvatar";
+import { isTaskOverdue } from "../utils/taskDueDate";
 import type { Task, User } from "../types";
 
 function normalizeTask(raw: Partial<Task>): Task {
@@ -11,6 +12,7 @@ function normalizeTask(raw: Partial<Task>): Task {
     description: raw.description ?? "",
     status: raw.status ?? "todo",
     priority: raw.priority ?? "medium",
+    dueDate: raw.dueDate,
     assigneeId: raw.assigneeId
   };
 }
@@ -53,6 +55,7 @@ export default function Dashboard() {
   const inProgressTasks = totals.statusCount["in-progress"] || 0;
   const highPriorityTasks = totals.priorityCount["high"] || 0;
   const completionRate = totalTasks > 0 ? Math.round(((totals.statusCount["done"] || 0) / totalTasks) * 100) : 0;
+  const overdueTasks = useMemo(() => tasks.filter((t) => isTaskOverdue(t)).length, [tasks]);
 
   return (
     <div className="space-y-6 md:space-y-8 pb-20 md:pb-0">
@@ -65,7 +68,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 md:gap-6">
         <StatCard
           title="Total Tasks"
           value={totalTasks}
@@ -102,6 +105,17 @@ export default function Dashboard() {
           icon={
             <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          }
+        />
+
+        <StatCard
+          title="Overdue"
+          value={overdueTasks}
+          href="/tasks?due=overdue"
+          icon={
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           }
         />

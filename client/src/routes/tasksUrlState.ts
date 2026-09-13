@@ -3,6 +3,7 @@ import type { User } from "../types";
 export type TabView = "active" | "archived" | "analytics" | "table" | "grid";
 export type SortKey = "title" | "priority" | "dueDate" | "assigneeId" | "status";
 export type SortDir = "asc" | "desc";
+export type DueFilter = "all" | "overdue" | "soon";
 
 export const TAB_ORDER: TabView[] = ["active", "grid", "table", "archived", "analytics"];
 
@@ -11,6 +12,7 @@ const STATUS_VALUES = new Set(["todo", "in-progress"]);
 const PRIORITY_VALUES = new Set(["low", "medium", "high"]);
 const SORT_KEY_VALUES = new Set<string>(["title", "status", "priority", "dueDate", "assigneeId"]);
 const SORT_DIR_VALUES = new Set<string>(["asc", "desc"]);
+const DUE_FILTER_VALUES = new Set<string>(["overdue", "soon"]);
 
 export function parseTab(raw: string | null): TabView {
   return raw !== null && TAB_VALUES.has(raw) ? (raw as TabView) : "active";
@@ -26,6 +28,10 @@ export function parsePriorityFilter(raw: string | null): string {
 
 export function parseAssigneeFilter(raw: string | null): string {
   return raw !== null && raw.length > 0 ? raw : "all";
+}
+
+export function parseDueFilter(raw: string | null): DueFilter {
+  return raw !== null && DUE_FILTER_VALUES.has(raw) ? (raw as DueFilter) : "all";
 }
 
 // A page number is only ever a positive integer; anything else (text, "0",
@@ -61,6 +67,7 @@ export type TasksUrlState = {
   status: string;
   priority: string;
   assignee: string;
+  due: DueFilter;
   page: number;
   sortKey: SortKey;
   sortDir: SortDir;
@@ -80,6 +87,7 @@ export function buildTasksSearchParams(state: TasksUrlState): URLSearchParams {
     if (state.status !== "all") params.set("status", state.status);
     if (state.priority !== "all") params.set("priority", state.priority);
     if (state.assignee !== "all") params.set("assignee", state.assignee);
+    if (state.due !== "all") params.set("due", state.due);
     if (state.page !== 1) params.set("page", String(state.page));
   }
 

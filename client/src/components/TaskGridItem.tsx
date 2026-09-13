@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { UserAvatar } from "./UserAvatar";
+import { DueDateLabel } from "./DueDateLabel";
 import type { TaskWithAssignee } from "../types";
 
 type Task = TaskWithAssignee;
@@ -60,6 +61,8 @@ export function TaskGridItem({ task, onClick }: Props) {
         </h3>
 
         {task.description && <p className="text-sm text-gray-600 mb-4 line-clamp-2">{task.description}</p>}
+
+        <DueDateLabel task={task} className="inline-block px-2 py-0.5 rounded text-xs mb-3 self-start" />
 
         <div className="mt-auto">
           {/* Status & Assignee */}

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useAppError } from "../context/AppErrorContext";
 import { getApproverLabel } from "../utils/approvers";
+import { DueDateLabel } from "../components/DueDateLabel";
 import type { Task, User } from "../types";
 
 export function TaskDetails() {
@@ -191,7 +192,10 @@ export function TaskDetails() {
           <dl className="space-y-4">
             <div>
               <dt className="text-sm font-medium text-gray-500">Due Date</dt>
-              <dd className="mt-1 text-gray-900">{renderDate(task.dueDate)}</dd>
+              <dd className="mt-1 text-gray-900 flex flex-wrap items-center gap-2">
+                <span>{renderDate(task.dueDate)}</span>
+                <DueDateLabel task={task} className="px-2 py-0.5 rounded text-xs" />
+              </dd>
             </div>
             <div>
               <dt className="text-sm font-medium text-gray-500">Completed At</dt>

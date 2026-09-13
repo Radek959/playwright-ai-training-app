@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { DueDateLabel } from "./DueDateLabel";
 import type { Task } from "../types";
 
 export function AssignedTaskItem({ task }: { task: Task }) {
@@ -6,16 +7,11 @@ export function AssignedTaskItem({ task }: { task: Task }) {
     <li className="p-3 rounded border border-gray-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-2">
       <div className="space-y-1">
         <span className="font-medium text-gray-900">{task.title}</span>
-        <div className="flex flex-wrap gap-2 text-xs text-gray-600">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
           <span className="capitalize">{task.status}</span>
           <span aria-hidden="true">&middot;</span>
           <span className="capitalize">Priority: {task.priority}</span>
-          {task.dueDate && (
-            <>
-              <span aria-hidden="true">&middot;</span>
-              <span>Due: {new Date(task.dueDate).toLocaleDateString()}</span>
-            </>
-          )}
+          <DueDateLabel task={task} className="px-2 py-0.5 rounded text-xs" />
         </div>
       </div>
       <Link
