@@ -1,5 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { Link, MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import Users from "./Users";
 import { AppErrorProvider } from "../context/AppErrorContext";
 import { vi, describe, it, expect, beforeEach, MockInstance } from "vitest";
@@ -61,6 +61,35 @@ describe("Users list", () => {
 
   it("does not show a success message on a normal visit", async () => {
     renderComponent();
+    await waitFor(() => expect(screen.getAllByText("Alice Johnson").length).toBeGreaterThan(0));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("does not resurface the success message after navigating away and returning via back", async () => {
+    function OtherPage() {
+      const navigate = useNavigate();
+      return <button onClick={() => navigate(-1)}>Go back</button>;
+    }
+
+    render(
+      <AppErrorProvider>
+        <MemoryRouter initialEntries={[{ pathname: "/users", state: { deletedUserName: "Charlie Davis" } }]}>
+          <Link to="/other">Go to other page</Link>
+          <Routes>
+            <Route path="/users" element={<Users />} />
+            <Route path="/other" element={<OtherPage />} />
+          </Routes>
+        </MemoryRouter>
+      </AppErrorProvider>
+    );
+
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Charlie Davis deleted successfully"));
+
+    fireEvent.click(screen.getByText("Go to other page"));
+    await waitFor(() => expect(screen.getByText("Go back")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("Go back"));
+
     await waitFor(() => expect(screen.getAllByText("Alice Johnson").length).toBeGreaterThan(0));
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });

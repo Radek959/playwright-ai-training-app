@@ -2,7 +2,9 @@ export type ApiFieldError = { field: string; message: string };
 
 export type BlockingDependency = { id: string; title: string; status: string };
 
-export type ConflictingTask = { id: string; title: string; status: string };
+export type ConflictingTaskStatus = "todo" | "in-progress";
+
+export type ConflictingTask = { id: string; title: string; status: ConflictingTaskStatus };
 
 /**
  * Error thrown for a failed API response. Carries the structured
@@ -55,12 +57,12 @@ function isBlockingDependency(value: unknown): value is BlockingDependency {
 }
 
 function isConflictingTask(value: unknown): value is ConflictingTask {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
   return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as Record<string, unknown>).id === "string" &&
-    typeof (value as Record<string, unknown>).title === "string" &&
-    typeof (value as Record<string, unknown>).status === "string"
+    typeof candidate.id === "string" &&
+    typeof candidate.title === "string" &&
+    (candidate.status === "todo" || candidate.status === "in-progress")
   );
 }
 

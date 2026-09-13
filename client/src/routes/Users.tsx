@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { UserForm } from "../components/UserForm";
 import { UserAvatar } from "../components/UserAvatar";
 import { useAppError } from "../context/AppErrorContext";
@@ -11,18 +11,27 @@ export default function Users() {
   const { setError, clearError } = useAppError();
   const [users, setUsers] = useState<User[]>([]);
   const location = useLocation();
-  const deletedUserName = (location.state as LocationState)?.deletedUserName;
-  const successMessage = deletedUserName ? `${deletedUserName} deleted successfully` : null;
+  const navigate = useNavigate();
+
+  // Captured once, on first render, from whatever navigation state this
+  // page was entered with — a plain component-state copy that survives the
+  // navigation-state cleanup below, so the message stays visible after it.
+  const [successMessage] = useState<string | null>(() => {
+    const deletedUserName = (location.state as LocationState)?.deletedUserName;
+    return deletedUserName ? `${deletedUserName} deleted successfully` : null;
+  });
 
   useEffect(() => {
-    // Clear the navigation-state flag so a browser back/forward doesn't
-    // resurface the success message. history.replaceState leaves the
-    // location object React Router already rendered with untouched.
+    // Clear the one-time navigation state via the router itself (never by
+    // poking browser history directly) so a back/forward visit or a plain
+    // refresh can't resurface it. Replacing with the same location but
+    // state: null produces a new location.state, which is why it's a
+    // dependency here — this effect no-ops once cleared instead of looping.
+    const deletedUserName = (location.state as LocationState)?.deletedUserName;
     if (deletedUserName) {
-      window.history.replaceState({}, "");
+      navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, state: null });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [location.pathname, location.search, location.hash, location.state, navigate]);
 
   useEffect(() => {
     let cancelled = false;

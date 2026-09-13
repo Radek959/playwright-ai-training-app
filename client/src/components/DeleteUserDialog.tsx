@@ -21,13 +21,33 @@ export function DeleteUserDialog({ user, open, onClose, onDeleted }: Props) {
   const [conflictingTasks, setConflictingTasks] = useState<ConflictingTask[]>([]);
   const [notFound, setNotFound] = useState(false);
 
-  // Old errors from a previous attempt must not survive a close/reopen cycle.
+  // Aborts the in-flight DELETE (if any) once this component goes away, and
+  // lets its handler tell a controlled cancellation apart from a real
+  // network error so it never turns into a spurious error message.
+  const abortControllerRef = useRef<AbortController | null>(null);
+  // Guards every state update after an await against a response that
+  // resolves after unmount (e.g. the success navigation already happened).
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      abortControllerRef.current?.abort();
+    };
+  }, []);
+
+  // Old errors from a previous attempt must not survive a close/reopen
+  // cycle. This intentionally leaves `isDeleting` untouched: the dialog
+  // cannot be reopened while a delete for it is genuinely still in flight,
+  // because closing (Cancel/Escape/overlay) is blocked for as long as
+  // isDeleting is true — see handleRequestClose below. Resetting it here
+  // unconditionally was the bug: it let a background request outlive a
+  // close+reopen cycle, so a second confirm click fired a second DELETE.
   useEffect(() => {
     if (open) {
       setError(null);
       setConflictingTasks([]);
       setNotFound(false);
-      setIsDeleting(false);
     }
   }, [open]);
 
@@ -37,14 +57,20 @@ export function DeleteUserDialog({ user, open, onClose, onDeleted }: Props) {
     setError(null);
     setConflictingTasks([]);
     setNotFound(false);
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
-      const res = await fetch(`/api/users/${user.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/users/${user.id}`, { method: "DELETE", signal: controller.signal });
+      if (!isMountedRef.current) return;
       if (res.status === 204) {
         onDeleted();
         return;
       }
       if (res.status === 409) {
         const apiErr = await toApiError(res, "Cannot delete user with active tasks");
+        if (!isMountedRef.current) return;
         setError(apiErr.message);
         setConflictingTasks(apiErr.conflictingTasks);
         return;
@@ -57,15 +83,26 @@ export function DeleteUserDialog({ user, open, onClose, onDeleted }: Props) {
       const apiErr = await toApiError(res, `Delete failed: ${res.status}`);
       throw apiErr;
     } catch (err) {
+      if (!isMountedRef.current) return;
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setError(err instanceof ApiError ? err.message : "Network error while deleting the user. Please try again.");
     } finally {
-      setIsDeleting(false);
+      if (isMountedRef.current) setIsDeleting(false);
+      abortControllerRef.current = null;
     }
   };
 
+  // While a delete is in flight, the dialog cannot be closed by any means
+  // (Cancel, Escape, or the overlay all route through this), so a reopen
+  // can never race a still-pending request.
+  const handleRequestClose = () => {
+    if (isDeleting) return;
+    onClose();
+  };
+
   return (
-    <Dialog open={open} onClose={onClose} titleId={TITLE_ID} initialFocusRef={cancelButtonRef} testId="delete-user-dialog">
-      <div className="flex flex-col gap-4">
+    <Dialog open={open} onClose={handleRequestClose} titleId={TITLE_ID} initialFocusRef={cancelButtonRef} testId="delete-user-dialog">
+      <div className="flex flex-col gap-4" aria-busy={isDeleting}>
         <h2 id={TITLE_ID} className="text-xl font-bold text-gray-900">
           Delete {user.name}?
         </h2>
@@ -102,8 +139,9 @@ export function DeleteUserDialog({ user, open, onClose, onDeleted }: Props) {
           <button
             ref={cancelButtonRef}
             type="button"
-            onClick={onClose}
-            className="border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+            onClick={handleRequestClose}
+            disabled={isDeleting}
+            className="border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
           >
             Cancel
           </button>

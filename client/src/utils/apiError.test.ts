@@ -87,6 +87,25 @@ describe("toApiError", () => {
     expect(err.conflictingTasks).toEqual([{ id: "task-1", title: "Valid task", status: "todo" }]);
   });
 
+  it("rejects conflictingTasks entries with a disallowed or missing status (e.g. 'done')", async () => {
+    const res = jsonResponse(
+      {
+        error: "Cannot delete user with active tasks",
+        conflictingTasks: [
+          { id: "task-1", title: "Still active", status: "todo" },
+          { id: "task-2", title: "Already finished", status: "done" },
+          { id: "task-3", title: "Made up status", status: "blocked" },
+          { id: "task-4", title: "Empty status", status: "" }
+        ]
+      },
+      409
+    );
+
+    const err = await toApiError(res, "fallback");
+
+    expect(err.conflictingTasks).toEqual([{ id: "task-1", title: "Still active", status: "todo" }]);
+  });
+
   it("falls back to the fallback message when the body has no usable error field", async () => {
     const res = jsonResponse({ somethingElse: true }, 500);
 

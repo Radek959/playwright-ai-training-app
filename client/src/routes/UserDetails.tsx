@@ -5,6 +5,14 @@ import { AssignedTaskItem } from "../components/AssignedTaskItem";
 import { DeleteUserDialog } from "../components/DeleteUserDialog";
 import type { Task, User } from "../types";
 
+// Distinguishes "still fetching" and "fetch failed" from an actually-empty
+// array, so the UI never shows a real-looking 0 (or "no tasks" empty state)
+// for data it doesn't actually have yet.
+type TasksState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; tasks: Task[] };
+
 export function UserDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -14,9 +22,7 @@ export function UserDetails() {
   const [notFound, setNotFound] = useState(false);
   const [userFetchError, setUserFetchError] = useState<string | null>(null);
 
-  const [tasks, setTasks] = useState<Task[] | null>(null);
-  const [tasksError, setTasksError] = useState<string | null>(null);
-  const [tasksLoading, setTasksLoading] = useState(false);
+  const [tasksState, setTasksState] = useState<TasksState>({ status: "loading" });
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
@@ -44,18 +50,15 @@ export function UserDetails() {
   }, [id]);
 
   const loadTasks = useCallback(async () => {
-    setTasksLoading(true);
-    setTasksError(null);
+    setTasksState({ status: "loading" });
     try {
       const res = await fetch("/api/tasks");
       if (!res.ok) throw new Error(`Failed to load tasks: ${res.status}`);
-      const data = (await res.json()) as Task[];
-      setTasks(data);
+      const data = await res.json();
+      if (!Array.isArray(data)) throw new Error("Unexpected tasks payload");
+      setTasksState({ status: "ready", tasks: data as Task[] });
     } catch (err) {
-      setTasks(null);
-      setTasksError(err instanceof Error ? err.message : "Failed to load tasks");
-    } finally {
-      setTasksLoading(false);
+      setTasksState({ status: "error", message: err instanceof Error ? err.message : "Failed to load tasks" });
     }
   }, []);
 
@@ -104,9 +107,18 @@ export function UserDetails() {
     );
   }
 
-  const assignedTasks = tasks ? tasks.filter((t) => t.assigneeId === user.id) : [];
+  const assignedTasks = tasksState.status === "ready" ? tasksState.tasks.filter((t) => t.assigneeId === user.id) : [];
   const activeTasks = assignedTasks.filter((t) => t.status !== "done");
   const completedTasks = assignedTasks.filter((t) => t.status === "done");
+
+  // Never show a real-looking number for data that isn't actually in yet —
+  // "…" while the fetch is in flight, "Unavailable" once it has failed, and
+  // only ever a genuine count once the array is actually in hand.
+  const formatStat = (count: number) => {
+    if (tasksState.status === "loading") return "…";
+    if (tasksState.status === "error") return "Unavailable";
+    return String(count);
+  };
 
   return (
     <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 md:p-8 max-w-4xl mx-auto">
@@ -150,37 +162,42 @@ export function UserDetails() {
 
       <section className="mb-8">
         <h2 className="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">Task summary</h2>
-        <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4" aria-live="polite">
           <div className="bg-gray-50 rounded-lg p-4 text-center">
             <dt className="text-sm font-medium text-gray-500">Total assigned</dt>
-            <dd className="mt-1 text-2xl font-bold text-gray-900">{assignedTasks.length}</dd>
+            <dd className="mt-1 text-2xl font-bold text-gray-900">{formatStat(assignedTasks.length)}</dd>
           </div>
           <div className="bg-gray-50 rounded-lg p-4 text-center">
             <dt className="text-sm font-medium text-gray-500">Active</dt>
-            <dd className="mt-1 text-2xl font-bold text-indigo-600">{activeTasks.length}</dd>
+            <dd className="mt-1 text-2xl font-bold text-indigo-600">{formatStat(activeTasks.length)}</dd>
           </div>
           <div className="bg-gray-50 rounded-lg p-4 text-center">
             <dt className="text-sm font-medium text-gray-500">Completed</dt>
-            <dd className="mt-1 text-2xl font-bold text-green-600">{completedTasks.length}</dd>
+            <dd className="mt-1 text-2xl font-bold text-green-600">{formatStat(completedTasks.length)}</dd>
           </div>
         </dl>
       </section>
 
-      {tasksError && (
+      {tasksState.status === "loading" && (
+        <p className="text-gray-500 mb-6" aria-live="polite">
+          Loading assigned tasks...
+        </p>
+      )}
+
+      {tasksState.status === "error" && (
         <div role="alert" className="bg-red-50 border border-red-300 rounded p-3 text-sm text-red-700 mb-6 flex items-center justify-between gap-4">
-          <span>Failed to load assigned tasks: {tasksError}</span>
+          <span>Failed to load assigned tasks: {tasksState.message}</span>
           <button
             type="button"
             onClick={loadTasks}
-            disabled={tasksLoading}
             className="bg-red-600 text-white rounded px-3 py-1.5 text-sm font-medium hover:bg-red-700 disabled:opacity-50 whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800"
           >
-            {tasksLoading ? "Retrying…" : "Retry"}
+            Retry
           </button>
         </div>
       )}
 
-      {tasks && (
+      {tasksState.status === "ready" && (
         <>
           <section className="mb-8">
             <h2 className="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">Active tasks</h2>
