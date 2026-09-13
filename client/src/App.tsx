@@ -4,6 +4,7 @@ import Tasks from "./routes/Tasks";
 import Users from "./routes/Users";
 import Dashboard from "./routes/Dashboard";
 import { TaskDetails } from "./routes/TaskDetails";
+import { UserDetails } from "./routes/UserDetails";
 import { Dialog } from "./components/Dialog";
 import { useAppError } from "./context/AppErrorContext";
 
@@ -242,6 +243,7 @@ export default function App() {
               <Route path="/tasks" element={<Tasks />} />
               <Route path="/tasks/:id" element={<TaskDetails />} />
               <Route path="/users" element={<Users />} />
+              <Route path="/users/:id" element={<UserDetails />} />
             </Routes>
           </div>
         </main>

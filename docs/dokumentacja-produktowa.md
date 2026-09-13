@@ -101,12 +101,17 @@ Sposób, w jaki `null` na tych polach jest obsługiwany, różni się jednak mi�
 - Rola (`admin` / `editor` / `viewer`) jest ustawiana raz, przy tworzeniu użytkownika, i wyświetlana jako etykieta (kolorowy „chip”) na liście użytkowników.
 - **Rola nie wpływa na to, co dany użytkownik może zrobić w aplikacji** — nie ma logowania ani sesji użytkownika, więc nie ma też pojęcia „zalogowanego” użytkownika, którego rola mogłaby cokolwiek ograniczać. Wszystkie akcje (tworzenie, edycja, usuwanie zadań i użytkowników) są dostępne dla każdego, kto korzysta z aplikacji lub API, niezależnie od ról przypisanych do użytkowników w systemie.
 
-### 2.9 Usuwanie użytkownika (`DELETE /api/users/:id`)
+### 2.9 Szczegóły użytkownika (`GET /api/users/:id`)
 
-- **Brak w UI**: interfejs nie udostępnia żadnego przycisku ani akcji usuwania użytkownika — endpoint jest dostępny wyłącznie przez bezpośrednie wywołanie API.
-- Reguła biznesowa: jeśli usuwany użytkownik ma przypisane zadania o statusie innym niż `"done"` (czyli `"todo"` lub `"in-progress"`), żądanie zwraca `409 Conflict` z ciałem `{ "error": "Cannot delete user with active tasks", "conflictingTasks": [{ "id", "title" }, ...] }` i użytkownik **nie** zostaje usunięty.
-- Jeśli wszystkie przypisane zadania mają status `"done"` (lub użytkownik nie ma żadnych przypisanych zadań), usunięcie się powiedzie (`204`).
-- Usunięcie użytkownika powoduje automatyczne wyczyszczenie pola `assigneeId` w pozostałych zadaniach, które nadal na niego wskazywały (czyli w zadaniach o statusie `"done"`).
+- Zwraca pełny obiekt istniejącego użytkownika (`200`) albo `404` z ciałem `{ "error": "User not found" }`, gdy identyfikator nie istnieje.
+- Endpoint nie dolicza żadnych statystyk ani listy zadań do obiektu użytkownika — widok szczegółów w UI (sekcja 6.7) pobiera zadania osobno z `GET /api/tasks` i sam wylicza podsumowanie po stronie klienta.
+
+### 2.10 Usuwanie użytkownika (`DELETE /api/users/:id`)
+
+- Reguła biznesowa: jeśli usuwany użytkownik ma przypisane zadania o statusie innym niż `"done"` (czyli `"todo"` lub `"in-progress"`), żądanie zwraca `409 Conflict` z ciałem `{ "error": "Cannot delete user with active tasks", "conflictingTasks": [{ "id", "title", "status" }, ...] }`, a użytkownik **nie** zostaje usunięty. `conflictingTasks` zawiera wyłącznie zadania o statusie `"todo"` lub `"in-progress"` — zadania `"done"` przypisane do tego użytkownika nigdy się tam nie pojawiają.
+- Jeśli wszystkie przypisane zadania mają status `"done"` (lub użytkownik nie ma żadnych przypisanych zadań), usunięcie się powiedzie (`204`, bez treści odpowiedzi).
+- Usunięcie użytkownika powoduje automatyczne wyczyszczenie pola `assigneeId` we wszystkich pozostałych zadaniach, które nadal na niego wskazywały (czyli w jego zadaniach o statusie `"done"`) — po ponownym pobraniu takie zadania pokazują brak przypisania.
+- Nieistniejące `id` zwraca `404` z ciałem `{ "error": "User not found" }` — zarówno przy próbie usunięcia użytkownika, który nigdy nie istniał, jak i przy ponownej próbie usunięcia użytkownika już wcześniej usuniętego.
 - Nie istnieje endpoint do edycji użytkownika (`PUT`/`PATCH`) — po utworzeniu nazwy, e-maila, roli ani awatara nie da się zmienić ani przez UI, ani przez udokumentowane API.
 
 ---
@@ -210,6 +215,30 @@ Widok Tasks ma pięć zakładek: **Active**, **Grid View**, **Table**, **Archive
 - Dostęp do widoku realizowany jest za pomocą dedykowanego linku "View details" dodanego obok głównej akcji "Edit" / "Delete" na elementach listy (np. Table, TaskCard).
 - Bezpiecznie obsługuje brak istnienia zadania – gdy API zwróci błąd `404`, aplikacja (SPA) wyświetli odpowiedni stan widoku „Task not found” informujący jasno o problemie, przy zachowaniu spójności nawigacji i możliwości powrotu do listy. Błędy sieciowe (np. 500) prezentują stosowny komunikat z opcją ponowienia.
 
+### 6.7 Widok szczegółów użytkownika (`/users/:id`)
+
+- Dostępny pod osobnym adresem `/users/:id`; link „View details” prowadzący do tego widoku znajduje się zarówno przy każdym użytkowniku na liście mobilnej (karty), jak i w kolumnie **Actions** tabeli desktopowej na stronie Users.
+- Po wejściu widok równolegle pobiera dane użytkownika (`GET /api/users/:id`) oraz pełną listę zadań (`GET /api/tasks`), a następnie sam wylicza po stronie klienta: liczbę wszystkich przypisanych zadań, liczbę aktywnych (status inny niż `"done"`) i liczbę ukończonych (status `"done"`).
+- Prezentuje: avatar (lub zastępcze inicjały, gdy brak `avatarUrl`/`avatar` albo obraz nie chce się załadować), imię i nazwisko, adres e-mail, rolę oraz identyfikator (`id`) użytkownika.
+- Zadania przypisane do użytkownika są pokazane w dwóch osobnych sekcjach — „Active tasks” i „Completed tasks” — każde jako lista z tytułem, statusem, priorytetem, terminem (jeśli ustawiony) oraz linkiem „View details” prowadzącym do `/tasks/:id`. Brak zadań w danej sekcji pokazuje odpowiedni komunikat zamiast pustej listy — ale wyłącznie wtedy, gdy lista zadań została już poprawnie pobrana (patrz niżej).
+- Jeśli pobranie danych użytkownika zwróci `404`, widok pokazuje stan „User not found” z linkiem powrotu do listy użytkowników — żadne dane profilu nie są wtedy renderowane. Błąd sieciowy lub `5xx` przy pobieraniu użytkownika pokazuje osobny stan błędu z przyciskiem „Retry”, również bez częściowo zbudowanego profilu.
+- Statystyki zadań oraz obie sekcje list rozróżniają trzy stany danych o zadaniach użytkownika, aby nigdy nie sugerować prawdziwych zer tam, gdzie danych po prostu jeszcze nie ma:
+  - **pobieranie w toku** — statystyki pokazują `…` zamiast liczby, a zamiast list „Active tasks”/„Completed tasks” widoczny jest komunikat o trwającym ładowaniu;
+  - **błąd pobrania** (sieciowy, `5xx`, albo poprawne `200` z odpowiedzią, która nie jest tablicą — to również traktowane jako kontrolowany błąd danych) — statystyki pokazują „Unavailable” zamiast liczby, a komunikaty „No active tasks assigned”/„No completed tasks assigned” nie są wyświetlane, ponieważ nie wiadomo, czy taki byłby ich prawdziwy stan; widoczny jest za to osobny, czytelny komunikat o błędzie pobierania zadań z przyciskiem „Retry” ograniczonym tylko do ponowienia tego zapytania;
+  - **poprawnie pobrana tablica** (również pusta) — dopiero wtedy statystyki pokazują rzeczywiste liczby (w tym prawdziwe zera) i listy pokazują albo przypisane zadania, albo właściwy komunikat o braku zadań w danej sekcji.
+- Powyższy trzystanowy podział dotyczy wyłącznie danych o zadaniach — jeśli uda się pobrać samego użytkownika, jego profil (avatar, dane) jest widoczny niezależnie od stanu pobierania zadań; udany retry po błędzie przywraca właściwe statystyki i listy.
+- Bezpośrednie wejście lub odświeżenie strony pod adresem `/users/:id` działa tak samo jak nawigacja z listy — dane są pobierane od nowa przy każdym takim wejściu.
+
+### 6.8 Usuwanie użytkownika z poziomu UI
+
+- Na stronie `/users/:id` znajduje się przycisk „Delete user”, który otwiera dostępny modal potwierdzający (oparty na tym samym komponencie dialogu co edycja zadań — z pułapką fokusu, zamykaniem przez Escape i przywracaniem fokusu na przycisk, który otworzył modal).
+- Modal informuje wprost, że operacji nie można cofnąć oraz że usunięcie użytkownika jest możliwe tylko wtedy, gdy nie ma on aktywnych (`"todo"` lub `"in-progress"`) zadań przypisanych. Zawiera przyciski „Cancel” i „Delete user”.
+- W trakcie wykonywania żądania przycisk potwierdzenia pokazuje stan „Deleting…” i jest zablokowany, tak aby kolejne kliknięcie nie wysłało drugiego żądania. Dopóki żądanie trwa, modalu nie da się też zamknąć w żaden inny sposób — ani przyciskiem „Cancel” (również wtedy zablokowany), ani klawiszem Escape, ani kliknięciem w tło — dzięki czemu zamknięcie i ponowne otwarcie modalu nie może nigdy nałożyć się na wciąż trwające żądanie usunięcia. Po zakończeniu żądania (sukcesem lub błędem) blokada znika i modal ponownie reaguje normalnie na „Cancel”/Escape/kliknięcie w tło.
+- **Sukces (`204`)**: modal się zamyka, aplikacja przechodzi na `/users`, a lista użytkowników na tej stronie jest od razu pobrana na nowo — usunięty użytkownik nie jest już na niej widoczny bez potrzeby ręcznego odświeżania strony. Nad listą pojawia się jednorazowy, dostępny komunikat sukcesu (np. „Alice Johnson deleted successfully”) w regionie `role="status"`; komunikat nie jest już widoczny po odświeżeniu strony ani po powrocie/przejściu do niej z historii przeglądarki.
+- **Konflikt (`409`)**: modal pozostaje otwarty, użytkownik nie znika z widoku, a wewnątrz modalu pokazywany jest zarówno komunikat główny („Cannot delete user with active tasks”), jak i lista blokujących zadań (`conflictingTasks`) — każde z tytułem, statusem i linkiem „View details” do `/tasks/:id`. Zamknięcie i ponowne otwarcie modalu czyści poprzedni błąd; kolejne kliknięcie „Delete user” zawsze wysyła nowe żądanie.
+- **Użytkownik już nie istnieje (`404`)** podczas próby usunięcia: modal pokazuje informację, że użytkownik już nie istnieje, wraz z linkiem powrotu do `/users`.
+- **Błąd sieciowy lub `5xx`**: modal pozostaje otwarty z komunikatem błędu i możliwością ponowienia — operacja nie jest traktowana tak, jakby zwróciła `409`, ani jakby się powiodła.
+
 ---
 
 ## 7. Tworzenie zadań — różnice między kreatorem, szybkim dodawaniem a API
@@ -241,11 +270,11 @@ Oba te formularze operują na dokładnie tym samym, węższym zestawie pól: `ti
 
 ---
 
-## 8. Zachowanie formularzy tworzenia użytkownika
+## 8. Lista użytkowników i zachowanie formularza tworzenia
 
 Formularz na stronie **Users** tworzy użytkownika przez `POST /api/users`, wysyłając: `name`, `email`, `role` (domyślnie `viewer`), `avatar` (URL, opcjonalny). Błędy walidacji z API (patrz sekcja 1.2) są mapowane na te same cztery pola formularza.
 
-Strona Users nie udostępnia żadnej akcji usuwania ani edycji użytkownika — lista jest tylko do odczytu poza samym formularzem dodawania (patrz też sekcja 2.9).
+Lista użytkowników pokazuje każdego użytkownika jako kartę (widok mobilny) lub wiersz tabeli (widok desktopowy) z awatarem (lub inicjałami zastępczymi), imieniem i nazwiskiem, e-mailem oraz kolorową plakietką roli. Tabela desktopowa ma kolumnę **Actions** zamiast statycznej etykiety statusu konta — takiego statusu backend nie przechowuje, więc UI go nie sugeruje. Zarówno na kartach mobilnych, jak i w kolumnie Actions tabeli, znajduje się link „View details” prowadzący do widoku szczegółów danego użytkownika (`/users/:id`, patrz sekcja 6.7) — sama karta ani cały wiersz nie są klikalne, tylko ten link. Usuwanie użytkownika jest dostępne wyłącznie z poziomu widoku szczegółów (patrz sekcje 6.7–6.8 i 2.10). Nadal nie istnieje żadna forma edycji użytkownika (patrz sekcja 2.10) — ani na liście, ani w widoku szczegółów.
 
 ---
 

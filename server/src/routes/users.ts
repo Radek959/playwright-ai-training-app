@@ -12,6 +12,12 @@ usersRouter.get("/", (_req, res) => {
   res.json(users);
 });
 
+usersRouter.get("/:id", (req, res) => {
+  const user = users.find((u) => u.id === req.params.id);
+  if (!user) return res.status(404).json({ error: "User not found" });
+  res.json(user);
+});
+
 usersRouter.post("/", (req, res) => {
   if (!isPlainObject(req.body)) {
     return res.status(400).json({
@@ -49,7 +55,7 @@ usersRouter.delete("/:id", (req, res) => {
   if (activeTasks.length > 0) {
     return res.status(409).json({
       error: "Cannot delete user with active tasks",
-      conflictingTasks: activeTasks.map((t) => ({ id: t.id, title: t.title }))
+      conflictingTasks: activeTasks.map((t) => ({ id: t.id, title: t.title, status: t.status }))
     });
   }
 

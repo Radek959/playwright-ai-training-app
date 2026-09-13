@@ -34,6 +34,17 @@ export function useDialogA11y<T extends HTMLElement>({ open, onClose, initialFoc
   const containerRef = useRef<T | null>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
+  // The Escape handler below is wired up once per open/close cycle (see the
+  // effect's dependency array), but a caller's onClose can legitimately
+  // change identity and behavior while still open (e.g. it starts refusing
+  // to close mid-request). Reading it through a ref that's kept current on
+  // every render avoids that handler calling a stale, no-longer-accurate
+  // version of onClose.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
   useEffect(() => {
     if (!open) return;
 
@@ -52,7 +63,7 @@ export function useDialogA11y<T extends HTMLElement>({ open, onClose, initialFoc
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key === "Tab" && containerRef.current) {
