@@ -198,11 +198,12 @@ Widok Tasks ma pięć zakładek: **Active**, **Grid View**, **Table**, **Archive
 
 - Dostępny pod osobnym adresem `/tasks/:id`, ładuje i prezentuje pełne dane zadania na podstawie odpowiedzi z API.
 - Wyświetla wszystkie właściwości modelu zadania w tym rozszerzone pola niedostępne w uproszczonych formularzach (m.in. typ zadania, severity, tagi, logikę zatwierdzania, godziny, powiązania).
-- Wskazuje powiązania m.in. rozwiązując ID pracownika na jego dane z listy użytkowników oraz zależności pomiędzy zadaniami, pozwalając na swobodne przechodzenie między widokami zależnych zadań (linki do powiązanych rekordów).
+- Wskazuje powiązania: rozwiązując pole `assigneeId` na dane z listy użytkowników, a przy `approver` korzystając z zamkniętego zestawu wartości tekstowych (nie identyfikatorów), pokazując przyjazną etykietę i oryginalną wartość. Zależności pomiędzy zadaniami pozwalają na swobodne przechodzenie między widokami zależnych zadań (linki do powiązanych rekordów).
 - Puste pola opcjonalne są jawnie oznaczane jako brak wartości ("Not set"), zamiast być ukrywane.
+- Prezentuje adres URL miniatury `coverImage` (w formie klikalnego linku), oprócz wyświetlenia samego obrazu.
 - Służy wyłącznie do odczytu – wszelka edycja realizowana jest z innych widoków przez akcje przypisane kartom lub wierszom tabel.
 - Dostęp do widoku realizowany jest za pomocą dedykowanego linku "View details" dodanego obok głównej akcji "Edit" / "Delete" na elementach listy (np. Table, TaskCard).
-- Bezpiecznie obsługuje brak istnienia zadania – widok zachowuje odpowiedź HTTP 404 informując jasno o problemie, przy zachowaniu spójności nawigacji i możliwości powrotu do listy.
+- Bezpiecznie obsługuje brak istnienia zadania – gdy API zwróci błąd `404`, aplikacja (SPA) wyświetli odpowiedni stan widoku „Task not found” informujący jasno o problemie, przy zachowaniu spójności nawigacji i możliwości powrotu do listy. Błędy sieciowe (np. 500) prezentują stosowny komunikat z opcją ponowienia.
 
 ---
 

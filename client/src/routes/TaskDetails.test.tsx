@@ -13,19 +13,17 @@ const mockTask = {
   taskType: "bug",
   severity: "critical",
   dueDate: "2024-12-31T00:00:00Z",
-  completedAt: null,
   estimatedHours: 5,
   assigneeId: "user-1",
   tags: ["frontend", "urgent"],
   dependencies: ["task-2"],
   requiresApproval: true,
-  approver: "user-2",
+  approver: "manager-a",
   coverImage: "http://example.com/image.png"
 };
 
 const mockUsers = [
-  { id: "user-1", name: "Alice" },
-  { id: "user-2", name: "Bob" }
+  { id: "user-1", name: "Alice" }
 ];
 
 const mockDepTask = {
@@ -50,7 +48,7 @@ function renderComponent(id = "task-1") {
 describe("TaskDetails", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    fetchSpy = vi.spyOn(global, "fetch");
+    fetchSpy = vi.spyOn(globalThis, "fetch");
   });
 
   it("fetches and displays task details", async () => {
@@ -80,42 +78,70 @@ describe("TaskDetails", () => {
     expect(screen.getByText("5")).toBeInTheDocument();
     expect(screen.getByText("Yes")).toBeInTheDocument();
 
+    // Check cover image link
+    const coverImageLink = screen.getByRole("link", { name: "http://example.com/image.png" });
+    expect(coverImageLink).toHaveAttribute("href", "http://example.com/image.png");
+
     // Check assignee and approver
     expect(screen.getByText(/Alice/)).toBeInTheDocument();
     expect(screen.getByText(/\(user-1\)/)).toBeInTheDocument();
-    expect(screen.getByText(/Bob/)).toBeInTheDocument();
-    expect(screen.getByText(/\(user-2\)/)).toBeInTheDocument();
+    
+    expect(screen.getByText("Manager A (manager-a)")).toBeInTheDocument();
 
     // Check dependencies
     expect(screen.getByText("Dependency Task")).toBeInTheDocument();
     expect(screen.getByText(/\(task-2\)/)).toBeInTheDocument();
+    
+    // Check dependency link
+    const depLink = screen.getByRole("link", { name: "View details", hidden: false });
+    expect(depLink).toHaveAttribute("href", "/tasks/task-2");
 
     // Check tags
     expect(screen.getByText("frontend")).toBeInTheDocument();
     expect(screen.getByText("urgent")).toBeInTheDocument();
   });
 
-  it("displays Not set for missing optional fields", async () => {
+  it("displays correct placeholders for missing optional fields", async () => {
     fetchSpy.mockImplementation((input: RequestInfo | URL) => {
       const url = input.toString();
       if (url === "/api/tasks/task-empty") return Promise.resolve(new Response(JSON.stringify({
         id: "task-empty",
         title: "Empty Task",
         status: "todo",
-        priority: "low"
+        priority: "low",
+        requiresApproval: false
       })));
       if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify([])));
       return Promise.resolve(new Response(null, { status: 404 }));
     });
 
-    renderComponent("task-empty");
+    const { container } = renderComponent("task-empty");
 
     await waitFor(() => {
       expect(screen.getByText("Empty Task")).toBeInTheDocument();
     });
 
-    const notSetElements = screen.getAllByText("Not set");
-    expect(notSetElements.length).toBeGreaterThan(0);
+    const getDdForDt = (dtText: string) => {
+      const dts = Array.from(container.querySelectorAll("dt"));
+      const dt = dts.find(el => el.textContent === dtText);
+      return dt?.nextElementSibling?.textContent;
+    };
+
+    expect(getDdForDt("Description")).toBe("Not set");
+    expect(getDdForDt("Task Type")).toBe("Not set");
+    expect(getDdForDt("Severity")).toBe("Not set");
+    expect(getDdForDt("Tags")).toBe("Not set");
+    expect(getDdForDt("Due Date")).toBe("Not set");
+    expect(getDdForDt("Completed At")).toBe("Not set");
+    expect(getDdForDt("Estimated Hours")).toBe("Not set");
+    expect(getDdForDt("Assignee")).toBe("Not set");
+    expect(getDdForDt("Requires Approval")).toBe("No");
+    expect(getDdForDt("Approver")).toBe("Not set");
+    expect(getDdForDt("Cover Image")).toBe("Not set");
+    
+    // Dependencies section has no dt
+    const depsHeading = screen.getByText("Dependencies");
+    expect(depsHeading.nextElementSibling?.textContent).toBe("Not set");
   });
 
   it("displays 404 message if task not found", async () => {
@@ -130,6 +156,38 @@ describe("TaskDetails", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Task not found")).toBeInTheDocument();
+    });
+  });
+
+  it("displays error state with retry on network error", async () => {
+    fetchSpy.mockImplementation(() => {
+      return Promise.reject(new Error("Network Error"));
+    });
+
+    renderComponent("task-error");
+
+    await waitFor(() => {
+      expect(screen.getByText("Failed to load task")).toBeInTheDocument();
+      expect(screen.getByText("Network Error")).toBeInTheDocument();
+    });
+
+    const retryBtn = screen.getByRole("button", { name: "Retry" });
+    expect(retryBtn).toBeInTheDocument();
+    
+    const backLink = screen.getByRole("link", { name: "Back to tasks list" });
+    expect(backLink).toBeInTheDocument();
+  });
+  
+  it("displays error state on non-404 API error", async () => {
+    fetchSpy.mockImplementation(() => {
+      return Promise.resolve(new Response(null, { status: 500, statusText: "Internal Server Error" }));
+    });
+
+    renderComponent("task-error-500");
+
+    await waitFor(() => {
+      expect(screen.getByText("Failed to load task")).toBeInTheDocument();
+      expect(screen.getByText("Failed to load task: Internal Server Error")).toBeInTheDocument();
     });
   });
 });

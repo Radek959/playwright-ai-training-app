@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useAppError } from "../context/AppErrorContext";
+import { getApproverLabel } from "../utils/approvers";
 import type { Task, User } from "../types";
 
 export function TaskDetails() {
@@ -10,56 +11,64 @@ export function TaskDetails() {
   const [dependencies, setDependencies] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const { setError, clearError } = useAppError();
 
-  useEffect(() => {
-    async function loadData() {
+  const loadData = useCallback(async () => {
+    if (!id) return;
+    try {
+      setLoading(true);
+      setFetchError(null);
+      setNotFound(false);
+      clearError();
+
+      const taskRes = await fetch(`/api/tasks/${id}`);
+
+      if (taskRes.status === 404) {
+        setNotFound(true);
+        return;
+      }
+
+      if (!taskRes.ok) {
+        throw new Error(`Failed to load task: ${taskRes.statusText}`);
+      }
+
+      const taskData = await taskRes.json() as Task;
+      setTask(taskData);
+
+      // Try fetching users, but don"t fail the whole page if it fails
       try {
-        setLoading(true);
-        clearError();
-        setNotFound(false);
-
-        const [taskRes, usersRes] = await Promise.all([
-          fetch(`/api/tasks/${id}`),
-          fetch("/api/users")
-        ]);
-
-        if (taskRes.status === 404) {
-          setNotFound(true);
-          return;
-        }
-
-        if (!taskRes.ok) {
-          throw new Error(`Failed to load task: ${taskRes.statusText}`);
-        }
-        if (!usersRes.ok) {
-          throw new Error(`Failed to load users: ${usersRes.statusText}`);
-        }
-
-        const taskData = await taskRes.json() as Task;
-        const usersData = await usersRes.json() as User[];
-
-        setTask(taskData);
-        setUsers(usersData);
-
-        if (taskData.dependencies && taskData.dependencies.length > 0) {
-          const depsPromises = taskData.dependencies.map(depId =>
-            fetch(`/api/tasks/${depId}`).then(r => r.ok ? r.json() : null)
-          );
-          const depsData = await Promise.all(depsPromises);
-          setDependencies(depsData.filter(Boolean) as Task[]);
+        const usersRes = await fetch("/api/users");
+        if (usersRes.ok) {
+          const usersData = await usersRes.json() as User[];
+          setUsers(usersData);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Error loading task details");
-      } finally {
-        setLoading(false);
+        console.warn("Failed to fetch users", err);
       }
-    }
 
-    if (id) {
-      loadData();
+      // Fetch dependencies if any
+      if (taskData.dependencies && taskData.dependencies.length > 0) {
+        const depsPromises = taskData.dependencies.map(depId =>
+          fetch(`/api/tasks/${depId}`)
+            .then(r => r.ok ? r.json() : null)
+            .catch(() => null)
+        );
+        const depsData = await Promise.all(depsPromises);
+        setDependencies(depsData.filter(Boolean) as Task[]);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Error loading task details";
+      setFetchError(msg);
+      setError(msg);
+    } finally {
+      setLoading(false);
     }
   }, [id, clearError, setError]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   if (loading) {
     return (
@@ -79,12 +88,22 @@ export function TaskDetails() {
     );
   }
 
-  if (!task) {
-    return null;
+  if (fetchError || !task) {
+    return (
+      <div className="p-8 text-center">
+        <h2 className="text-2xl font-bold text-red-900 mb-4">Failed to load task</h2>
+        <p className="text-gray-600 mb-6">{fetchError || "Unknown error"}</p>
+        <div className="flex justify-center gap-4">
+          <Link to="/tasks" className="text-indigo-600 hover:underline px-4 py-2 border border-indigo-600 rounded">Back to tasks list</Link>
+          <button onClick={loadData} className="bg-indigo-600 text-white hover:bg-indigo-700 px-4 py-2 rounded">
+            Retry
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const assignee = users.find(u => u.id === task.assigneeId);
-  const approver = users.find(u => u.id === task.approver);
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return "Not set";
@@ -183,7 +202,7 @@ export function TaskDetails() {
               <dt className="text-sm font-medium text-gray-500">Assignee</dt>
               <dd className="mt-1 text-gray-900">
                 {task.assigneeId ? (
-                  <span>{assignee ? assignee.name : "Unknown User"} <span className="text-gray-500 text-sm font-mono">({task.assigneeId})</span></span>
+                  <span>{assignee ? assignee.name : task.assigneeId} {assignee && <span className="text-gray-500 text-sm font-mono">({task.assigneeId})</span>}</span>
                 ) : (
                   "Not set"
                 )}
@@ -197,7 +216,19 @@ export function TaskDetails() {
               <dt className="text-sm font-medium text-gray-500">Approver</dt>
               <dd className="mt-1 text-gray-900">
                 {task.approver ? (
-                  <span>{approver ? approver.name : "Unknown User"} <span className="text-gray-500 text-sm font-mono">({task.approver})</span></span>
+                  <span>{getApproverLabel(task.approver)}</span>
+                ) : (
+                  "Not set"
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-sm font-medium text-gray-500">Cover Image</dt>
+              <dd className="mt-1 text-gray-900 break-all">
+                {task.coverImage ? (
+                  <a href={task.coverImage} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">
+                    {task.coverImage}
+                  </a>
                 ) : (
                   "Not set"
                 )}
@@ -216,8 +247,8 @@ export function TaskDetails() {
               return (
                 <li key={depId} className="bg-gray-50 p-3 rounded border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <span className="font-medium text-gray-900">{depTask ? depTask.title : "Unknown Task"}</span>
-                    <span className="ml-2 text-gray-500 text-sm font-mono">({depId})</span>
+                    <span className="font-medium text-gray-900">{depTask ? depTask.title : depId}</span>
+                    {depTask && <span className="ml-2 text-gray-500 text-sm font-mono">({depId})</span>}
                   </div>
                   <Link to={`/tasks/${depId}`} className="text-indigo-600 hover:underline text-sm whitespace-nowrap">
                     View details
