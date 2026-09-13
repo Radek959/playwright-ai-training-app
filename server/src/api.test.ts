@@ -37,22 +37,28 @@ describe("API Integration Tests", () => {
 
     it("creates a valid task and assigns default values", async () => {
       const payload = {
-        title: "New Integration Test Task",
-        status: "todo",
-        priority: "medium"
+        title: "New Integration Test Task"
       };
 
       const response = await request(app).post("/api/tasks").send(payload);
       expect(response.status).toBe(201);
       expect(response.body.id).toBeDefined();
       expect(response.body.title).toBe("New Integration Test Task");
+      
+      // Verify default values
       expect(response.body.status).toBe("todo");
       expect(response.body.priority).toBe("medium");
+      expect(response.body.tags).toEqual([]);
+      expect(response.body.dependencies).toEqual([]);
+      expect(response.body.requiresApproval).toBe(false);
       
-      // Default array values shouldn't be implicitly added if not in schema, 
-      // but let's check it's present in the array
       const fetchRes = await request(app).get(`/api/tasks/${response.body.id}`);
       expect(fetchRes.status).toBe(200);
+      expect(fetchRes.body.status).toBe("todo");
+      expect(fetchRes.body.priority).toBe("medium");
+      expect(fetchRes.body.tags).toEqual([]);
+      expect(fetchRes.body.dependencies).toEqual([]);
+      expect(fetchRes.body.requiresApproval).toBe(false);
     });
 
     it("returns 400 for invalid payload when creating task", async () => {
@@ -101,24 +107,48 @@ describe("API Integration Tests", () => {
     });
 
     it("searches tasks", async () => {
-      const response = await request(app).get("/api/tasks/search?q=test");
+      // First create a task with a very unique title
+      const uniqueTitle = "SuperUniqueSearchTerm12345";
+      const createRes = await request(app).post("/api/tasks").send({ title: uniqueTitle });
+      const createdTaskId = createRes.body.id;
+
+      // Search for the unique title (case insensitive)
+      const response = await request(app).get(`/api/tasks/search?q=${uniqueTitle.toLowerCase()}`);
       expect(response.status).toBe(200);
       expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body.length).toBe(1);
+      expect(response.body[0].id).toBe(createdTaskId);
+      
+      // Search for something that shouldn't exist
+      const emptyRes = await request(app).get("/api/tasks/search?q=DefinitelyNonExistent123");
+      expect(emptyRes.status).toBe(200);
+      expect(emptyRes.body).toEqual([]);
     });
 
-    it("deletes a task and removes its ID from dependencies of other tasks", async () => {
-      // Find a task that is a dependency for another task
-      const dependentTask = tasks.find(t => t.dependencies && t.dependencies.length > 0);
-      expect(dependentTask).toBeDefined();
+    it("deletes a task and removes its ID from dependencies of all other tasks", async () => {
+      // Create a base task
+      const baseRes = await request(app).post("/api/tasks").send({ title: "Base Task" });
+      const baseTaskId = baseRes.body.id;
+
+      // Create two dependent tasks
+      const dep1Res = await request(app).post("/api/tasks").send({ title: "Dep 1" });
+      await request(app).put(`/api/tasks/${dep1Res.body.id}`).send({ dependencies: [baseTaskId] });
       
-      const dependencyId = dependentTask!.dependencies![0];
-      
-      const deleteRes = await request(app).delete(`/api/tasks/${dependencyId}`);
+      const dep2Res = await request(app).post("/api/tasks").send({ title: "Dep 2" });
+      await request(app).put(`/api/tasks/${dep2Res.body.id}`).send({ dependencies: [baseTaskId] });
+
+      // Delete the base task
+      const deleteRes = await request(app).delete(`/api/tasks/${baseTaskId}`);
       expect(deleteRes.status).toBe(204);
       
-      const fetchDependentRes = await request(app).get(`/api/tasks/${dependentTask!.id}`);
-      expect(fetchDependentRes.status).toBe(200);
-      expect(fetchDependentRes.body.dependencies).not.toContain(dependencyId);
+      // Verify both dependents no longer have the base task in their dependencies
+      const fetchDep1 = await request(app).get(`/api/tasks/${dep1Res.body.id}`);
+      expect(fetchDep1.body.dependencies).not.toContain(baseTaskId);
+      expect(fetchDep1.body.dependencies).toEqual([]);
+      
+      const fetchDep2 = await request(app).get(`/api/tasks/${dep2Res.body.id}`);
+      expect(fetchDep2.body.dependencies).not.toContain(baseTaskId);
+      expect(fetchDep2.body.dependencies).toEqual([]);
     });
 
     it("returns 404 for non-existent task", async () => {
@@ -156,20 +186,23 @@ describe("API Integration Tests", () => {
       });
       const newUserId = userRes.body.id;
       
-      // Assign them to a completed task
-      const doneTask = tasks.find(t => t.status === "done")!;
-      await request(app).put(`/api/tasks/${doneTask.id}`).send({
-        assigneeId: newUserId
-      });
+      // Assign them to two completed tasks
+      const doneTasks = tasks.filter(t => t.status === "done").slice(0, 2);
+      expect(doneTasks.length).toBeGreaterThanOrEqual(2);
+      
+      await request(app).put(`/api/tasks/${doneTasks[0].id}`).send({ assigneeId: newUserId });
+      await request(app).put(`/api/tasks/${doneTasks[1].id}`).send({ assigneeId: newUserId });
       
       // Delete the user
       const deleteRes = await request(app).delete(`/api/users/${newUserId}`);
       expect(deleteRes.status).toBe(204);
       
-      // Check the task no longer has them assigned
-      const taskRes = await request(app).get(`/api/tasks/${doneTask.id}`);
-      expect(taskRes.status).toBe(200);
-      expect(taskRes.body.assigneeId).toBeUndefined();
+      // Check both tasks no longer have them assigned
+      const taskRes1 = await request(app).get(`/api/tasks/${doneTasks[0].id}`);
+      expect(taskRes1.body.assigneeId).toBeUndefined();
+      
+      const taskRes2 = await request(app).get(`/api/tasks/${doneTasks[1].id}`);
+      expect(taskRes2.body.assigneeId).toBeUndefined();
     });
     
     it("returns 404 for non-existent user", async () => {
