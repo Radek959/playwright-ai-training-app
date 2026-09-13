@@ -60,7 +60,7 @@ describe("TaskDetails", () => {
       return Promise.resolve(new Response(null, { status: 404 }));
     });
 
-    renderComponent();
+    const { container } = renderComponent();
 
     expect(screen.getByText("Loading task details...")).toBeInTheDocument();
 
@@ -77,6 +77,11 @@ describe("TaskDetails", () => {
     expect(screen.getByText("critical")).toBeInTheDocument();
     expect(screen.getByText("5")).toBeInTheDocument();
     expect(screen.getByText("Yes")).toBeInTheDocument();
+
+    // Check date rendering independently of timezone
+    const timeElements = container.querySelectorAll("time");
+    expect(timeElements.length).toBeGreaterThan(0);
+    expect(timeElements[0]).toHaveAttribute("dateTime", "2024-12-31T00:00:00.000Z");
 
     // Check cover image link
     const coverImageLink = screen.getByRole("link", { name: "http://example.com/image.png" });

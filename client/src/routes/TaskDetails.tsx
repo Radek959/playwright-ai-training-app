@@ -105,10 +105,13 @@ export function TaskDetails() {
 
   const assignee = users.find(u => u.id === task.assigneeId);
 
-  const formatDate = (dateStr?: string) => {
+  const renderDate = (dateStr?: string) => {
     if (!dateStr) return "Not set";
     try {
-      return new Date(dateStr).toLocaleString();
+      const d = new Date(dateStr);
+      // Validate date object
+      if (isNaN(d.getTime())) return dateStr;
+      return <time dateTime={d.toISOString()}>{d.toLocaleString()}</time>;
     } catch {
       return dateStr;
     }
@@ -188,11 +191,11 @@ export function TaskDetails() {
           <dl className="space-y-4">
             <div>
               <dt className="text-sm font-medium text-gray-500">Due Date</dt>
-              <dd className="mt-1 text-gray-900">{formatDate(task.dueDate)}</dd>
+              <dd className="mt-1 text-gray-900">{renderDate(task.dueDate)}</dd>
             </div>
             <div>
               <dt className="text-sm font-medium text-gray-500">Completed At</dt>
-              <dd className="mt-1 text-gray-900">{formatDate(task.completedAt)}</dd>
+              <dd className="mt-1 text-gray-900">{renderDate(task.completedAt)}</dd>
             </div>
             <div>
               <dt className="text-sm font-medium text-gray-500">Estimated Hours</dt>
