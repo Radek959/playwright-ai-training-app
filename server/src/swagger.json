@@ -187,15 +187,53 @@
       }
     },
     "/api/users/{id}": {
-      "delete": {
-        "summary": "Delete user",
+      "get": {
+        "summary": "Get a single user",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
         "responses": {
-          "204": { "description": "Deleted. assigneeId is cleared from all remaining tasks assigned to this user." },
-          "404": { "description": "Not found" },
-          "409": { "description": "User has active (non-done) tasks assigned and cannot be deleted" }
+          "200": { "description": "User", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "error": { "type": "string", "enum": ["User not found"] } },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete user",
+        "description": "Deleting a user succeeds only if none of their assigned tasks has status 'todo' or 'in-progress'. On success, assigneeId is cleared on every remaining task that was assigned to this user (i.e. their completed tasks become unassigned).",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "204": { "description": "Deleted. assigneeId is cleared from all remaining (completed) tasks assigned to this user." },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "error": { "type": "string", "enum": ["User not found"] } },
+                  "required": ["error"]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "User has active (non-done) tasks assigned and cannot be deleted",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/UserDeleteBlockedResponse" } }
+            }
+          }
         }
       }
     }
@@ -313,6 +351,26 @@
           "avatarUrl": { "type": "string", "nullable": true }
         },
         "required": ["id", "name", "email", "role"]
+      },
+      "UserDeleteBlockedResponse": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string", "enum": ["Cannot delete user with active tasks"] },
+          "conflictingTasks": {
+            "type": "array",
+            "description": "Only the tasks assigned to this user whose status is 'todo' or 'in-progress'; tasks with status 'done' are omitted.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "title": { "type": "string" },
+                "status": { "type": "string", "enum": ["todo", "in-progress"] }
+              },
+              "required": ["id", "title", "status"]
+            }
+          }
+        },
+        "required": ["error", "conflictingTasks"]
       },
       "UserInput": {
         "type": "object",

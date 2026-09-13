@@ -301,16 +301,69 @@ describe("API Integration Tests", () => {
       expect(response.body.length).toBeGreaterThan(0);
     });
 
+    it("fetches a single existing user", async () => {
+      const existing = users[0];
+      const response = await request(app).get(`/api/users/${existing.id}`);
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(existing);
+    });
+
+    it("returns 404 with 'User not found' for a non-existent user", async () => {
+      const response = await request(app).get("/api/users/non-existent-id");
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({ error: "User not found" });
+    });
+
     it("returns 409 when trying to delete a user with active tasks", async () => {
       // Find a user with active tasks
       const activeTask = tasks.find(t => t.assigneeId && t.status !== "done");
       expect(activeTask).toBeDefined();
-      
+
       const userId = activeTask!.assigneeId!;
-      
+
       const deleteRes = await request(app).delete(`/api/users/${userId}`);
       expect(deleteRes.status).toBe(409);
       expect(deleteRes.body.error).toBe("Cannot delete user with active tasks");
+    });
+
+    it("returns the exact shape of conflictingTasks, including status, and omits done tasks", async () => {
+      const userRes = await request(app).post("/api/users").send({
+        name: "Conflict User",
+        email: "conflict-user@example.com",
+        role: "viewer"
+      });
+      const userId = userRes.body.id;
+
+      const todoTask = await request(app).post("/api/tasks").send({ title: "Active todo task", assigneeId: userId });
+      const inProgressTask = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Active in-progress task", status: "in-progress", assigneeId: userId });
+      const doneTask = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Finished task", status: "done", assigneeId: userId });
+
+      const deleteRes = await request(app).delete(`/api/users/${userId}`);
+
+      expect(deleteRes.status).toBe(409);
+      expect(deleteRes.body.error).toBe("Cannot delete user with active tasks");
+      expect(deleteRes.body.conflictingTasks).toHaveLength(2);
+      expect(deleteRes.body.conflictingTasks).toEqual(
+        expect.arrayContaining([
+          { id: todoTask.body.id, title: "Active todo task", status: "todo" },
+          { id: inProgressTask.body.id, title: "Active in-progress task", status: "in-progress" }
+        ])
+      );
+      expect(
+        deleteRes.body.conflictingTasks.some((t: { id: string }) => t.id === doneTask.body.id)
+      ).toBe(false);
+
+      // The user and their tasks must be left completely unchanged after a 409.
+      const userAfter = await request(app).get(`/api/users/${userId}`);
+      expect(userAfter.status).toBe(200);
+      const todoAfter = await request(app).get(`/api/tasks/${todoTask.body.id}`);
+      expect(todoAfter.body.assigneeId).toBe(userId);
+      const inProgressAfter = await request(app).get(`/api/tasks/${inProgressTask.body.id}`);
+      expect(inProgressAfter.body.assigneeId).toBe(userId);
     });
 
     it("successfully deletes a user without active tasks and clears remaining assigneeIds", async () => {
@@ -321,29 +374,40 @@ describe("API Integration Tests", () => {
         role: "viewer"
       });
       const newUserId = userRes.body.id;
-      
+
       // Assign them to two completed tasks
       const doneTasks = tasks.filter(t => t.status === "done").slice(0, 2);
       expect(doneTasks.length).toBeGreaterThanOrEqual(2);
-      
+
       await request(app).put(`/api/tasks/${doneTasks[0].id}`).send({ assigneeId: newUserId });
       await request(app).put(`/api/tasks/${doneTasks[1].id}`).send({ assigneeId: newUserId });
-      
+
       // Delete the user
       const deleteRes = await request(app).delete(`/api/users/${newUserId}`);
       expect(deleteRes.status).toBe(204);
-      
+
       // Check both tasks no longer have them assigned
       const taskRes1 = await request(app).get(`/api/tasks/${doneTasks[0].id}`);
       expect(taskRes1.body.assigneeId).toBeUndefined();
-      
+
       const taskRes2 = await request(app).get(`/api/tasks/${doneTasks[1].id}`);
       expect(taskRes2.body.assigneeId).toBeUndefined();
+
+      // The user is gone for good.
+      const fetchDeleted = await request(app).get(`/api/users/${newUserId}`);
+      expect(fetchDeleted.status).toBe(404);
+      expect(fetchDeleted.body).toEqual({ error: "User not found" });
+
+      // Deleting the same user again is a 404, not a repeat success.
+      const secondDelete = await request(app).delete(`/api/users/${newUserId}`);
+      expect(secondDelete.status).toBe(404);
+      expect(secondDelete.body).toEqual({ error: "User not found" });
     });
-    
+
     it("returns 404 for non-existent user", async () => {
       const response = await request(app).delete("/api/users/non-existent-id");
       expect(response.status).toBe(404);
+      expect(response.body).toEqual({ error: "User not found" });
     });
   });
 });

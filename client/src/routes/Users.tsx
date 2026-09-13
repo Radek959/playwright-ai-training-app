@@ -1,12 +1,28 @@
 import { useEffect, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { UserForm } from "../components/UserForm";
 import { UserAvatar } from "../components/UserAvatar";
 import { useAppError } from "../context/AppErrorContext";
 import type { User } from "../types";
 
+type LocationState = { deletedUserName?: string } | null;
+
 export default function Users() {
   const { setError, clearError } = useAppError();
   const [users, setUsers] = useState<User[]>([]);
+  const location = useLocation();
+  const deletedUserName = (location.state as LocationState)?.deletedUserName;
+  const successMessage = deletedUserName ? `${deletedUserName} deleted successfully` : null;
+
+  useEffect(() => {
+    // Clear the navigation-state flag so a browser back/forward doesn't
+    // resurface the success message. history.replaceState leaves the
+    // location object React Router already rendered with untouched.
+    if (deletedUserName) {
+      window.history.replaceState({}, "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,7 +52,13 @@ export default function Users() {
         <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Users</h1>
         <p className="text-sm md:text-base text-gray-600">Manage team members and their roles</p>
       </div>
-      
+
+      {successMessage && (
+        <div role="status" className="bg-green-50 border border-green-200 text-green-800 rounded-lg p-3 text-sm">
+          {successMessage}
+        </div>
+      )}
+
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 md:p-6">
         <UserForm onCreated={(user) => setUsers((prev) => [user, ...prev])} />
       </div>
@@ -44,12 +66,12 @@ export default function Users() {
       {/* Mobile: Card View */}
       <div className="md:hidden space-y-3">
         {users.map((u) => (
-          <div 
-            key={u.id} 
+          <div
+            key={u.id}
             className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow"
           >
             <div className="flex items-center gap-3 mb-3">
-              <UserAvatar 
+              <UserAvatar
                 src={u.avatarUrl || u.avatar}
                 name={u.name}
                 size="lg"
@@ -60,16 +82,22 @@ export default function Users() {
               </div>
             </div>
             <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-              <span className="text-xs font-medium text-gray-500 uppercase">Role</span>
               <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                u.role === "admin" 
-                  ? "bg-purple-100 text-purple-700" 
+                u.role === "admin"
+                  ? "bg-purple-100 text-purple-700"
                   : u.role === "editor"
                   ? "bg-blue-100 text-blue-700"
                   : "bg-gray-100 text-gray-700"
               }`}>
                 {u.role}
               </span>
+              <Link
+                to={`/users/${u.id}`}
+                className="text-indigo-600 hover:underline text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"
+                aria-label={`View details for ${u.name}`}
+              >
+                View details
+              </Link>
             </div>
           </div>
         ))}
@@ -91,19 +119,19 @@ export default function Users() {
                   Role
                 </th>
                 <th scope="col" className="text-left px-6 py-4 text-sm font-semibold text-gray-900">
-                  Status
+                  Actions
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {users.map((u) => (
-                <tr 
+                <tr
                   key={u.id}
                   className="hover:bg-gray-50 transition-colors"
                 >
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <UserAvatar 
+                      <UserAvatar
                         src={u.avatarUrl || u.avatar}
                         name={u.name}
                         size="md"
@@ -116,8 +144,8 @@ export default function Users() {
                   </td>
                   <td className="px-6 py-4">
                     <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                      u.role === "admin" 
-                        ? "bg-purple-100 text-purple-700" 
+                      u.role === "admin"
+                        ? "bg-purple-100 text-purple-700"
                         : u.role === "editor"
                         ? "bg-blue-100 text-blue-700"
                         : "bg-gray-100 text-gray-700"
@@ -126,10 +154,13 @@ export default function Users() {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <span className="inline-flex items-center gap-1 text-sm text-green-600">
-                      <span className="w-2 h-2 bg-green-500 rounded-full" aria-hidden="true"></span>
-                      Active
-                    </span>
+                    <Link
+                      to={`/users/${u.id}`}
+                      className="text-indigo-600 hover:underline text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"
+                      aria-label={`View details for ${u.name}`}
+                    >
+                      View details
+                    </Link>
                   </td>
                 </tr>
               ))}
