@@ -194,6 +194,17 @@ Widok Tasks ma pięć zakładek: **Active**, **Grid View**, **Table**, **Archive
 - Statystyki liczone na podstawie **wszystkich** zadań pobranych z API (`GET /api/tasks`), **bez** uwzględniania jakichkolwiek filtrów ustawionych w innych zakładkach: łączna liczba zadań, liczba zakończonych, liczba w toku, liczba o wysokim priorytecie.
 - Rozkład zadań na osoby: dla każdego użytkownika pokazywana jest liczba przypisanych mu zadań (niezależnie od statusu) oraz procent względem wszystkich zadań; osobno liczone są zadania nieprzypisane.
 
+### 6.6 Widok szczegółów (Task Details)
+
+- Dostępny pod osobnym adresem `/tasks/:id`, ładuje i prezentuje pełne dane zadania na podstawie odpowiedzi z API.
+- Wyświetla wszystkie właściwości modelu zadania w tym rozszerzone pola niedostępne w uproszczonych formularzach (m.in. typ zadania, severity, tagi, logikę zatwierdzania, godziny, powiązania).
+- Wskazuje powiązania: rozwiązując pole `assigneeId` na dane z listy użytkowników, a przy `approver` korzystając z zamkniętego zestawu wartości tekstowych (nie identyfikatorów), pokazując przyjazną etykietę i oryginalną wartość. Zależności pomiędzy zadaniami pozwalają na swobodne przechodzenie między widokami zależnych zadań (linki do powiązanych rekordów).
+- Puste pola opcjonalne są jawnie oznaczane jako brak wartości ("Not set"), zamiast być ukrywane.
+- Prezentuje adres URL miniatury `coverImage` (w formie klikalnego linku), oprócz wyświetlenia samego obrazu.
+- Służy wyłącznie do odczytu – wszelka edycja realizowana jest z innych widoków przez akcje przypisane kartom lub wierszom tabel.
+- Dostęp do widoku realizowany jest za pomocą dedykowanego linku "View details" dodanego obok głównej akcji "Edit" / "Delete" na elementach listy (np. Table, TaskCard).
+- Bezpiecznie obsługuje brak istnienia zadania – gdy API zwróci błąd `404`, aplikacja (SPA) wyświetli odpowiedni stan widoku „Task not found” informujący jasno o problemie, przy zachowaniu spójności nawigacji i możliwości powrotu do listy. Błędy sieciowe (np. 500) prezentują stosowny komunikat z opcją ponowienia.
+
 ---
 
 ## 7. Tworzenie zadań — różnice między kreatorem, szybkim dodawaniem a API

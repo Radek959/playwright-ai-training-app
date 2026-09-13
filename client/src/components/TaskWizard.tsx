@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { Dialog } from "./Dialog";
+import { APPROVERS } from "../utils/approvers";
 import type { Task, TaskPriority, TaskSeverity, TaskStatus, TaskType, User } from "../types";
 
 type WizardStep = 1 | 2 | 3;
@@ -364,9 +365,9 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                   required
                 >
                   <option value="">Choose...</option>
-                  <option value="manager-a">Manager A</option>
-                  <option value="manager-b">Manager B</option>
-                  <option value="manager-c">Manager C</option>
+                  {Object.entries(APPROVERS).map(([key, label]) => (
+                    <option key={key} value={key}>{label}</option>
+                  ))}
                 </select>
                 {errors.approver && (
                   <p id={errorId("approver")} className="text-red-600 text-sm mt-1" role="alert">
@@ -441,11 +442,11 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                   <span className="font-semibold">Severity:</span> <span className="text-gray-700">{draft.severity}</span>
                 </div>
               )}
-              {draft.requiresApproval && (
-                <div>
-                  <span className="font-semibold">Approver:</span> <span className="text-gray-700">{draft.approver || "—"}</span>
-                </div>
-              )}
+                {draft.requiresApproval && (
+                  <div>
+                    <span className="font-semibold">Approver:</span> <span className="text-gray-700">{draft.approver ? (APPROVERS[draft.approver] ? `${APPROVERS[draft.approver]} (${draft.approver})` : draft.approver) : "—"}</span>
+                  </div>
+                )}
               {draft.tags && draft.tags.length > 0 && (
                 <div>
                   <span className="font-semibold">Tags:</span> <span className="text-gray-700">{draft.tags.join(", ")}</span>

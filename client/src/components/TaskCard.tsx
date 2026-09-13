@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Link } from "react-router-dom";
 import { useAppError } from "../context/AppErrorContext";
 import type { TaskWithAssignee } from "../types";
 
@@ -54,6 +55,13 @@ export function TaskCard({
       </div>
 
       <div className="flex gap-2">
+        <Link
+          to={`/tasks/${task.id}`}
+          className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3 py-1 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"
+          aria-label={`View details for ${task.title}`}
+        >
+          View details
+        </Link>
         <button
           id={ids.editBtn}
           type="button"
