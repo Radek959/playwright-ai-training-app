@@ -106,6 +106,116 @@ describe("API Integration Tests", () => {
       expect(response.body.error).toBe("Validation failed");
     });
 
+    it("clears nullable fields on PUT when null is sent, and array fields when [] is sent", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({
+          title: "Task with everything set",
+          priority: "medium",
+          taskType: "bug",
+          severity: "critical",
+          estimatedHours: 8,
+          description: "Some description",
+          dueDate: "2026-05-01T00:00:00.000Z",
+          assigneeId: users[0].id,
+          tags: ["backend"],
+          dependencies: [tasks[0].id],
+          requiresApproval: true,
+          approver: "manager-a"
+        });
+      expect(created.status).toBe(201);
+
+      const response = await request(app)
+        .put(`/api/tasks/${created.body.id}`)
+        .send({
+          taskType: null,
+          severity: null,
+          estimatedHours: null,
+          description: null,
+          dueDate: null,
+          assigneeId: null,
+          tags: [],
+          dependencies: [],
+          requiresApproval: false,
+          approver: null
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.taskType).toBeUndefined();
+      expect(response.body.severity).toBeUndefined();
+      expect(response.body.estimatedHours).toBeUndefined();
+      expect(response.body.description).toBeUndefined();
+      expect(response.body.dueDate).toBeUndefined();
+      expect(response.body.assigneeId).toBeUndefined();
+      expect(response.body.approver).toBeUndefined();
+      expect(response.body.requiresApproval).toBe(false);
+      expect(response.body.tags).toEqual([]);
+      expect(response.body.dependencies).toEqual([]);
+      // Untouched fields survive the patch.
+      expect(response.body.title).toBe("Task with everything set");
+      expect(response.body.priority).toBe("medium");
+    });
+
+    it("rejects moving a bug away from its severity without also clearing the taskType", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "A bug to fix", taskType: "bug", severity: "major" });
+      expect(created.status).toBe(201);
+
+      // severity alone is not enough: the merged task is still a bug.
+      const rejected = await request(app).put(`/api/tasks/${created.body.id}`).send({ severity: null });
+      expect(rejected.status).toBe(400);
+      expect(rejected.body.details).toContainEqual({ field: "severity", message: "bug tasks require a severity" });
+
+      // Sending both, as the edit form does, is accepted.
+      const accepted = await request(app)
+        .put(`/api/tasks/${created.body.id}`)
+        .send({ taskType: "feature", severity: null });
+      expect(accepted.status).toBe(200);
+      expect(accepted.body.severity).toBeUndefined();
+      expect(accepted.body.taskType).toBe("feature");
+    });
+
+    it("accepts a fractional positive estimatedHours and rejects zero or negative values", async () => {
+      const accepted = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Half an hour of work", estimatedHours: 0.5 });
+      expect(accepted.status).toBe(201);
+      expect(accepted.body.estimatedHours).toBe(0.5);
+
+      for (const invalid of [0, -1]) {
+        const rejected = await request(app)
+          .put(`/api/tasks/${accepted.body.id}`)
+          .send({ estimatedHours: invalid });
+        expect(rejected.status).toBe(400);
+        expect(rejected.body.details).toContainEqual({
+          field: "estimatedHours",
+          message: "estimatedHours must be a positive number"
+        });
+      }
+
+      // Research is the one type that needs a full hour, not just any
+      // positive value.
+      const research = await request(app)
+        .put(`/api/tasks/${accepted.body.id}`)
+        .send({ taskType: "research" });
+      expect(research.status).toBe(400);
+      expect(research.body.details).toContainEqual({
+        field: "estimatedHours",
+        message: "research tasks require estimatedHours >= 1"
+      });
+    });
+
+    it("rejects a dependency on the task itself", async () => {
+      const task = tasks[0];
+      const response = await request(app).put(`/api/tasks/${task.id}`).send({ dependencies: [task.id] });
+      expect(response.status).toBe(400);
+      expect(response.body.details).toContainEqual({
+        field: "dependencies",
+        message: `unknown dependency ids: ${task.id}`
+      });
+    });
+
     it("searches tasks", async () => {
       // First create a task with a very unique title
       const uniqueTitle = "SuperUniqueSearchTerm12345";

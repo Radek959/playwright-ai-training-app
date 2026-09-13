@@ -273,7 +273,7 @@
           "completedAt": { "type": "string", "format": "date-time", "description": "Optional. Only honored when status is 'done'; null is rejected." },
           "assigneeId": { "type": "string", "description": "Must reference an existing user. Optional (Quick Add can omit it)." },
           "taskType": { "type": "string", "enum": ["bug", "feature", "research"] },
-          "estimatedHours": { "type": "number", "minimum": 1 },
+          "estimatedHours": { "type": "number", "minimum": 0, "exclusiveMinimum": true, "description": "Must be a positive number (fractions such as 0.5 are accepted). Research tasks additionally require at least 1." },
           "tags": { "type": "array", "items": { "type": "string" } },
           "dependencies": { "type": "array", "items": { "type": "string" }, "description": "Must reference existing task IDs. If status is 'done', every referenced task must already be 'done' (see TaskCompletionBlockedResponse)." },
           "severity": { "type": "string", "enum": ["critical", "major", "minor"] },
@@ -281,7 +281,7 @@
           "approver": { "type": "string" }
         },
         "required": ["title"],
-        "description": "Business rules: bug requires severity; research requires estimatedHours >= 1; high priority tasks with estimatedHours cannot exceed 24; requiresApproval=true requires approver; status 'done' requires every direct dependency to already be 'done'."
+        "description": "Business rules: estimatedHours, when sent, must be a positive number; bug requires severity; research requires estimatedHours >= 1; high priority tasks with estimatedHours cannot exceed 24; requiresApproval=true requires approver; dependencies must reference existing tasks (never the task itself); status 'done' requires every direct dependency to already be 'done'."
       },
       "TaskUpdateInput": {
         "type": "object",
@@ -294,7 +294,7 @@
           "completedAt": { "type": "string", "format": "date-time", "description": "Derived from status; null is rejected. To clear it, set status away from 'done' instead." },
           "assigneeId": { "type": "string", "nullable": true, "description": "Pass null to unassign." },
           "taskType": { "type": "string", "enum": ["bug", "feature", "research"], "nullable": true, "description": "Pass null to clear." },
-          "estimatedHours": { "type": "number", "minimum": 1, "nullable": true, "description": "Pass null to clear." },
+          "estimatedHours": { "type": "number", "minimum": 0, "exclusiveMinimum": true, "nullable": true, "description": "Must be a positive number (fractions such as 0.5 are accepted); research tasks additionally require at least 1. Pass null to clear." },
           "tags": { "type": "array", "items": { "type": "string" }, "description": "Send [] to clear; null is not accepted for array fields." },
           "dependencies": { "type": "array", "items": { "type": "string" }, "description": "Send [] to clear; null is not accepted for array fields. If the resulting task's status is 'done', every referenced task must already be 'done' (see TaskCompletionBlockedResponse)." },
           "severity": { "type": "string", "enum": ["critical", "major", "minor"], "nullable": true, "description": "Pass null to clear." },
@@ -302,7 +302,7 @@
           "approver": { "type": "string", "nullable": true, "description": "Pass null to clear." }
         },
         "additionalProperties": false,
-        "description": "Partial update. Only these fields may be sent; any other field (including id) is rejected with 400. Fields marked nullable accept null to clear the stored value (required fields such as title/status/priority do not accept null). Fields are merged with the existing task before the same business rules as TaskCreateInput are re-validated, including: if the resulting status is 'done', every direct dependency must already be 'done'."
+        "description": "Partial update. Only these fields may be sent; any other field (including id) is rejected with 400. Fields marked nullable accept null to clear the stored value (required fields such as title/status/priority do not accept null); the array fields (tags, dependencies) are cleared by sending [] instead, since they do not accept null. Fields are merged with the existing task before the same business rules as TaskCreateInput are re-validated, so conditional values must be cleared together with what made them required: moving taskType away from 'bug' must send severity: null in the same request, and setting requiresApproval: false must send approver: null. Likewise, if the resulting status is 'done', every direct dependency must already be 'done'."
       },
       "ValidationErrorResponse": {
         "type": "object",
