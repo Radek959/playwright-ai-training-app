@@ -16,12 +16,16 @@ function renderTable(
   const onUpdate = vi.fn();
   const onDelete = vi.fn();
   const onBulkDelete = vi.fn().mockResolvedValue([]);
+  const onSortChange = vi.fn();
   const utils = render(
     <AppErrorProvider>
       <MemoryRouter>
         <TaskTable
           tasks={tasks}
           users={[]}
+          sortKey="title"
+          sortDir="asc"
+          onSortChange={onSortChange}
           onUpdate={onUpdate}
           onDelete={onDelete}
           onBulkDelete={onBulkDelete}
@@ -30,7 +34,7 @@ function renderTable(
       </MemoryRouter>
     </AppErrorProvider>
   );
-  return { ...utils, onUpdate, onDelete, onBulkDelete };
+  return { ...utils, onUpdate, onDelete, onBulkDelete, onSortChange };
 }
 
 describe("TaskTable selection safety", () => {
@@ -48,6 +52,9 @@ describe("TaskTable selection safety", () => {
           <TaskTable
             tasks={[taskB]}
             users={[]}
+            sortKey="title"
+            sortDir="asc"
+            onSortChange={vi.fn()}
             onUpdate={vi.fn()}
             onDelete={vi.fn()}
             onBulkDelete={vi.fn().mockResolvedValue([])}
@@ -72,7 +79,16 @@ describe("TaskTable selection safety", () => {
     rerender(
       <AppErrorProvider>
         <MemoryRouter>
-          <TaskTable tasks={[taskA]} users={[]} onUpdate={vi.fn()} onDelete={vi.fn()} onBulkDelete={onBulkDelete} />
+          <TaskTable
+            tasks={[taskA]}
+            users={[]}
+            sortKey="title"
+            sortDir="asc"
+            onSortChange={vi.fn()}
+            onUpdate={vi.fn()}
+            onDelete={vi.fn()}
+            onBulkDelete={onBulkDelete}
+          />
         </MemoryRouter>
       </AppErrorProvider>
     );
@@ -95,7 +111,16 @@ describe("TaskTable selection safety", () => {
     rerender(
       <AppErrorProvider>
         <MemoryRouter>
-          <TaskTable tasks={[taskB]} users={[]} onUpdate={vi.fn()} onDelete={vi.fn()} onBulkDelete={onBulkDelete} />
+          <TaskTable
+            tasks={[taskB]}
+            users={[]}
+            sortKey="title"
+            sortDir="asc"
+            onSortChange={vi.fn()}
+            onUpdate={vi.fn()}
+            onDelete={vi.fn()}
+            onBulkDelete={onBulkDelete}
+          />
         </MemoryRouter>
       </AppErrorProvider>
     );
@@ -203,5 +228,30 @@ describe("TaskTable inline status editing", () => {
     await waitFor(() => expect(screen.queryByTestId("error-a-status")).not.toBeInTheDocument());
 
     expect(onUpdate).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("TaskTable controlled sorting", () => {
+  it("reports the clicked column key via onSortChange instead of sorting internally", () => {
+    const taskA = makeTask("a", "Task A");
+    const taskB = makeTask("b", "Task B");
+    const { onSortChange } = renderTable([taskA, taskB]);
+
+    fireEvent.click(screen.getByTestId("sort-header-priority"));
+
+    expect(onSortChange).toHaveBeenCalledWith("priority");
+    // sortKey prop is still "title" (the default), so clicking another
+    // header must not reorder rows or move the indicator on its own — the
+    // parent owns that decision and would pass new props back down.
+    expect(screen.getByTestId("sort-header-priority").closest("th")).toHaveAttribute("aria-sort", "none");
+    expect(screen.getByTestId("sort-header-title").closest("th")).toHaveAttribute("aria-sort", "ascending");
+  });
+
+  it("renders the sort indicator and aria-sort based on the sortKey/sortDir props", () => {
+    renderTable([makeTask("a", "Task A")], { sortKey: "priority", sortDir: "desc" });
+
+    const priorityHeader = screen.getByTestId("sort-header-priority").closest("th");
+    expect(priorityHeader).toHaveAttribute("aria-sort", "descending");
+    expect(screen.getByTestId("sort-header-title").closest("th")).toHaveAttribute("aria-sort", "none");
   });
 });

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { TaskCard } from "../components/TaskCard";
 import { TaskForm } from "../components/TaskForm";
 import { TaskEditModal } from "../components/TaskEditModal";
@@ -10,6 +11,26 @@ import { useAppError } from "../context/AppErrorContext";
 import { isArchived } from "../utils/taskArchive";
 import { toApiError } from "../utils/apiError";
 import type { Task, TaskUpdateInput, TaskWithAssignee, User } from "../types";
+import {
+  TAB_ORDER,
+  buildTasksSearchParams,
+  isAssigneeFilterValid,
+  parseAssigneeFilter,
+  parsePage,
+  parsePriorityFilter,
+  parseSortDir,
+  parseSortKey,
+  parseStatusFilter,
+  parseTab,
+  type SortKey,
+  type TabView,
+  type TasksUrlState
+} from "./tasksUrlState";
+
+// "success" is the only state in which fetched data may be used to validate
+// or correct the URL (assignee vs. users, page vs. task count) — "loading"
+// and "error" must leave whatever the URL already says alone.
+type LoadState = "loading" | "success" | "error";
 
 function normalizeTask(raw: Partial<Task>): Task {
   return {
@@ -32,10 +53,6 @@ function normalizeTask(raw: Partial<Task>): Task {
   };
 }
 
-type TabView = "active" | "archived" | "analytics" | "table" | "grid";
-type AssigneeFilter = "all" | "unassigned" | string;
-
-const TAB_ORDER: TabView[] = ["active", "grid", "table", "archived", "analytics"];
 const TAB_LABELS: Record<TabView, string> = {
   active: "Active",
   grid: "Grid View",
@@ -49,18 +66,19 @@ export default function Tasks() {
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [priorityFilter, setPriorityFilter] = useState<string>("all");
+  // Distinct from a boolean "loaded" flag: URL validation that depends on
+  // the fetched data (assignee vs. the user list, page vs. the task count)
+  // must only run once a request has actually *succeeded* — a failed
+  // request or bad payload must not be treated as "there is no data", which
+  // would otherwise strip a perfectly valid URL parameter.
+  const [tasksLoadState, setTasksLoadState] = useState<LoadState>("loading");
+  const [usersLoadState, setUsersLoadState] = useState<LoadState>("loading");
   const [search, _setSearch] = useState<string>("");
-  const [page, setPage] = useState<number>(1);
   const pageSize = 5;
   const [editing, setEditing] = useState<Task | null>(null);
   const primaryCtaLabel = "New Task";
   const primaryCtaShortLabel = "New";
 
-  // New state for advanced UI
-  const [activeTab, setActiveTab] = useState<TabView>("active");
-  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
   const [showWizard, setShowWizard] = useState(false);
   const [showQuickForm, setShowQuickForm] = useState(false);
   const tabRefs = useRef<Record<TabView, HTMLButtonElement | null>>({
@@ -70,6 +88,63 @@ export default function Tasks() {
     archived: null,
     analytics: null
   });
+
+  // The URL is the single source of truth for the reproducible part of this
+  // view's state (tab, filters, page, table sort). Everything below is
+  // derived from it on every render instead of being tracked separately, so
+  // it can never drift out of sync with the address bar.
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const activeTab = parseTab(searchParams.get("tab"));
+  const statusFilter = activeTab === "active" ? parseStatusFilter(searchParams.get("status")) : "all";
+  const priorityFilter = activeTab === "active" ? parsePriorityFilter(searchParams.get("priority")) : "all";
+  const assigneeRaw = activeTab === "active" ? parseAssigneeFilter(searchParams.get("assignee")) : "all";
+  const assigneeFilter = isAssigneeFilterValid(assigneeRaw, users, usersLoadState === "success") ? assigneeRaw : "all";
+  const pageRaw = activeTab === "active" ? parsePage(searchParams.get("page")) : 1;
+  const sortKey = activeTab === "table" ? parseSortKey(searchParams.get("sort")) : "title";
+  const sortDir = activeTab === "table" ? parseSortDir(searchParams.get("order")) : "asc";
+
+  const updateTasksUrl = (overrides: Partial<TasksUrlState>) => {
+    const next: TasksUrlState = {
+      tab: activeTab,
+      status: statusFilter,
+      priority: priorityFilter,
+      assignee: assigneeFilter,
+      page: pageRaw,
+      sortKey,
+      sortDir,
+      ...overrides
+    };
+    setSearchParams(buildTasksSearchParams(next));
+  };
+
+  const handleTabChange = (tab: TabView) => {
+    updateTasksUrl({ tab, page: 1 });
+  };
+
+  const handleStatusFilterChange = (value: string) => {
+    updateTasksUrl({ status: value, page: 1 });
+  };
+
+  const handlePriorityFilterChange = (value: string) => {
+    updateTasksUrl({ priority: value, page: 1 });
+  };
+
+  const handleAssigneeFilterChange = (value: string) => {
+    updateTasksUrl({ assignee: value, page: 1 });
+  };
+
+  const handlePageChange = (nextPage: number) => {
+    updateTasksUrl({ page: nextPage });
+  };
+
+  const handleSortToggle = (key: SortKey) => {
+    if (key === sortKey) {
+      updateTasksUrl({ sortDir: sortDir === "asc" ? "desc" : "asc" });
+    } else {
+      updateTasksUrl({ sortKey: key, sortDir: "asc" });
+    }
+  };
 
   const focusTab = (tab: TabView) => {
     tabRefs.current[tab]?.focus();
@@ -89,32 +164,68 @@ export default function Tasks() {
     if (nextIndex !== null) {
       e.preventDefault();
       const nextTab = TAB_ORDER[nextIndex];
-      setActiveTab(nextTab);
+      handleTabChange(nextTab);
       focusTab(nextTab);
     }
   };
 
   const endpoint = "/api/tasks";
 
+  // Tasks and users are fetched independently (not joined behind a single
+  // Promise.all) so the assignee filter's validation against the user list
+  // (see isAssigneeFilterValid) can genuinely observe "users not loaded yet"
+  // as a distinct, real state rather than something that always resolves in
+  // lockstep with the task list.
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
+    let tasksOk = false;
+    let usersOk = false;
+    const clearErrorIfBothOk = () => {
+      if (tasksOk && usersOk) clearError();
+    };
+
+    const loadTasks = async () => {
       try {
-        const [tRes, uRes] = await Promise.all([fetch(endpoint), fetch("/api/users")]);
-        if (!tRes.ok) throw new Error(`HTTP ${tRes.status}`);
-        if (!uRes.ok) throw new Error(`Users HTTP ${uRes.status}`);
-        const [tData, uData] = await Promise.all([tRes.json(), uRes.json()]);
-        if (!Array.isArray(tData) || !Array.isArray(uData)) throw new Error("Unexpected payload");
+        const res = await fetch(endpoint);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!Array.isArray(data)) throw new Error("Unexpected payload");
         if (!cancelled) {
-          setTasks(tData.map(normalizeTask));
-          setUsers(uData);
-          clearError();
+          setTasks(data.map(normalizeTask));
+          setTasksLoadState("success");
+          tasksOk = true;
+          clearErrorIfBothOk();
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Fetch error");
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Fetch error");
+          setTasksLoadState("error");
+        }
       }
     };
-    load();
+
+    const loadUsers = async () => {
+      try {
+        const res = await fetch("/api/users");
+        if (!res.ok) throw new Error(`Users HTTP ${res.status}`);
+        const data = await res.json();
+        if (!Array.isArray(data)) throw new Error("Unexpected payload");
+        if (!cancelled) {
+          setUsers(data);
+          setUsersLoadState("success");
+          usersOk = true;
+          clearErrorIfBothOk();
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Fetch error");
+          setUsersLoadState("error");
+        }
+      }
+    };
+
+    loadTasks();
+    loadUsers();
     return () => {
       cancelled = true;
     };
@@ -135,33 +246,58 @@ export default function Tasks() {
   const filtered = useMemo(() => {
     let result = enriched;
 
-    // Tab filtering
     if (activeTab === "archived") {
       result = result.filter(isArchived);
     } else if (activeTab === "active") {
       result = result.filter((t) => t.status !== "done");
-    }
 
-    // Assignee filter (only meaningful on the Active tab)
-    if (activeTab === "active") {
       if (assigneeFilter === "unassigned") {
         result = result.filter((t) => !t.assigneeId);
       } else if (assigneeFilter !== "all") {
         result = result.filter((t) => t.assigneeId === assigneeFilter);
       }
-    }
 
-    // Existing filters
-    if (statusFilter !== "all") result = result.filter((t) => t.status === statusFilter);
-    if (priorityFilter !== "all") result = result.filter((t) => t.priority === priorityFilter);
+      if (statusFilter !== "all") result = result.filter((t) => t.status === statusFilter);
+      if (priorityFilter !== "all") result = result.filter((t) => t.priority === priorityFilter);
+    }
+    // Grid View, Table and Analytics show every task on that dimension:
+    // Status/Priority/Assignee filtering has no visible control outside the
+    // Active tab, so it must not silently narrow their results either.
+
     if (search) result = result.filter((t) => t.title.toLowerCase().includes(search.toLowerCase()));
 
     return result;
   }, [enriched, activeTab, assigneeFilter, statusFilter, priorityFilter, search]);
 
+  // Pagination only exists on the Active tab. Only clamp the requested page
+  // into range once the task list has been *successfully* fetched — while
+  // it's still loading, or if the fetch failed, `filtered` is an empty
+  // placeholder and clamping against it would wrongly "correct" a valid
+  // page number down to 1.
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const pageClamped = Math.min(page, totalPages);
+  const pageClamped = tasksLoadState === "success" ? Math.min(Math.max(pageRaw, 1), totalPages) : pageRaw;
   const paginated = filtered.slice((pageClamped - 1) * pageSize, pageClamped * pageSize);
+
+  // Single source of normalization: whenever the parsed-and-corrected state
+  // above doesn't match what's actually in the URL (unknown tab/status/
+  // priority/sort value, an out-of-range page, an assignee id that isn't a
+  // real user, or params left over from a different tab), rewrite the URL to
+  // match what's on screen via `replace` so Back/Forward don't get an extra
+  // entry for a correction the user didn't ask for.
+  useEffect(() => {
+    const canonical = buildTasksSearchParams({
+      tab: activeTab,
+      status: statusFilter,
+      priority: priorityFilter,
+      assignee: assigneeFilter,
+      page: pageClamped,
+      sortKey,
+      sortDir
+    });
+    if (canonical.toString() !== searchParams.toString()) {
+      setSearchParams(canonical, { replace: true });
+    }
+  }, [searchParams, activeTab, statusFilter, priorityFilter, assigneeFilter, pageClamped, sortKey, sortDir, setSearchParams]);
 
   const handleDelete = async (id: string) => {
     const res = await fetch(`/api/tasks/${id}`, {
@@ -288,7 +424,7 @@ export default function Tasks() {
             aria-controls={`tabpanel-${tab}`}
             tabIndex={activeTab === tab ? 0 : -1}
             data-testid={`tab-${tab}`}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => handleTabChange(tab)}
             onKeyDown={(e) => handleTabKeyDown(e, index)}
             className={`px-4 md:px-6 py-3 border-b-2 transition-all font-medium whitespace-nowrap min-h-[44px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-600 ${
               activeTab === tab
@@ -322,10 +458,7 @@ export default function Tasks() {
                       key={opt.key}
                       data-testid={`filter-assignee-${opt.key}`}
                       aria-pressed={assigneeFilter === opt.key}
-                      onClick={() => {
-                        setAssigneeFilter(opt.key);
-                        setPage(1);
-                      }}
+                      onClick={() => handleAssigneeFilterChange(opt.key)}
                       className={`px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-medium transition-all min-h-[44px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 ${
                         assigneeFilter === opt.key
                           ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md"
@@ -346,10 +479,7 @@ export default function Tasks() {
                     aria-label="Filter by status"
                     className="flex-1 md:flex-none border border-gray-300 rounded-lg px-3 md:px-4 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[44px]"
                     value={statusFilter}
-                    onChange={(e) => {
-                      setStatusFilter(e.target.value);
-                      setPage(1);
-                    }}
+                    onChange={(e) => handleStatusFilterChange(e.target.value)}
                   >
                     <option value="all">Status: All</option>
                     <option value="todo">To Do</option>
@@ -363,10 +493,7 @@ export default function Tasks() {
                     aria-label="Filter by priority"
                     className="flex-1 md:flex-none border border-gray-300 rounded-lg px-3 md:px-4 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[44px]"
                     value={priorityFilter}
-                    onChange={(e) => {
-                      setPriorityFilter(e.target.value);
-                      setPage(1);
-                    }}
+                    onChange={(e) => handlePriorityFilterChange(e.target.value)}
                   >
                     <option value="all">Priority: All</option>
                     <option value="low">Low</option>
@@ -417,7 +544,7 @@ export default function Tasks() {
                 <div className="flex gap-2 w-full sm:w-auto">
                   <button
                     className="flex-1 sm:flex-none px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 hover:bg-gray-50 transition-colors text-sm font-medium min-h-[44px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    onClick={() => handlePageChange(Math.max(1, pageClamped - 1))}
                     disabled={pageClamped === 1}
                     aria-label="Previous page"
                   >
@@ -425,7 +552,7 @@ export default function Tasks() {
                   </button>
                   <button
                     className="flex-1 sm:flex-none px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 hover:bg-gray-50 transition-colors text-sm font-medium min-h-[44px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    onClick={() => handlePageChange(Math.min(totalPages, pageClamped + 1))}
                     disabled={pageClamped === totalPages}
                     aria-label="Next page"
                   >
@@ -477,6 +604,9 @@ export default function Tasks() {
         <TaskTable
           tasks={filtered}
           users={users}
+          sortKey={sortKey}
+          sortDir={sortDir}
+          onSortChange={handleSortToggle}
           onUpdate={handleUpdate}
           onDelete={handleDelete}
           onBulkDelete={handleBulkDelete}
