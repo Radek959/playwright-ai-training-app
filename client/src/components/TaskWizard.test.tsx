@@ -151,3 +151,20 @@ describe("TaskWizard payload sent to onComplete", () => {
     });
   });
 });
+
+describe("TaskWizard step 2 validation", () => {
+  it("rejects an estimatedHours of 0 with a Minimum 1 hour error and does not submit", () => {
+    const onComplete = renderWizard();
+    fillStep1();
+    goNext();
+    fillStep2Assignee();
+    fireEvent.change(screen.getByTestId("task-hours-input"), { target: { value: "0" } });
+
+    goNext();
+
+    expect(screen.getByText("Minimum 1 hour")).toBeInTheDocument();
+    // Still on step 2 — the wizard summary (step 3) never rendered.
+    expect(screen.queryByTestId("wizard-summary")).not.toBeInTheDocument();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+});

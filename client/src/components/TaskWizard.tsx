@@ -52,7 +52,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
     if (!draft.assigneeId) {
       newErrors.assigneeId = "You must assign this task";
     }
-    if (draft.estimatedHours && draft.estimatedHours < 1) {
+    if (draft.estimatedHours !== undefined && draft.estimatedHours < 1) {
       newErrors.estimatedHours = "Minimum 1 hour";
     }
     // Contextual rule: High priority tasks must be estimated at <= 24h.
@@ -266,7 +266,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
                 min="1"
                 data-testid="task-hours-input"
                 className="w-full border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
-                value={draft.estimatedHours || ""}
+                value={draft.estimatedHours ?? ""}
                 onChange={(e) =>
                   setDraft({ ...draft, estimatedHours: e.target.value === "" ? undefined : Number(e.target.value) })
                 }
