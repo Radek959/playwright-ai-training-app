@@ -108,6 +108,7 @@
       },
       "delete": {
         "summary": "Delete task",
+        "description": "Deleting a task removes its ID from the dependencies of all remaining tasks.",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
@@ -179,7 +180,7 @@
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
         "responses": {
-          "204": { "description": "Deleted" },
+          "204": { "description": "Deleted. assigneeId is cleared from all remaining tasks assigned to this user." },
           "404": { "description": "Not found" },
           "409": { "description": "User has active (non-done) tasks assigned and cannot be deleted" }
         }

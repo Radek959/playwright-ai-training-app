@@ -54,5 +54,13 @@ usersRouter.delete("/:id", (req, res) => {
   }
 
   users.splice(idx, 1);
+
+  // Clear assigneeId in remaining tasks (completed ones, as active ones block deletion)
+  for (const t of tasks) {
+    if (t.assigneeId === userId) {
+      t.assigneeId = undefined;
+    }
+  }
+
   res.status(204).end();
 });
