@@ -49,26 +49,47 @@ export function TaskActivitySection({ taskId, refreshKey, users, allTasks }: Tas
   const [activities, setActivities] = useState<TaskActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const abortControllerRef = React.useRef<AbortController | null>(null);
 
   const fetchActivities = useCallback(async () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(`/api/tasks/${taskId}/activity`);
+      const res = await fetch(`/api/tasks/${taskId}/activity`, { signal: controller.signal });
       if (!res.ok) {
         throw new Error(`Failed to load activity: ${res.statusText}`);
       }
       const data = await res.json();
+      if (!Array.isArray(data)) {
+        throw new Error("Invalid response format");
+      }
+      if (controller.signal.aborted) return;
       setActivities(data);
     } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        return;
+      }
       setError(err instanceof Error ? err.message : "Error loading activity");
     } finally {
-      setLoading(false);
+      if (abortControllerRef.current === controller) {
+        setLoading(false);
+      }
     }
   }, [taskId]);
 
   useEffect(() => {
     fetchActivities();
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
   }, [fetchActivities, refreshKey]);
 
   if (loading && activities.length === 0) {

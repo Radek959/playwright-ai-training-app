@@ -52,14 +52,14 @@ describe("API Integration Tests", () => {
       expect(response.status).toBe(201);
       expect(response.body.id).toBeDefined();
       expect(response.body.title).toBe("New Integration Test Task");
-      
+
       // Verify default values
       expect(response.body.status).toBe("todo");
       expect(response.body.priority).toBe("medium");
       expect(response.body.tags).toEqual([]);
       expect(response.body.dependencies).toEqual([]);
       expect(response.body.requiresApproval).toBe(false);
-      
+
       const fetchRes = await request(app).get(`/api/tasks/${response.body.id}`);
       expect(fetchRes.status).toBe(200);
       expect(fetchRes.body.status).toBe("todo");
@@ -102,7 +102,7 @@ describe("API Integration Tests", () => {
       expect(response.status).toBe(400);
       expect(response.body.error).toBe("Validation failed");
     });
-    
+
     it("rejects update of unknown field", async () => {
       const task = tasks[0];
       const payload = {
@@ -271,7 +271,7 @@ describe("API Integration Tests", () => {
       expect(Array.isArray(response.body)).toBe(true);
       expect(response.body.length).toBe(1);
       expect(response.body[0].id).toBe(createdTaskId);
-      
+
       // Search for something that shouldn't exist
       const emptyRes = await request(app).get("/api/tasks/search?q=DefinitelyNonExistent123");
       expect(emptyRes.status).toBe(200);
@@ -286,19 +286,19 @@ describe("API Integration Tests", () => {
       // Create two dependent tasks
       const dep1Res = await request(app).post("/api/tasks").send({ title: "Dep 1" });
       await request(app).put(`/api/tasks/${dep1Res.body.id}`).send({ dependencies: [baseTaskId] });
-      
+
       const dep2Res = await request(app).post("/api/tasks").send({ title: "Dep 2" });
       await request(app).put(`/api/tasks/${dep2Res.body.id}`).send({ dependencies: [baseTaskId] });
 
       // Delete the base task
       const deleteRes = await request(app).delete(`/api/tasks/${baseTaskId}`);
       expect(deleteRes.status).toBe(204);
-      
+
       // Verify both dependents no longer have the base task in their dependencies
       const fetchDep1 = await request(app).get(`/api/tasks/${dep1Res.body.id}`);
       expect(fetchDep1.body.dependencies).not.toContain(baseTaskId);
       expect(fetchDep1.body.dependencies).toEqual([]);
-      
+
       const fetchDep2 = await request(app).get(`/api/tasks/${dep2Res.body.id}`);
       expect(fetchDep2.body.dependencies).not.toContain(baseTaskId);
       expect(fetchDep2.body.dependencies).toEqual([]);
@@ -1228,7 +1228,7 @@ describe("API Integration Tests", () => {
       // Clear all activities in memory first
       const { activities } = await import("./data.js");
       activities.length = 0;
-      
+
       const response = await request(app).get("/api/tasks/t1/activity");
       expect(response.status).toBe(200);
       expect(response.body).toEqual([]);
@@ -1257,7 +1257,7 @@ describe("API Integration Tests", () => {
       const payload = { title: "Activity Test Task" };
       const createRes = await request(app).post("/api/tasks").send(payload);
       expect(createRes.status).toBe(201);
-      
+
       const response = await request(app).get(`/api/tasks/${createRes.body.id}/activity`);
       expect(response.status).toBe(200);
       expect(response.body).toHaveLength(1);
@@ -1279,7 +1279,7 @@ describe("API Integration Tests", () => {
     it("creates task_updated for multiple fields update", async () => {
       const created = await request(app).post("/api/tasks").send({ title: "Task 1" });
       const taskId = created.body.id;
-      
+
       const updateRes = await request(app).put(`/api/tasks/${taskId}`).send({
         status: "in-progress",
         priority: "high"
@@ -1332,14 +1332,32 @@ describe("API Integration Tests", () => {
       expect(response.body).toHaveLength(1); // Only created event
     });
 
-    it("does not create an event on 400 or 409", async () => {
+    it("does not create an event on 400", async () => {
       const created = await request(app).post("/api/tasks").send({ title: "Task 5" });
       const taskId = created.body.id;
 
-      await request(app).put(`/api/tasks/${taskId}`).send({ id: "hacked" }); // 400
+      const before = await request(app).get(`/api/tasks/${taskId}/activity`);
+      expect(before.body.length).toBe(1);
 
-      const response = await request(app).get(`/api/tasks/${taskId}/activity`);
-      expect(response.body).toHaveLength(1); // Only created event
+      const res = await request(app).put(`/api/tasks/${taskId}`).send({ id: "hacked" });
+      expect(res.status).toBe(400);
+
+      const after = await request(app).get(`/api/tasks/${taskId}/activity`);
+      expect(after.body.length).toBe(1);
+    });
+
+    it("does not create an event on 409", async () => {
+      const created = await request(app).post("/api/tasks").send({ title: "Task 5b", requiresApproval: true, approver: "m1" });
+      const taskId = created.body.id;
+
+      const before = await request(app).get(`/api/tasks/${taskId}/activity`);
+      expect(before.body.length).toBe(1);
+
+      const res = await request(app).put(`/api/tasks/${taskId}`).send({ status: "done" });
+      expect(res.status).toBe(409);
+
+      const after = await request(app).get(`/api/tasks/${taskId}/activity`);
+      expect(after.body.length).toBe(1);
     });
 
     it("creates a single task_updated for complex operations like automatic completedAt", async () => {
@@ -1347,7 +1365,7 @@ describe("API Integration Tests", () => {
       const taskId = created.body.id;
 
       await request(app).put(`/api/tasks/${taskId}`).send({ status: "done" });
-      
+
       const response = await request(app).get(`/api/tasks/${taskId}/activity`);
       const events = response.body.filter((a: TaskActivity) => a.type === "task_updated");
       expect(events).toHaveLength(1);
@@ -1369,6 +1387,31 @@ describe("API Integration Tests", () => {
       expect(events[0].changes).toContainEqual({ field: "approvalStatus", before: "pending", after: "approved" });
     });
 
+    it("creates exactly one task_updated event and resets approval on significant edit of approved task", async () => {
+      const created = await request(app).post("/api/tasks").send({ title: "Task 10", requiresApproval: true, approver: "m1" });
+      const taskId = created.body.id;
+
+      await request(app).put(`/api/tasks/${taskId}/approval`).send({ decision: "approved" });
+      await request(app).put(`/api/tasks/${taskId}`).send({ status: "done" });
+
+      const before = await request(app).get(`/api/tasks/${taskId}/activity`);
+      expect(before.body.length).toBe(3); // created, approved, updated
+
+      const res = await request(app).put(`/api/tasks/${taskId}`).send({ title: "Edited Title" });
+      expect(res.status).toBe(200);
+
+      const after = await request(app).get(`/api/tasks/${taskId}/activity`);
+      expect(after.body.length).toBe(4); // Only one new event
+
+      const recent = after.body[0];
+      expect(recent.type).toBe("task_updated");
+
+      expect(recent.changes).toContainEqual({ field: "title", before: "Task 10", after: "Edited Title" });
+      expect(recent.changes).toContainEqual({ field: "approvalStatus", before: "approved", after: "pending" });
+      expect(recent.changes).toContainEqual({ field: "status", before: "done", after: "in-progress" });
+      expect(recent.changes).toContainEqual(expect.objectContaining({ field: "completedAt" }));
+    });
+
     it("does not create duplicate approval event on identical decision", async () => {
       const created = await request(app).post("/api/tasks").send({ title: "Task 8", requiresApproval: true, approver: "m1" });
       const taskId = created.body.id;
@@ -1380,7 +1423,7 @@ describe("API Integration Tests", () => {
       const events = response.body.filter((a: TaskActivity) => a.type === "approval_decided");
       expect(events).toHaveLength(1);
     });
-    
+
     it("does not create an event on conflict", async () => {
       const created = await request(app).post("/api/tasks").send({ title: "Task 8b", requiresApproval: true, approver: "m1" });
       const taskId = created.body.id;
@@ -1410,7 +1453,7 @@ describe("API Integration Tests", () => {
     it("updates dependencies and creates task_updated when a task is deleted", async () => {
       const t1 = await request(app).post("/api/tasks").send({ title: "Task T1" });
       const t2 = await request(app).post("/api/tasks").send({ title: "Task T2", dependencies: [t1.body.id] });
-      
+
       await request(app).delete(`/api/tasks/${t1.body.id}`);
 
       const response = await request(app).get(`/api/tasks/${t2.body.id}/activity`);
@@ -1418,11 +1461,11 @@ describe("API Integration Tests", () => {
       expect(updates).toHaveLength(1);
       expect(updates[0].changes).toContainEqual({ field: "dependencies", before: [t1.body.id], after: [] });
     });
-    
+
     it("deletes history with the task", async () => {
       const t = await request(app).post("/api/tasks").send({ title: "Task T3" });
       await request(app).delete(`/api/tasks/${t.body.id}`);
-      
+
       const { activities } = await import("./data.js");
       expect(activities.some(a => a.taskId === t.body.id)).toBe(false);
     });
@@ -1430,7 +1473,7 @@ describe("API Integration Tests", () => {
     it("does not create history on comment", async () => {
       const t = await request(app).post("/api/tasks").send({ title: "Task T4" });
       await request(app).post(`/api/tasks/${t.body.id}/comments`).send({ authorId: "u1", content: "hi" });
-      
+
       const response = await request(app).get(`/api/tasks/${t.body.id}/activity`);
       expect(response.body).toHaveLength(1); // Only created
     });
