@@ -6,6 +6,7 @@ import type {
   TaskType,
   TaskUpdateInput
 } from "../types";
+import { toUtcDayInputValue } from "./taskDueDate";
 
 /**
  * The single form model shared by the task creation wizard and the task edit
@@ -69,7 +70,6 @@ export const TASK_FORM_MESSAGES = {
   title: "Title must be at least 3 characters",
   priority: "Choose a priority",
   taskType: "Choose a task type",
-  assigneeId: "You must assign this task",
   estimatedHoursPositive: "Estimated hours must be a positive number",
   estimatedHoursResearch: "Research tasks require a time estimate of at least 1 hour",
   estimatedHoursHighPriority: "High priority tasks cannot exceed 24h",
@@ -97,13 +97,21 @@ export function emptyTaskFormValues(): TaskFormValues {
 
 /**
  * The calendar day an <input type="date"> should show for a stored dueDate.
- * Deliberately a plain string slice rather than a Date round-trip: the stored
- * value is a UTC instant and re-formatting it in the viewer's local timezone
- * could shift the day by one.
+ *
+ * The API accepts any string `new Date()` can parse (e.g. "May 1, 2026"), so
+ * this cannot assume an ISO string and slice at the "T": that would feed the
+ * date input a value it rejects, the field would render blank, and saving an
+ * unrelated field would then look like the user had cleared the due date.
+ *
+ * The conversion reuses the app's single UTC-day convention
+ * (toUtcDayInputValue, next to getTaskDueStatus/formatDueDateUtc), so the day
+ * shown in the editor is exactly the day the Overdue/Due soon classification
+ * and the details view use. An unparsable value yields "" rather than
+ * throwing; buildTaskUpdatePayload treats that as "unchanged", never as a
+ * clear.
  */
 export function toDateInputValue(value: string | undefined): string {
-  if (!value) return "";
-  return value.split("T")[0];
+  return toUtcDayInputValue(value);
 }
 
 /** Builds the form state for an existing task (used when opening the edit modal). */
@@ -151,9 +159,10 @@ export function parseTagsInput(raw: string): string[] {
  * - requiresApproval requires an approver;
  * - dependencies must reference existing tasks (never the task itself).
  *
- * The only rules that are UI-only are the ones the creation wizard has always
- * enforced on top of the API (a task type and an assignee must be chosen);
- * they apply in "create" mode only, so editing can still clear an assignee.
+ * The only UI-only rule is that the creation wizard asks for a task type
+ * (it applies in "create" mode only, so editing can still clear the type).
+ * `assigneeId` is deliberately NOT required anywhere: the API and Swagger
+ * both treat it as optional, so a task may be created unassigned.
  */
 export function validateTaskForm(values: TaskFormValues, options: ValidateTaskFormOptions): TaskFormErrors {
   const errors: TaskFormErrors = {};
@@ -166,9 +175,8 @@ export function validateTaskForm(values: TaskFormValues, options: ValidateTaskFo
     errors.priority = TASK_FORM_MESSAGES.priority;
   }
 
-  if (options.mode === "create") {
-    if (!values.taskType) errors.taskType = TASK_FORM_MESSAGES.taskType;
-    if (!values.assigneeId) errors.assigneeId = TASK_FORM_MESSAGES.assigneeId;
+  if (options.mode === "create" && !values.taskType) {
+    errors.taskType = TASK_FORM_MESSAGES.taskType;
   }
 
   const hours = parseEstimatedHours(values.estimatedHours);
@@ -277,69 +285,88 @@ const sameArray = (a: readonly string[], b: readonly string[]) =>
 /**
  * Builds the PUT /api/tasks/:id body by diffing the edited form against the
  * task as it was loaded. Only what actually changed is sent, so editing one
- * field can never overwrite a value the form does not know about; and a field
- * the user cleared is sent with the explicit clearing value the API contract
- * defines — `null` for nullable scalars (description, dueDate, assigneeId,
- * taskType, estimatedHours, severity, approver) and `[]` for the array fields
- * (tags, dependencies), which do not accept null.
+ * field can never overwrite — or silently drop — a value the user did not
+ * touch; a field the user cleared is sent with the explicit clearing value
+ * the API contract defines: `null` for the nullable scalars (description,
+ * dueDate, assigneeId, taskType, estimatedHours, severity, approver) and `[]`
+ * for the array fields (tags, dependencies), which do not accept null.
  *
- * Two conditional pairs are always sent together rather than relying on the
- * diff, because the API re-validates the *merged* task and would otherwise
- * keep a value the form no longer shows:
- * - moving `taskType` away from "bug" also sends `severity: null`;
- * - unchecking `requiresApproval` also sends `approver: null`.
+ * Every comparison is made against the form value as the user sees it, never
+ * against a normalized/canonicalized value: canonicalize() intentionally
+ * drops values that the *creation* form cannot express (a whitespace-only
+ * description, a severity on a non-bug task, an approver while approval is
+ * off), and diffing those against the stored task would clear data the user
+ * never edited.
+ *
+ * The two conditional fields follow what the user actually did:
+ * - `severity: null` is sent only when the type moves away from "bug" (or the
+ *   severity control, visible for bugs, is emptied). A severity stored on a
+ *   non-bug task — which the API allows — is left alone.
+ * - `approver: null` is sent only when an active approval requirement is
+ *   switched off (or the approver control, visible while approval is on, is
+ *   emptied). An approver stored alongside requiresApproval: false is left
+ *   alone.
  */
 export function buildTaskUpdatePayload(values: TaskFormValues, original: Task): TaskUpdateInput {
-  const c = canonicalize(values);
   const patch: TaskUpdateInput = {};
 
-  if (c.title !== original.title) patch.title = c.title;
-  if (c.status !== original.status) patch.status = c.status;
-  if (c.priority !== original.priority) patch.priority = c.priority;
+  const title = values.title.trim();
+  if (title !== original.title) patch.title = title;
+  if (values.status !== original.status) patch.status = values.status;
+
+  const priority = (values.priority || "medium") as TaskPriority;
+  if (priority !== original.priority) patch.priority = priority;
 
   const originalDescription = original.description ?? "";
-  const nextDescription = c.description ?? "";
-  if (nextDescription !== originalDescription) {
-    patch.description = nextDescription === "" ? null : nextDescription;
+  if (values.description !== originalDescription) {
+    patch.description = values.description.trim() === "" ? null : values.description;
   }
 
   const originalDueDay = toDateInputValue(original.dueDate);
-  const nextDueDay = c.dueDate ?? "";
-  if (nextDueDay !== originalDueDay) {
-    patch.dueDate = nextDueDay === "" ? null : new Date(nextDueDay).toISOString();
+  if (values.dueDate !== originalDueDay) {
+    patch.dueDate = values.dueDate === "" ? null : new Date(values.dueDate).toISOString();
   }
 
-  if ((c.assigneeId ?? "") !== (original.assigneeId ?? "")) {
-    patch.assigneeId = c.assigneeId ?? null;
-  }
-  if ((c.taskType ?? "") !== (original.taskType ?? "")) {
-    patch.taskType = c.taskType ?? null;
-  }
-  if ((c.severity ?? "") !== (original.severity ?? "")) {
-    patch.severity = c.severity ?? null;
-  }
-  if ((c.approver ?? "") !== (original.approver ?? "")) {
-    patch.approver = c.approver ?? null;
-  }
-  if (c.estimatedHours !== original.estimatedHours) {
-    patch.estimatedHours = c.estimatedHours ?? null;
-  }
-  if (!sameArray(c.tags, original.tags ?? [])) {
-    patch.tags = c.tags;
-  }
-  if (!sameArray(c.dependencies, original.dependencies ?? [])) {
-    patch.dependencies = c.dependencies;
-  }
-  if (c.requiresApproval !== (original.requiresApproval ?? false)) {
-    patch.requiresApproval = c.requiresApproval;
+  if (values.assigneeId !== (original.assigneeId ?? "")) {
+    patch.assigneeId = values.assigneeId || null;
   }
 
-  if (original.taskType === "bug" && c.taskType !== "bug") {
+  const originalTaskType = original.taskType ?? "";
+  if (values.taskType !== originalTaskType) {
+    patch.taskType = values.taskType || null;
+  }
+
+  // The severity control only exists while the type is "bug".
+  if (originalTaskType === "bug" && values.taskType !== "bug") {
     patch.severity = null;
+  } else if (values.taskType === "bug" && values.severity !== (original.severity ?? "")) {
+    patch.severity = values.severity || null;
   }
-  if ((original.requiresApproval ?? false) && !c.requiresApproval) {
-    patch.requiresApproval = false;
+
+  const originalHours =
+    original.estimatedHours === undefined || original.estimatedHours === null ? "" : String(original.estimatedHours);
+  if (values.estimatedHours.trim() !== originalHours) {
+    const hours = parseEstimatedHours(values.estimatedHours);
+    patch.estimatedHours = hours === undefined ? null : hours;
+  }
+
+  if (!sameArray(values.tags, original.tags ?? [])) {
+    patch.tags = [...values.tags];
+  }
+  if (!sameArray(values.dependencies, original.dependencies ?? [])) {
+    patch.dependencies = [...values.dependencies];
+  }
+
+  const originalRequiresApproval = original.requiresApproval ?? false;
+  if (values.requiresApproval !== originalRequiresApproval) {
+    patch.requiresApproval = values.requiresApproval;
+  }
+
+  // The approver control only exists while approval is required.
+  if (originalRequiresApproval && !values.requiresApproval) {
     patch.approver = null;
+  } else if (values.requiresApproval && values.approver !== (original.approver ?? "")) {
+    patch.approver = values.approver || null;
   }
 
   return patch;

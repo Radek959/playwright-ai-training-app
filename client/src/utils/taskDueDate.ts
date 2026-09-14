@@ -42,6 +42,26 @@ export function isTaskDueSoon(task: Pick<Task, "dueDate" | "status">, now: numbe
   return getTaskDueStatus(task, now) === "soon";
 }
 
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/**
+ * The UTC calendar day of a stored date, in the "YYYY-MM-DD" shape an
+ * <input type="date"> binds to. Accepts anything `new Date()` parses — the
+ * API accepts any such value for dueDate, not only ISO strings — and returns
+ * "" for a missing or unparsable value so a form never binds to junk.
+ *
+ * The day is taken in UTC (the same convention as getTaskDueStatus and
+ * formatDueDateUtc) so the date a user edits is always the date they see
+ * classified as Overdue/Due soon, in any timezone.
+ */
+export function toUtcDayInputValue(dateStr: string | undefined | null): string {
+  if (!dateStr) return "";
+  const ms = new Date(dateStr).getTime();
+  if (Number.isNaN(ms)) return "";
+  const d = new Date(ms);
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+}
+
 export type FormattedDueDate = {
   /** Calendar date formatted in UTC, independent of the local timezone (e.g. "6/15/2026"). */
   display: string;

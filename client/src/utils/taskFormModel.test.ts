@@ -4,6 +4,7 @@ import {
   buildTaskUpdatePayload,
   emptyTaskFormValues,
   taskToFormValues,
+  toDateInputValue,
   validateTaskForm,
   type TaskFormValues
 } from "./taskFormModel";
@@ -68,6 +69,35 @@ describe("taskToFormValues", () => {
       requiresApproval: false,
       approver: ""
     });
+  });
+});
+
+describe("toDateInputValue", () => {
+  it("keeps the UTC calendar day of an ISO timestamp", () => {
+    expect(toDateInputValue("2026-05-01T00:00:00.000Z")).toBe("2026-05-01");
+    expect(toDateInputValue("2026-05-01")).toBe("2026-05-01");
+  });
+
+  it("uses the UTC day for an offset date, matching the due-date classification", () => {
+    // 2026-05-01T23:30-05:00 is 2026-05-02T04:30Z — the UTC day is the 2nd.
+    expect(toDateInputValue("2026-05-01T23:30:00-05:00")).toBe("2026-05-02");
+    // 2026-05-02T01:00+05:00 is 2026-05-01T20:00Z — the UTC day is the 1st.
+    expect(toDateInputValue("2026-05-02T01:00:00+05:00")).toBe("2026-05-01");
+  });
+
+  it("converts a valid date that contains no 'T' instead of showing it raw", () => {
+    expect(toDateInputValue("May 1, 2026 00:00:00 GMT")).toBe("2026-05-01");
+    expect(toDateInputValue("Fri, 01 May 2026 12:00:00 GMT")).toBe("2026-05-01");
+    // A date with no timezone at all is resolved against the local zone and
+    // then reduced to its UTC day (the app-wide convention), so only the
+    // shape is asserted here — never the raw, unusable input string.
+    expect(toDateInputValue("May 1, 2026")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("returns an empty string for an unparsable or missing value without throwing", () => {
+    expect(toDateInputValue("not a date")).toBe("");
+    expect(toDateInputValue("")).toBe("");
+    expect(toDateInputValue(undefined)).toBe("");
   });
 });
 
@@ -139,15 +169,21 @@ describe("validateTaskForm", () => {
     );
   });
 
-  it("only requires a task type and an assignee when creating, not when editing", () => {
+  it("only requires a task type when creating, not when editing", () => {
     const bare = createValues({ taskType: "", assigneeId: "" });
-    expect(validateTaskForm(bare, { mode: "create" })).toMatchObject({
-      taskType: "Choose a task type",
-      assigneeId: "You must assign this task"
-    });
-    const edited = validateTaskForm(bare, { mode: "edit" });
-    expect(edited.taskType).toBeUndefined();
-    expect(edited.assigneeId).toBeUndefined();
+    expect(validateTaskForm(bare, { mode: "create" }).taskType).toBe("Choose a task type");
+    expect(validateTaskForm(bare, { mode: "edit" }).taskType).toBeUndefined();
+  });
+
+  it("never requires an assignee — the API allows creating an unassigned task", () => {
+    const unassigned = createValues({ assigneeId: "" });
+    expect(validateTaskForm(unassigned, { mode: "create" }).assigneeId).toBeUndefined();
+    expect(validateTaskForm(unassigned, { mode: "edit" }).assigneeId).toBeUndefined();
+  });
+
+  it("skips the dependency reference check when no task list was fetched", () => {
+    const values = createValues({ dependencies: ["t2"] });
+    expect(validateTaskForm(values, { mode: "edit", currentTaskId: "t1" }).dependencies).toBeUndefined();
   });
 });
 
@@ -265,5 +301,60 @@ describe("buildTaskUpdatePayload", () => {
   it("trims the title before comparing and sending it", () => {
     const values: TaskFormValues = { ...taskToFormValues(fullTask), title: "  Existing task  " };
     expect(buildTaskUpdatePayload(values, fullTask)).toEqual({});
+  });
+
+  describe("never touches a field the user did not change", () => {
+    const renameOnly = (task: Task) => buildTaskUpdatePayload({ ...taskToFormValues(task), title: "Renamed" }, task);
+
+    it("keeps a severity saved on a non-bug task", () => {
+      const featureWithSeverity: Task = { ...fullTask, taskType: "feature", severity: "major" };
+      expect(renameOnly(featureWithSeverity)).toEqual({ title: "Renamed" });
+    });
+
+    it("keeps an approver saved while approval is not required", () => {
+      const unapprovedWithApprover: Task = { ...fullTask, requiresApproval: false, approver: "manager-a" };
+      expect(renameOnly(unapprovedWithApprover)).toEqual({ title: "Renamed" });
+    });
+
+    it("keeps a whitespace-only description exactly as stored", () => {
+      const whitespaceDescription: Task = { ...fullTask, description: "   " };
+      expect(renameOnly(whitespaceDescription)).toEqual({ title: "Renamed" });
+    });
+
+    it("keeps a dueDate stored in a non-YYYY-MM-DD format the API accepts", () => {
+      const textDueDate: Task = { ...fullTask, dueDate: "May 1, 2026 00:00:00 GMT" };
+      expect(renameOnly(textDueDate)).toEqual({ title: "Renamed" });
+    });
+
+    it("keeps an unparsable dueDate rather than clearing it", () => {
+      const brokenDueDate: Task = { ...fullTask, dueDate: "whenever" };
+      expect(renameOnly(brokenDueDate)).toEqual({ title: "Renamed" });
+    });
+  });
+
+  it("clears a description the user actually emptied", () => {
+    const whitespaceDescription: Task = { ...fullTask, description: "   " };
+    const values: TaskFormValues = { ...taskToFormValues(whitespaceDescription), description: "" };
+    expect(buildTaskUpdatePayload(values, whitespaceDescription)).toEqual({ description: null });
+  });
+
+  it("does not send severity: null when the type changes between two non-bug types", () => {
+    const featureWithSeverity: Task = { ...fullTask, taskType: "feature", severity: "major" };
+    const values: TaskFormValues = { ...taskToFormValues(featureWithSeverity), taskType: "research", estimatedHours: "8" };
+    expect(buildTaskUpdatePayload(values, featureWithSeverity)).toEqual({ taskType: "research" });
+  });
+
+  it("sends approver only when approval is switched on and an approver is picked", () => {
+    const unapprovedWithApprover: Task = { ...fullTask, requiresApproval: false, approver: "manager-a" };
+    const values: TaskFormValues = { ...taskToFormValues(unapprovedWithApprover), requiresApproval: true };
+    // The stored approver is pre-filled and unchanged, so only the checkbox
+    // change is sent.
+    expect(buildTaskUpdatePayload(values, unapprovedWithApprover)).toEqual({ requiresApproval: true });
+
+    const reassigned: TaskFormValues = { ...values, approver: "manager-b" };
+    expect(buildTaskUpdatePayload(reassigned, unapprovedWithApprover)).toEqual({
+      requiresApproval: true,
+      approver: "manager-b"
+    });
   });
 });
