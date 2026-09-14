@@ -14,6 +14,30 @@ const MIN_QUERY_LENGTH = 2;
 const DEBOUNCE_MS = 300;
 
 /**
+ * The minimal safe contract this widget actually relies on: enough of a task
+ * shape to render a result row and navigate to it. This deliberately is not a
+ * full Task-model validator — it only guards the fields this component reads
+ * (id/title/status/priority) — so a malformed 200 response (null, an object
+ * instead of an array, a null element, or an element missing one of these
+ * fields) is treated as a search failure instead of silently becoming an
+ * empty result list.
+ */
+function isSearchResultItem(value: unknown): value is Task {
+  if (typeof value !== "object" || value === null) return false;
+  const item = value as Record<string, unknown>;
+  return (
+    typeof item.id === "string" &&
+    typeof item.title === "string" &&
+    typeof item.status === "string" &&
+    typeof item.priority === "string"
+  );
+}
+
+function isValidSearchResponse(data: unknown): data is Task[] {
+  return Array.isArray(data) && data.every(isSearchResultItem);
+}
+
+/**
  * What the widget currently knows about the typed query. Modelling it as one
  * value (rather than separate `results`/`loading`/`error` flags that can
  * disagree) is what guarantees the dropdown never shows a previous query's
@@ -87,8 +111,15 @@ export function TaskSearch({ placeholder = "Search tasks..." }: Props) {
         });
         if (!res.ok) throw new Error(`Search failed: ${res.status}`);
         const data = await res.json();
+        // Validated *before* the staleness check below: an invalid payload
+        // must never be treated as "no results" even for a request that is
+        // about to be discarded as stale — it should simply be dropped like
+        // any other stale response, not misreported as empty.
+        if (!isValidSearchResponse(data)) {
+          throw new Error("Received an unexpected search response");
+        }
         if (requestId !== latestRequestRef.current) return;
-        setState({ status: "success", results: Array.isArray(data) ? (data as Task[]) : [] });
+        setState({ status: "success", results: data });
         setSelectedIndex(0);
       } catch (error) {
         if (controller.signal.aborted) return;

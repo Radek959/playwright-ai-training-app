@@ -51,6 +51,50 @@ describe("EditUserDialog", () => {
     expect(avatarInput().value).toBe("");
   });
 
+  it("prefills the avatar field from legacy avatarUrl for a seed user", () => {
+    renderDialog({ ...baseUser, avatarUrl: "https://example.com/legacy.png" });
+    expect(avatarInput().value).toBe("https://example.com/legacy.png");
+  });
+
+  it("prefers avatar over avatarUrl when both are present", () => {
+    renderDialog({
+      ...baseUser,
+      avatar: "https://example.com/new.png",
+      avatarUrl: "https://example.com/legacy.png"
+    });
+    expect(avatarInput().value).toBe("https://example.com/new.png");
+  });
+
+  it("sends the new avatar (not a no-op patch) when replacing a legacy avatarUrl", async () => {
+    const { onSave } = renderDialog({ ...baseUser, avatarUrl: "https://example.com/legacy.png" });
+
+    fireEvent.change(avatarInput(), { target: { value: "https://example.com/new.png" } });
+    save();
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith({ avatar: "https://example.com/new.png" });
+  });
+
+  it("sends avatar: null when clearing a field prefilled from legacy avatarUrl", async () => {
+    const { onSave } = renderDialog({ ...baseUser, avatarUrl: "https://example.com/legacy.png" });
+
+    fireEvent.change(avatarInput(), { target: { value: "" } });
+    save();
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith({ avatar: null });
+  });
+
+  it("sends no patch when the avatarUrl-derived field is left untouched", async () => {
+    const { onSave } = renderDialog({ ...baseUser, avatarUrl: "https://example.com/legacy.png" });
+
+    fireEvent.change(nameInput(), { target: { value: "Alice Cooper" } });
+    save();
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith({ name: "Alice Cooper" });
+  });
+
   it("renders as an accessible modal with a labelled title", () => {
     renderDialog();
 

@@ -1517,6 +1517,30 @@ describe("API Integration Tests", () => {
       expect(response.body.avatarUrl).toBe(seeded!.avatarUrl);
       expect(response.body.role).toBe("admin");
     });
+
+    it("retires a legacy avatarUrl once avatar is explicitly set", async () => {
+      const seeded = users.find((u) => u.avatarUrl);
+      expect(seeded).toBeDefined();
+
+      const response = await request(app)
+        .put(`/api/users/${seeded!.id}`)
+        .send({ avatar: "https://example.com/new.png" });
+
+      expect(response.status).toBe(200);
+      expect(response.body.avatar).toBe("https://example.com/new.png");
+      expect(response.body.avatarUrl).toBeUndefined();
+    });
+
+    it("retires a legacy avatarUrl once avatar is explicitly cleared", async () => {
+      const seeded = users.find((u) => u.avatarUrl);
+      expect(seeded).toBeDefined();
+
+      const response = await request(app).put(`/api/users/${seeded!.id}`).send({ avatar: null });
+
+      expect(response.status).toBe(200);
+      expect(response.body.avatar).toBeUndefined();
+      expect(response.body.avatarUrl).toBeUndefined();
+    });
   });
 
   describe("Task Comments API", () => {

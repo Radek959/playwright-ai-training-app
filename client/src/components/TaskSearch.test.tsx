@@ -255,6 +255,107 @@ describe("TaskSearch", () => {
     });
   });
 
+  describe("malformed responses", () => {
+    it("treats a null body as a controlled error, not an empty result", async () => {
+      fetchSpy.mockResolvedValue(jsonResponse(null));
+      renderSearch();
+
+      await type("login");
+
+      const error = await screen.findByTestId("search-error");
+      expect(within(error).getByRole("alert")).toBeInTheDocument();
+      expect(screen.queryByTestId("search-no-results")).not.toBeInTheDocument();
+    });
+
+    it("treats an object instead of an array as a controlled error", async () => {
+      fetchSpy.mockResolvedValue(jsonResponse({ results: [] }));
+      renderSearch();
+
+      await type("login");
+
+      expect(await screen.findByTestId("search-error")).toBeInTheDocument();
+      expect(screen.queryByTestId("search-no-results")).not.toBeInTheDocument();
+    });
+
+    it("treats a null element in the array as a controlled error", async () => {
+      fetchSpy.mockResolvedValue(jsonResponse([null]));
+      renderSearch();
+
+      await type("login");
+
+      expect(await screen.findByTestId("search-error")).toBeInTheDocument();
+    });
+
+    it("treats an element missing a required field as a controlled error", async () => {
+      fetchSpy.mockResolvedValue(jsonResponse([{ id: "t1", title: "Missing fields" }]));
+      renderSearch();
+
+      await type("login");
+
+      expect(await screen.findByTestId("search-error")).toBeInTheDocument();
+      expect(screen.queryByTestId(`search-result-t1`)).not.toBeInTheDocument();
+    });
+
+    it("recovers via Retry after a malformed response, once a valid one arrives", async () => {
+      fetchSpy
+        .mockResolvedValueOnce(jsonResponse({ not: "an array" }))
+        .mockResolvedValueOnce(jsonResponse([task("t1", { title: "Login bug" })]));
+      renderSearch();
+
+      await type("login");
+      expect(await screen.findByTestId("search-error")).toBeInTheDocument();
+
+      fireEvent.mouseDown(screen.getByTestId("search-retry"));
+      await settle(300);
+
+      expect(await screen.findByTestId("search-result-t1")).toBeInTheDocument();
+      expect(screen.queryByTestId("search-error")).not.toBeInTheDocument();
+      expect(requestedQuery(1)).toBe("login");
+    });
+
+    it("does not let a stale invalid response overwrite the current, valid results", async () => {
+      const first = deferred<Response>();
+      const second = deferred<Response>();
+      fetchSpy.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+      renderSearch();
+
+      await type("login");
+      await type("parser");
+
+      // The newer query resolves first with good data...
+      second.resolve(jsonResponse([task("new", { title: "Parser bug" })]));
+      expect(await screen.findByTestId("search-result-new")).toBeInTheDocument();
+
+      // ...and the older, slower request finally resolves with a malformed
+      // payload. It must be dropped as stale, not shown as an error either.
+      first.resolve(jsonResponse(null));
+      await settle();
+
+      expect(screen.getByTestId("search-result-new")).toBeInTheDocument();
+      expect(screen.queryByTestId("search-error")).not.toBeInTheDocument();
+    });
+
+    it("does not let a stale invalid response overwrite a current error", async () => {
+      const first = deferred<Response>();
+      const second = deferred<Response>();
+      fetchSpy.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+      renderSearch();
+
+      await type("login");
+      await type("parser");
+
+      second.resolve(new Response("boom", { status: 500 }));
+      expect(await screen.findByTestId("search-error")).toHaveTextContent("Search failed: 500");
+
+      first.resolve(jsonResponse(null));
+      await settle();
+
+      // Whatever state the newer (parser) request settled into stands; the
+      // stale response for "login" must never be allowed to write over it.
+      expect(screen.getByTestId("search-error")).toHaveTextContent("Search failed: 500");
+    });
+  });
+
   describe("out-of-order responses", () => {
     it("ignores a stale response that resolves after a newer one", async () => {
       const slowOld = deferred<Response>();

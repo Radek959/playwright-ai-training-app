@@ -5,6 +5,7 @@ import { AssignedTaskItem } from "../components/AssignedTaskItem";
 import { DeleteUserDialog } from "../components/DeleteUserDialog";
 import { EditUserDialog } from "../components/EditUserDialog";
 import { toApiError } from "../utils/apiError";
+import { effectiveAvatar } from "../utils/avatar";
 import type { Task, User, UserUpdateInput } from "../types";
 
 // Distinguishes "still fetching" and "fetch failed" from an actually-empty
@@ -164,7 +165,7 @@ export function UserDetails() {
 
       <header className="mb-8 flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
         <div className="flex items-center gap-4">
-          <UserAvatar src={user.avatarUrl || user.avatar} name={user.name} size="xl" />
+          <UserAvatar src={effectiveAvatar(user)} name={user.name} size="xl" />
           <div>
             <h1 className="text-3xl font-bold text-gray-900">{user.name}</h1>
             <p className="text-sm text-gray-500 font-mono">ID: {user.id}</p>

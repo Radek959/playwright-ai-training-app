@@ -546,6 +546,64 @@ describe("Tasks view due-date filter", () => {
   });
 });
 
+describe("Tasks view assignee avatars", () => {
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("shows a newly-set avatar (not just legacy avatarUrl) on the assignee's tasks", async () => {
+    mockFetch({
+      usersResponse: jsonResponse([
+        { id: "u1", name: "Alice", email: "alice@example.com", role: "admin", avatar: "https://example.com/new.png" }
+      ]),
+      tasksResponse: jsonResponse([{ id: "t1", title: "Alpha", status: "todo", priority: "low", assigneeId: "u1" }])
+    });
+    renderTasks(["/tasks?tab=grid"]);
+
+    const gridItem = await screen.findByTestId("task-grid-item-t1");
+    const img = within(gridItem).getByTestId("user-avatar-image") as HTMLImageElement;
+    expect(img.src).toBe("https://example.com/new.png");
+  });
+
+  it("prefers avatar over legacy avatarUrl for an assignee that has both", async () => {
+    mockFetch({
+      usersResponse: jsonResponse([
+        {
+          id: "u1",
+          name: "Alice",
+          email: "alice@example.com",
+          role: "admin",
+          avatar: "https://example.com/new.png",
+          avatarUrl: "https://example.com/legacy.png"
+        }
+      ]),
+      tasksResponse: jsonResponse([{ id: "t1", title: "Alpha", status: "todo", priority: "low", assigneeId: "u1" }])
+    });
+    renderTasks(["/tasks?tab=grid"]);
+
+    const gridItem = await screen.findByTestId("task-grid-item-t1");
+    const img = within(gridItem).getByTestId("user-avatar-image") as HTMLImageElement;
+    expect(img.src).toBe("https://example.com/new.png");
+  });
+
+  it("falls back to legacy avatarUrl for an assignee that never had avatar set", async () => {
+    mockFetch({
+      usersResponse: jsonResponse([
+        { id: "u1", name: "Alice", email: "alice@example.com", role: "admin", avatarUrl: "https://example.com/legacy.png" }
+      ]),
+      tasksResponse: jsonResponse([{ id: "t1", title: "Alpha", status: "todo", priority: "low", assigneeId: "u1" }])
+    });
+    renderTasks(["/tasks?tab=grid"]);
+
+    const gridItem = await screen.findByTestId("task-grid-item-t1");
+    const img = within(gridItem).getByTestId("user-avatar-image") as HTMLImageElement;
+    expect(img.src).toBe("https://example.com/legacy.png");
+  });
+});
+
 describe("Tasks view search widget", () => {
   function renderTasksWithDetailsRoute(initialEntries: string[] = ["/tasks"]) {
     return render(
