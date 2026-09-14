@@ -3,7 +3,9 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { UserAvatar } from "../components/UserAvatar";
 import { AssignedTaskItem } from "../components/AssignedTaskItem";
 import { DeleteUserDialog } from "../components/DeleteUserDialog";
-import type { Task, User } from "../types";
+import { EditUserDialog } from "../components/EditUserDialog";
+import { toApiError } from "../utils/apiError";
+import type { Task, User, UserUpdateInput } from "../types";
 
 // Distinguishes "still fetching" and "fetch failed" from an actually-empty
 // array, so the UI never shows a real-looking 0 (or "no tasks" empty state)
@@ -25,6 +27,7 @@ export function UserDetails() {
   const [tasksState, setTasksState] = useState<TasksState>({ status: "loading" });
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const loadUser = useCallback(async () => {
     if (!id) return;
@@ -66,6 +69,37 @@ export function UserDetails() {
     loadUser();
     loadTasks();
   }, [loadUser, loadTasks]);
+
+  /**
+   * Saves the edit dialog's patch. The view is refreshed in place from the
+   * API's response — never from optimistically guessed local state — and the
+   * dialog is only closed once the request actually succeeded, so a rejected
+   * save never shows unsaved values as stored. The URL never changes either
+   * way: editing stays on /users/:id.
+   *
+   * An empty patch (nothing was edited) is still sent, so the server remains
+   * the single source of truth for what the saved user looks like.
+   */
+  const handleSave = async (patch: UserUpdateInput) => {
+    if (!user) return;
+    let res: Response;
+    try {
+      res = await fetch(`/api/users/${user.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch)
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Update error";
+      throw err instanceof Error ? err : new Error(message);
+    }
+    if (!res.ok) {
+      throw await toApiError(res, `Update failed: ${res.status}`);
+    }
+    const updated = (await res.json()) as User;
+    setUser(updated);
+    setEditDialogOpen(false);
+  };
 
   if (loading) {
     return (
@@ -136,14 +170,24 @@ export function UserDetails() {
             <p className="text-sm text-gray-500 font-mono">ID: {user.id}</p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setDeleteDialogOpen(true)}
-          className="bg-red-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-red-700 whitespace-nowrap min-h-[44px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800"
-          aria-label={`Delete user: ${user.name}`}
-        >
-          Delete user
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => setEditDialogOpen(true)}
+            className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 whitespace-nowrap min-h-[44px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-800"
+            aria-label={`Edit user: ${user.name}`}
+          >
+            Edit user
+          </button>
+          <button
+            type="button"
+            onClick={() => setDeleteDialogOpen(true)}
+            className="bg-red-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-red-700 whitespace-nowrap min-h-[44px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800"
+            aria-label={`Delete user: ${user.name}`}
+          >
+            Delete user
+          </button>
+        </div>
       </header>
 
       <section className="mb-8">
@@ -225,6 +269,10 @@ export function UserDetails() {
             )}
           </section>
         </>
+      )}
+
+      {editDialogOpen && (
+        <EditUserDialog user={user} open onClose={() => setEditDialogOpen(false)} onSave={handleSave} />
       )}
 
       <DeleteUserDialog

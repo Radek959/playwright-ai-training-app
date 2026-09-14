@@ -220,6 +220,17 @@ export function buildUserCreateCandidate(body: Record<string, unknown>): Record<
   };
 }
 
+// Fields a client is allowed to send on PUT /api/users/:id. "id" is
+// intentionally excluded: identity is not editable through this contract, and
+// task assignments/comment authorship reference it. "avatarUrl" is excluded
+// too — it is seeded, server-side presentation data, not user input.
+export const USER_UPDATE_FIELDS: readonly string[] = ["name", "email", "role", "avatar"];
+
+// The one user field where an explicit `null` means "clear this value".
+// name/email/role are required, so `null` there is invalid input rather than
+// a value to clear — exactly the convention PUT /api/tasks/:id already uses.
+export const NULLABLE_USER_FIELDS: ReadonlySet<string> = new Set(["avatar"]);
+
 export function validateUserFields(
   candidate: Record<string, unknown>,
   context: { users: User[]; userId?: string }

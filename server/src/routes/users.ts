@@ -1,7 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { users, User, tasks, comments } from "../data.js";
-import { buildUserCreateCandidate, validateUserFields } from "../validation.js";
+import {
+  NULLABLE_USER_FIELDS,
+  USER_UPDATE_FIELDS,
+  buildUserCreateCandidate,
+  validateUserFields
+} from "../validation.js";
+// applyAllowedUpdate is a generic "merge a PUT patch onto a record, restricted
+// to an allow-list" helper that happens to live alongside the task lifecycle
+// rules; it carries no task-specific behaviour, so the user update below
+// reuses it rather than re-implementing the same allow-list/null semantics.
+import { applyAllowedUpdate } from "../taskLifecycle.js";
 import { clearCommentAuthor } from "../commentLifecycle.js";
 import { activities } from "../data.js";
 import { recordTaskUpdated } from "../taskActivityLifecycle.js";
@@ -45,6 +55,61 @@ usersRouter.post("/", (req, res) => {
   };
   users.push(user);
   res.status(201).json(user);
+});
+
+/**
+ * Partial update. Only the fields present in the body are touched; anything
+ * omitted keeps its stored value. `avatar: null` clears the avatar, while
+ * omitting `avatar` leaves it exactly as it was. Nothing is written until
+ * every check has passed, so a rejected request never leaves a partial
+ * mutation behind.
+ *
+ * `id` is not editable, so task assignments (which reference `userId`) and
+ * comment authorship stay intact by construction — no task is touched here,
+ * and therefore no task activity entry is created either. Previously stored
+ * comment `authorName` values are historical snapshots and are deliberately
+ * never rewritten when a user is renamed.
+ */
+usersRouter.put("/:id", (req, res) => {
+  const idx = users.findIndex((u) => u.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: "User not found" });
+  const existing = users[idx];
+
+  if (!isPlainObject(req.body)) {
+    return res.status(400).json({
+      error: "Validation failed",
+      details: [{ field: "body", message: "request body must be a JSON object" }]
+    });
+  }
+
+  const updateResult = applyAllowedUpdate(
+    existing as unknown as Record<string, unknown>,
+    req.body,
+    USER_UPDATE_FIELDS,
+    NULLABLE_USER_FIELDS
+  );
+  if (!updateResult.ok) {
+    return res.status(400).json({ error: "Validation failed", details: updateResult.errors });
+  }
+  const merged = updateResult.merged;
+
+  // The exact same rules user creation applies, with this user excluded from
+  // the email-uniqueness check so resending an unchanged email is not a
+  // conflict with itself.
+  const errors = validateUserFields(merged, { users, userId: existing.id });
+  if (errors.length > 0) {
+    return res.status(400).json({ error: "Validation failed", details: errors });
+  }
+
+  const updated: User = {
+    ...(merged as User),
+    id: existing.id,
+    name: (merged.name as string).trim(),
+    email: (merged.email as string).trim()
+  };
+  users[idx] = updated;
+
+  res.json(updated);
 });
 
 usersRouter.delete("/:id", (req, res) => {

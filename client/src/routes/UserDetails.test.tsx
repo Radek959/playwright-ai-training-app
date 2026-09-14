@@ -502,4 +502,225 @@ describe("UserDetails", () => {
       expect(within(dialog).getByRole("button", { name: "Delete user" })).not.toBeDisabled();
     });
   });
+
+  describe("editing the user", () => {
+    /**
+     * Serves the user detail view and the task list, and answers a PUT with
+     * whatever `putResponse` builds from the patch it received. Every request
+     * is recorded so a test can assert on what was actually sent.
+     */
+    function mockEditableUser(putResponse: (patch: Record<string, unknown>) => Response) {
+      const puts: Record<string, unknown>[] = [];
+      let current = { ...mockUser };
+      fetchSpy.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = input.toString();
+        if (url === "/api/users/user-1" && init?.method === "PUT") {
+          const patch = JSON.parse(String(init.body)) as Record<string, unknown>;
+          puts.push(patch);
+          const response = putResponse(patch);
+          if (response.ok) current = { ...current, ...patch };
+          return Promise.resolve(response);
+        }
+        if (url === "/api/users/user-1") return Promise.resolve(new Response(JSON.stringify(current)));
+        if (url === "/api/tasks") return Promise.resolve(new Response(JSON.stringify(mockTasks)));
+        return Promise.resolve(new Response(null, { status: 404 }));
+      });
+      return { puts };
+    }
+
+    const okPut = (patch: Record<string, unknown>) =>
+      new Response(JSON.stringify({ ...mockUser, ...patch }), { status: 200 });
+
+    async function openEditDialog() {
+      renderComponent();
+      await waitFor(() => expect(screen.getByRole("heading", { name: "Alice Johnson" })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole("button", { name: "Edit user: Alice Johnson" }));
+      return screen.findByRole("dialog");
+    }
+
+    it("opens an edit dialog prefilled with the loaded user", async () => {
+      mockEditableUser(okPut);
+
+      const dialog = await openEditDialog();
+
+      expect(within(dialog).getByRole("heading", { name: "Edit user" })).toBeInTheDocument();
+      expect((within(dialog).getByLabelText("Name") as HTMLInputElement).value).toBe("Alice Johnson");
+      expect((within(dialog).getByLabelText("Email") as HTMLInputElement).value).toBe("alice@example.com");
+      expect((within(dialog).getByLabelText("Role") as HTMLSelectElement).value).toBe("admin");
+    });
+
+    it("closes on Cancel without sending anything or changing the view", async () => {
+      const { puts } = mockEditableUser(okPut);
+
+      const dialog = await openEditDialog();
+      fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Discarded" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(puts).toHaveLength(0);
+      expect(screen.getByRole("heading", { name: "Alice Johnson" })).toBeInTheDocument();
+    });
+
+    it("saves, refreshes the detail view in place and keeps the URL on /users/:id", async () => {
+      const { puts } = mockEditableUser(okPut);
+
+      const dialog = await openEditDialog();
+      fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Alice Cooper" } });
+      fireEvent.change(within(dialog).getByLabelText("Role"), { target: { value: "editor" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+      expect(puts).toEqual([{ name: "Alice Cooper", role: "editor" }]);
+      // The view now shows the values the API returned, in place — no
+      // navigation, no return to the users list.
+      expect(screen.getByRole("heading", { name: "Alice Cooper" })).toBeInTheDocument();
+      expect(screen.getByText("editor")).toBeInTheDocument();
+      expect(screen.queryByText("Users list page")).not.toBeInTheDocument();
+      expect(screen.getByText("ID: user-1")).toBeInTheDocument();
+    });
+
+    it("keeps the assigned tasks and their stats after a rename", async () => {
+      mockEditableUser(okPut);
+
+      const dialog = await openEditDialog();
+      fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Alice Cooper" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+      await waitFor(() => expect(screen.getByRole("heading", { name: "Alice Cooper" })).toBeInTheDocument());
+
+      // The tasks are matched by the stable userId, so a rename leaves both
+      // the assignment lists and the summary counts exactly as they were.
+      expect(screen.getByText("Active todo task")).toBeInTheDocument();
+      expect(screen.getByText("Active in-progress task")).toBeInTheDocument();
+      expect(screen.getByText("Finished task")).toBeInTheDocument();
+      expect(screen.queryByText("Someone else's task")).not.toBeInTheDocument();
+      expect(screen.getByText("3")).toBeInTheDocument();
+    });
+
+    it("sends avatar: null and drops the avatar image when the field is cleared", async () => {
+      const withAvatar = { ...mockUser, avatar: "https://example.com/old.png" };
+      const puts: Record<string, unknown>[] = [];
+      let current: Record<string, unknown> = { ...withAvatar };
+      fetchSpy.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = input.toString();
+        if (url === "/api/users/user-1" && init?.method === "PUT") {
+          const patch = JSON.parse(String(init.body)) as Record<string, unknown>;
+          puts.push(patch);
+          current = { ...mockUser };
+          return Promise.resolve(new Response(JSON.stringify(current), { status: 200 }));
+        }
+        if (url === "/api/users/user-1") return Promise.resolve(new Response(JSON.stringify(current)));
+        if (url === "/api/tasks") return Promise.resolve(new Response(JSON.stringify(mockTasks)));
+        return Promise.resolve(new Response(null, { status: 404 }));
+      });
+
+      const dialog = await openEditDialog();
+      expect((within(dialog).getByLabelText("Avatar URL") as HTMLInputElement).value).toBe(
+        "https://example.com/old.png"
+      );
+      fireEvent.change(within(dialog).getByLabelText("Avatar URL"), { target: { value: "" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(puts).toEqual([{ avatar: null }]);
+      expect(screen.queryByRole("img", { name: "Alice Johnson" })).not.toBeInTheDocument();
+    });
+
+    it("keeps the dialog open with the entered values when the API rejects the save", async () => {
+      const { puts } = mockEditableUser(() =>
+        new Response(
+          JSON.stringify({
+            error: "Validation failed",
+            details: [{ field: "email", message: "email is already in use" }]
+          }),
+          { status: 400 }
+        )
+      );
+
+      const dialog = await openEditDialog();
+      fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Alice Cooper" } });
+      fireEvent.change(within(dialog).getByLabelText("Email"), { target: { value: "taken@example.com" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+      await waitFor(() => expect(puts).toHaveLength(1));
+
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect((within(dialog).getByLabelText("Name") as HTMLInputElement).value).toBe("Alice Cooper");
+      expect((within(dialog).getByLabelText("Email") as HTMLInputElement).value).toBe("taken@example.com");
+      // The detail view behind the dialog still shows the last saved values.
+      expect(screen.getByRole("heading", { name: "Alice Johnson" })).toBeInTheDocument();
+      expect(screen.getByText("alice@example.com")).toBeInTheDocument();
+    });
+
+    it("keeps the dialog open and reports a network error", async () => {
+      fetchSpy.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = input.toString();
+        if (url === "/api/users/user-1" && init?.method === "PUT") {
+          return Promise.reject(new Error("Network down"));
+        }
+        if (url === "/api/users/user-1") return Promise.resolve(new Response(JSON.stringify(mockUser)));
+        if (url === "/api/tasks") return Promise.resolve(new Response(JSON.stringify(mockTasks)));
+        return Promise.resolve(new Response(null, { status: 404 }));
+      });
+
+      const dialog = await openEditDialog();
+      fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Alice Cooper" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+      expect(await within(dialog).findByText("Network down")).toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect((within(dialog).getByLabelText("Name") as HTMLInputElement).value).toBe("Alice Cooper");
+      expect(screen.getByRole("heading", { name: "Alice Johnson" })).toBeInTheDocument();
+    });
+
+    it("succeeds on a retry after a rejected save", async () => {
+      let attempt = 0;
+      const { puts } = mockEditableUser((patch) => {
+        attempt += 1;
+        if (attempt === 1) {
+          return new Response(
+            JSON.stringify({
+              error: "Validation failed",
+              details: [{ field: "email", message: "email is already in use" }]
+            }),
+            { status: 400 }
+          );
+        }
+        return new Response(JSON.stringify({ ...mockUser, ...patch }), { status: 200 });
+      });
+
+      const dialog = await openEditDialog();
+      fireEvent.change(within(dialog).getByLabelText("Email"), { target: { value: "taken@example.com" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(puts).toHaveLength(1));
+
+      fireEvent.change(within(dialog).getByLabelText("Email"), { target: { value: "free@example.com" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(puts).toEqual([{ email: "taken@example.com" }, { email: "free@example.com" }]);
+      expect(screen.getByText("free@example.com")).toBeInTheDocument();
+    });
+
+    it("moves focus into the dialog on open and back to the trigger on close", async () => {
+      mockEditableUser(okPut);
+      renderComponent();
+      await waitFor(() => expect(screen.getByRole("heading", { name: "Alice Johnson" })).toBeInTheDocument());
+
+      // jsdom does not focus a button on click the way a browser does, so the
+      // trigger is focused explicitly — what is under test is that closing
+      // hands focus *back* to wherever it was, not how it got there.
+      const trigger = screen.getByRole("button", { name: "Edit user: Alice Johnson" });
+      trigger.focus();
+      fireEvent.click(trigger);
+
+      const dialog = await screen.findByRole("dialog");
+      await waitFor(() => expect(within(dialog).getByLabelText("Name")).toHaveFocus());
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      await waitFor(() => expect(trigger).toHaveFocus());
+    });
+  });
 });

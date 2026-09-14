@@ -13,6 +13,20 @@ export type User = {
   avatarUrl?: string;
 };
 
+/**
+ * Body for PUT /api/users/:id. Partial: only the fields actually being
+ * changed are sent, and anything omitted keeps its stored value. `avatar` is
+ * the one clearable field — an explicit `null` removes it, while omitting it
+ * leaves it alone. `id` and `avatarUrl` are not editable and are rejected by
+ * the API if sent.
+ */
+export type UserUpdateInput = {
+  name?: string;
+  email?: string;
+  role?: UserRole;
+  avatar?: string | null;
+};
+
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 
 export type Task = {
