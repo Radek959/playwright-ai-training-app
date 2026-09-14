@@ -48,6 +48,21 @@ describe("parseStatusFilter / parsePriorityFilter", () => {
     expect(parsePriorityFilter(null)).toBe("all");
     expect(parsePriorityFilter("urgent")).toBe("all");
   });
+
+  it("still does not accept status=done by default (the Active tab's rule)", () => {
+    expect(parseStatusFilter("done")).toBe("all");
+    expect(parseStatusFilter("done", false)).toBe("all");
+  });
+
+  it("accepts status=done when allowDone is set (the Table tab's rule)", () => {
+    expect(parseStatusFilter("done", true)).toBe("done");
+    expect(parseStatusFilter("todo", true)).toBe("todo");
+    expect(parseStatusFilter("in-progress", true)).toBe("in-progress");
+  });
+
+  it("normalizes an unknown value to 'all' even with allowDone set", () => {
+    expect(parseStatusFilter("bogus", true)).toBe("all");
+  });
 });
 
 describe("parseAssigneeFilter", () => {
@@ -166,7 +181,7 @@ describe("buildTasksSearchParams", () => {
     expect(params.toString()).toBe("due=soon");
   });
 
-  it("includes tab, sort and order for the table tab and drops active-only params", () => {
+  it("includes tab, status/priority/assignee, sort and order for the table tab, and drops due/page", () => {
     const params = buildTasksSearchParams({
       tab: "table",
       status: "todo",
@@ -177,7 +192,35 @@ describe("buildTasksSearchParams", () => {
       sortKey: "dueDate",
       sortDir: "desc"
     });
-    expect(params.toString()).toBe("tab=table&sort=dueDate&order=desc");
+    expect(params.toString()).toBe("tab=table&status=todo&priority=low&assignee=u1&sort=dueDate&order=desc");
+  });
+
+  it("accepts status=done for the table tab", () => {
+    const params = buildTasksSearchParams({
+      tab: "table",
+      status: "done",
+      priority: "all",
+      assignee: "all",
+      due: "all",
+      page: 1,
+      sortKey: "title",
+      sortDir: "asc"
+    });
+    expect(params.toString()).toBe("tab=table&status=done");
+  });
+
+  it("omits table-tab status/priority/assignee when all are at their default", () => {
+    const params = buildTasksSearchParams({
+      tab: "table",
+      status: "all",
+      priority: "all",
+      assignee: "all",
+      due: "all",
+      page: 1,
+      sortKey: "title",
+      sortDir: "asc"
+    });
+    expect(params.toString()).toBe("tab=table");
   });
 
   it("includes only tab for grid/archived/analytics", () => {

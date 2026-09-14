@@ -546,6 +546,237 @@ describe("Tasks view due-date filter", () => {
   });
 });
 
+describe("Tasks view table filters", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+    mockFetch();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function tableRowIds() {
+    const table = screen.getByTestId("task-table");
+    return within(table)
+      .getAllByRole("row")
+      .slice(1)
+      .map((row) => row.getAttribute("data-testid"));
+  }
+
+  it("restores status/priority/assignee filters from the URL, combined with AND", async () => {
+    renderTasks(["/tasks?tab=table&status=done&priority=high&assignee=u1"]);
+    await waitForTableLoaded();
+
+    expect((screen.getByTestId("table-filter-status") as HTMLSelectElement).value).toBe("done");
+    expect((screen.getByTestId("table-filter-priority") as HTMLSelectElement).value).toBe("high");
+    expect((screen.getByTestId("table-filter-assignee") as HTMLSelectElement).value).toBe("u1");
+
+    // Only t8 (done, high, u1) matches all three filters together.
+    expect(tableRowIds()).toEqual(["task-row-t8"]);
+  });
+
+  it("accepts status=done on the Table tab, unlike the Active tab", async () => {
+    renderTasks(["/tasks?tab=table&status=done"]);
+    await waitForTableLoaded();
+
+    expect(tableRowIds()).toEqual(["task-row-t8"]);
+  });
+
+  it("filters the table by status=todo", async () => {
+    renderTasks(["/tasks?tab=table&status=todo"]);
+    await waitForTableLoaded();
+
+    expect(tableRowIds()).toEqual(["task-row-t1", "task-row-t2", "task-row-t5", "task-row-t7"]);
+  });
+
+  it("filters the table by status=in-progress", async () => {
+    renderTasks(["/tasks?tab=table&status=in-progress"]);
+    await waitForTableLoaded();
+
+    expect(tableRowIds()).toEqual(["task-row-t3", "task-row-t4", "task-row-t6"]);
+  });
+
+  it("filters the table by priority", async () => {
+    renderTasks(["/tasks?tab=table&priority=high"]);
+    await waitForTableLoaded();
+
+    expect(tableRowIds()).toEqual(["task-row-t3", "task-row-t5", "task-row-t8"]);
+  });
+
+  it("filters the table by a specific assignee", async () => {
+    renderTasks(["/tasks?tab=table&assignee=u1"]);
+    await waitForTableLoaded();
+
+    expect(tableRowIds()).toEqual(["task-row-t1", "task-row-t3", "task-row-t7", "task-row-t8"]);
+  });
+
+  it("filters the table to unassigned tasks", async () => {
+    renderTasks(["/tasks?tab=table&assignee=unassigned"]);
+    await waitForTableLoaded();
+
+    expect(tableRowIds()).toEqual(["task-row-t4", "task-row-t6"]);
+  });
+
+  it("normalizes unknown status/priority/assignee values back to their defaults", async () => {
+    renderTasks(["/tasks?tab=table&status=bogus&priority=bogus&assignee=does-not-exist"]);
+    await waitForTableLoaded();
+
+    await waitFor(() => expect(locationSearch()).toBe("?tab=table"));
+    expect((screen.getByTestId("table-filter-status") as HTMLSelectElement).value).toBe("all");
+  });
+
+  it("strips default filter values from the canonical URL", async () => {
+    renderTasks(["/tasks?tab=table&status=all&priority=all&assignee=all"]);
+    await waitForTableLoaded();
+
+    await waitFor(() => expect(locationSearch()).toBe("?tab=table"));
+  });
+
+  it("updates the URL as each table filter control changes", async () => {
+    renderTasks(["/tasks?tab=table"]);
+    await waitForTableLoaded();
+
+    fireEvent.change(screen.getByTestId("table-filter-status"), { target: { value: "done" } });
+    await waitFor(() => expect(locationSearch()).toBe("?tab=table&status=done"));
+
+    fireEvent.change(screen.getByTestId("table-filter-priority"), { target: { value: "high" } });
+    await waitFor(() => expect(locationSearch()).toBe("?tab=table&status=done&priority=high"));
+
+    fireEvent.change(screen.getByTestId("table-filter-assignee"), { target: { value: "u1" } });
+    await waitFor(() => expect(locationSearch()).toBe("?tab=table&status=done&priority=high&assignee=u1"));
+  });
+
+  it("keeps sort/order working alongside table filters", async () => {
+    renderTasks(["/tasks?tab=table&priority=high"]);
+    await waitForTableLoaded();
+
+    fireEvent.click(screen.getByTestId("sort-header-dueDate"));
+    await waitFor(() => expect(locationSearch()).toBe("?tab=table&priority=high&sort=dueDate"));
+    // The filter itself must still be in effect after sorting.
+    expect(tableRowIds().sort()).toEqual(["task-row-t3", "task-row-t5", "task-row-t8"].sort());
+  });
+
+  it("restores table filters after Back/Forward navigation", async () => {
+    renderTasks(["/tasks?tab=table"]);
+    await waitForTableLoaded();
+
+    fireEvent.change(screen.getByTestId("table-filter-status"), { target: { value: "done" } });
+    await waitFor(() => expect(locationSearch()).toBe("?tab=table&status=done"));
+
+    fireEvent.click(screen.getByText("go-back"));
+    await waitFor(() => expect(locationSearch()).toBe("?tab=table"));
+
+    fireEvent.click(screen.getByText("go-forward"));
+    await waitFor(() => expect(locationSearch()).toBe("?tab=table&status=done"));
+  });
+
+  it("removes table filters from the URL when switching to a tab that doesn't support them", async () => {
+    renderTasks(["/tasks?tab=table&status=done&priority=high&assignee=u1"]);
+    await waitForTableLoaded();
+
+    fireEvent.click(screen.getByTestId("tab-grid"));
+    await waitFor(() => expect(locationSearch()).toBe("?tab=grid"));
+  });
+
+  it("shows a proper empty state, not a broken table, when filters match nothing", async () => {
+    // No task is both low priority and done.
+    renderTasks(["/tasks?tab=table&status=done&priority=low"]);
+    await waitFor(() => expect(screen.getByTestId("tab-table")).toHaveAttribute("aria-selected", "true"));
+
+    const table = screen.getByTestId("task-table");
+    expect(within(table).getByText("No tasks to display")).toBeInTheDocument();
+  });
+
+  it("does not affect the Grid/Archived/Analytics tabs' own (unfiltered) content", async () => {
+    renderTasks(["/tasks?tab=table&status=done&priority=high&assignee=u1"]);
+    await waitForTableLoaded();
+
+    fireEvent.click(screen.getByTestId("tab-grid"));
+    await waitFor(() => expect(screen.getByTestId("tab-grid")).toHaveAttribute("aria-selected", "true"));
+    // Grid View shows every task again, not just the done/high/u1 subset.
+    expect(screen.getByTestId("task-grid-item-t1")).toBeInTheDocument();
+    expect(screen.getByTestId("task-grid-item-t2")).toBeInTheDocument();
+  });
+});
+
+describe("Tasks view analytics links", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+    mockFetch();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("links All Tasks to the unfiltered table, with a count matching what Analytics shows", async () => {
+    renderTasks(["/tasks?tab=analytics"]);
+    const link = await screen.findByTestId("analytics-link-all");
+    expect(link).toHaveAttribute("href", "/tasks?tab=table");
+    expect(link).toHaveTextContent(String(tasks.length));
+  });
+
+  it("links Completed to status=done, with a count matching what Analytics shows", async () => {
+    renderTasks(["/tasks?tab=analytics"]);
+    const link = await screen.findByTestId("analytics-link-completed");
+    expect(link).toHaveAttribute("href", "/tasks?tab=table&status=done");
+    const doneCount = tasks.filter((t) => t.status === "done").length;
+    expect(link).toHaveTextContent(String(doneCount));
+
+    fireEvent.click(link);
+    await waitForTableLoaded();
+    const table = screen.getByTestId("task-table");
+    expect(within(table).getAllByRole("row")).toHaveLength(doneCount + 1); // +1 header row
+  });
+
+  it("links In Progress to status=in-progress", async () => {
+    renderTasks(["/tasks?tab=analytics"]);
+    const link = await screen.findByTestId("analytics-link-in-progress");
+    expect(link).toHaveAttribute("href", "/tasks?tab=table&status=in-progress");
+  });
+
+  it("links High Priority to priority=high", async () => {
+    renderTasks(["/tasks?tab=analytics"]);
+    const link = await screen.findByTestId("analytics-link-high-priority");
+    expect(link).toHaveAttribute("href", "/tasks?tab=table&priority=high");
+  });
+
+  it("links each team member to their user profile", async () => {
+    renderTasks(["/tasks?tab=analytics"]);
+    const link = await screen.findByTestId("analytics-link-user-u1");
+    expect(link).toHaveAttribute("href", "/users/u1");
+  });
+
+  it("links Unassigned to assignee=unassigned, with a matching count", async () => {
+    renderTasks(["/tasks?tab=analytics"]);
+    const link = await screen.findByTestId("analytics-link-unassigned");
+    expect(link).toHaveAttribute("href", "/tasks?tab=table&assignee=unassigned");
+    const unassignedCount = tasks.filter((t) => !t.assigneeId).length;
+    expect(link).toHaveTextContent(String(unassignedCount));
+
+    fireEvent.click(link);
+    await waitForTableLoaded();
+    const table = screen.getByTestId("task-table");
+    expect(within(table).getAllByRole("row")).toHaveLength(unassignedCount + 1);
+  });
+
+  it("does not turn a malformed tasks payload into fake analytics numbers", async () => {
+    mockFetch({ tasksResponse: jsonResponse({ not: "a list" }) });
+    renderTasks(["/tasks?tab=analytics"]);
+
+    const link = await screen.findByTestId("analytics-link-all");
+    expect(link).toHaveTextContent("0");
+    expect(link).not.toHaveTextContent("NaN");
+  });
+});
+
 describe("Tasks view assignee avatars", () => {
   beforeEach(() => {
     fetchSpy = vi.spyOn(globalThis, "fetch");

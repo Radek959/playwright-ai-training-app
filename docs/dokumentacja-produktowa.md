@@ -292,7 +292,7 @@ Cały odtwarzalny stan tego widoku (aktywna zakładka, filtry, strona, sortowani
 
 - Pokazuje zadania ze statusem innym niż `"done"`.
 - Filtry dostępne tylko w tej zakładce: **Assignee** (Wszyscy / Nieprzypisane / konkretny użytkownik), **Status** (All / To Do / In Progress — bez opcji „Done”, bo zakładka i tak wyklucza zadania zakończone), **Priority** (All / Low / Medium / High), **Filter by due date** (All deadlines / Overdue / Due soon — patrz sekcja 11 dla dokładnych reguł klasyfikacji).
-- Filtry Status, Priority, Assignee i Filter by due date, a także paginacja, dotyczą **wyłącznie** zakładki Active — nie wpływają na Grid View, Table, Archive ani Analytics. Dzięki temu żaden filtr nie zawęża wyników w miejscu, gdzie użytkownik nie widzi (i nie może zmienić) odpowiadającej mu kontrolki. Wszystkie aktywne filtry tej zakładki (Status, Priority, Assignee, Filter by due date) są stosowane łącznie (logiczne AND).
+- Filter by due date i paginacja dotyczą **wyłącznie** zakładki Active. Status, Priority i Assignee mają też swój odpowiednik na zakładce Table (sekcja 6.3, z własnymi kontrolkami i własną regułą dla Status) — ale zmiana filtra na jednej z tych dwóch zakładek nigdy nie wpływa na drugą, ani na Grid View czy Archive. Dzięki temu żaden filtr nie zawęża wyników w miejscu, gdzie użytkownik nie widzi (i nie może zmienić) odpowiadającej mu kontrolki. Wszystkie aktywne filtry tej zakładki (Status, Priority, Assignee, Filter by due date) są stosowane łącznie (logiczne AND).
 - Paginacja: 5 zadań na stronę.
 - Przycisk „Quick Add” pokazuje/ukrywa uproszczony formularz tworzenia zadania (tylko: tytuł, opis, status, priorytet, termin, przypisanie — patrz sekcja 7.2).
 - Pusta lista po zastosowaniu filtrów pokazuje komunikat „No tasks match your criteria”.
@@ -309,7 +309,9 @@ Cały odtwarzalny stan tego widoku (aktywna zakładka, filtry, strona, sortowani
 - Tabela z sortowaniem po kolumnach: Title, Status, Priority, Due date, Assignee (kliknięcie nagłówka przełącza kierunek sortowania; pole i kierunek sortowania są odtwarzalne z adresu URL — patrz 6.9).
 - Edycja „inline” bezpośrednio w komórkach — ale tylko dla pól: `title`, `status`, `priority`, `dueDate`, `assigneeId`. Pozostałe pola zadania (typ, `severity`, `estimatedHours`, `tags`, `dependencies`, `requiresApproval`, `approver`) nie są tu ani widoczne, ani edytowalne. Jeśli zmiana statusu na `"done"` zostanie odrzucona przez API (`409`, patrz sekcja 2.6 albo — dla zadań wymagających zatwierdzenia bez decyzji `"approved"` — sekcja 2.7), komórka statusu pokazuje treść błędu pod polem, a status w tabeli pozostaje bez zmian — operację można ponowić od razu.
 - Zaznaczanie wielu wierszy (checkboxy) i masowe usuwanie zaznaczonych zadań; po operacji pokazywany jest komunikat z liczbą usuniętych zadań (a przy częściowym niepowodzeniu — ile się nie udało usunąć). Zaznaczenie dotyczy wyłącznie zadań aktualnie widocznych w tabeli: opcja „Select all” zaznacza tylko widoczne wiersze, licznik zaznaczonych rekordów i stan pośredni checkboxa „Select all” liczone są tylko względem widocznych zadań, a masowe usuwanie działa wyłącznie na identyfikatorach zadań nadal widocznych w tabeli w chwili wykonania operacji. Jeśli w wyniku zmiany filtrów lub innego zestawu zadań któreś z zaznaczonych wcześniej zadań przestaje być widoczne, jest automatycznie usuwane z zaznaczenia. Zaznaczenie wierszy, edycja komórek i sam fakt otwarcia modala/formularza nie są zapisywane w URL.
-- Pokazuje wszystkie zadania (bez filtrowania po statusie, priorytecie ani przypisaniu — patrz 6.1), w tym zadania zakończone — w przeciwieństwie do zakładki Active, Table nie wyklucza statusu `"done"`.
+- Pokazuje domyślnie wszystkie zadania, w tym zakończone — w przeciwieństwie do zakładki Active, Table nie wyklucza statusu `"done"`.
+- Nad tabelą dostępne są własne kontrolki **Status** (All / To Do / In Progress / Done — tu, inaczej niż na Active, opcja „Done” jest dostępna), **Priority** (All / Low / Medium / High) i **Assignee** (All / Unassigned / konkretny użytkownik). Działają łącznie (logiczne AND), są odtwarzalne z adresu URL (te same nazwy parametrów co na Active — `status`/`priority`/`assignee`, sekcja 6.9) i nie wpływają na Active, Grid View, Archive ani Analytics — zmiana zakładki zawsze resetuje je do „All”. To te filtry pozwalają linkom statystycznym z Dashboardu i Analytics (sekcje 11.4 i 6.5) prowadzić do dokładnie odpowiadającego im zestawu zadań.
+- Pusty wynik po zastosowaniu filtrów pokazuje wiersz „No tasks to display” zamiast pustej lub uszkodzonej tabeli.
 
 ### 6.4 Archive
 
@@ -320,6 +322,7 @@ Cały odtwarzalny stan tego widoku (aktywna zakładka, filtry, strona, sortowani
 
 - Statystyki liczone na podstawie **wszystkich** zadań pobranych z API (`GET /api/tasks`), **bez** uwzględniania jakichkolwiek filtrów ustawionych w innych zakładkach: łączna liczba zadań, liczba zakończonych, liczba w toku, liczba o wysokim priorytecie.
 - Rozkład zadań na osoby: dla każdego użytkownika pokazywana jest liczba przypisanych mu zadań (niezależnie od statusu) oraz procent względem wszystkich zadań; osobno liczone są zadania nieprzypisane.
+- Każda z tych liczb jest jednocześnie zwykłym tekstem i linkiem (`<a>` z react-router `Link`, z czytelną `aria-label` opisującą cel) do zakładki Table (6.3) przefiltrowanej do dokładnie odpowiadającego jej zestawu zadań — All Tasks do `/tasks?tab=table` (bez filtrów), Completed do `/tasks?tab=table&status=done`, In Progress do `/tasks?tab=table&status=in-progress`, High Priority do `/tasks?tab=table&priority=high`, każdy użytkownik do `/users/:id` (jego profil, nie do listy zadań), Unassigned do `/tasks?tab=table&assignee=unassigned`. Ponieważ Table liczy zadania tą samą regułą co Analytics (patrz 6.9), liczba widoczna po przejściu zawsze zgadza się z liczbą, z której link prowadził.
 
 ### 6.6 Widok szczegółów (Task Details)
 
@@ -411,21 +414,23 @@ Adres `/tasks` jednoznacznie opisuje aktualnie wyświetlany widok: aktywną zak�
 | Parametr | Zakładka | Wartości | Domyślna (pomijana w URL) |
 |---|---|---|---|
 | `tab` | wszystkie | `active`, `grid`, `table`, `archived`, `analytics` | `active` |
-| `status` | tylko `active` | `todo`, `in-progress` | `all` |
-| `priority` | tylko `active` | `low`, `medium`, `high` | `all` |
-| `assignee` | tylko `active` | `unassigned` lub identyfikator użytkownika | `all` |
+| `status` | `active`, `table` | `todo`, `in-progress` (na `active`); `todo`, `in-progress`, `done` (na `table`) | `all` |
+| `priority` | `active`, `table` | `low`, `medium`, `high` | `all` |
+| `assignee` | `active`, `table` | `unassigned` lub identyfikator użytkownika | `all` |
 | `due` | tylko `active` | `overdue`, `soon` | `all` |
 | `page` | tylko `active` | liczba całkowita ≥ 1 | `1` |
 | `sort` | tylko `table` | `title`, `status`, `priority`, `dueDate`, `assigneeId` | `title` |
 | `order` | tylko `table` | `asc`, `desc` | `asc` |
 
-`due` odzwierciedla wybór kontrolki **Filter by due date** opisanej w 6.1 i wynika z klasyfikacji terminu zadania opisanej w sekcji 11 — `overdue` pokazuje tylko zadania opóźnione, `soon` tylko zadania zbliżające się do terminu (włącznie z zadaniami już opóźnionymi wykluczonymi z tej wartości — patrz sekcja 11). Podobnie jak `status`/`priority`/`assignee`, obowiązuje wyłącznie w zakładce Active i podlega tej samej normalizacji: nieznana wartość (inna niż `overdue`/`soon`) wraca do `all` i jest usuwana z adresu, a jawna zmiana kontrolki resetuje stronę do 1 i tworzy nowy wpis w historii przeglądarki (patrz akapit „Historia przeglądarki” niżej).
+`due` odzwierciedla wybór kontrolki **Filter by due date** opisanej w 6.1 i wynika z klasyfikacji terminu zadania opisanej w sekcji 11 — `overdue` pokazuje tylko zadania opóźnione, `soon` tylko zadania zbliżające się do terminu (włącznie z zadaniami już opóźnionymi wykluczonymi z tej wartości — patrz sekcja 11). Obowiązuje wyłącznie w zakładce Active i podlega tej samej normalizacji: nieznana wartość (inna niż `overdue`/`soon`) wraca do `all` i jest usuwana z adresu, a jawna zmiana kontrolki resetuje stronę do 1 i tworzy nowy wpis w historii przeglądarki (patrz akapit „Historia przeglądarki” niżej).
 
-Przykłady: `/tasks?status=in-progress&priority=high&assignee=user-1&page=2` (zakładka Active, domyślna), `/tasks?priority=high&due=overdue` (zakładka Active, zadania o wysokim priorytecie i opóźnionym terminie) oraz `/tasks?tab=table&sort=dueDate` (kanoniczny URL zakładki Table posortowanej po `dueDate` rosnąco — `order=asc` jest wartością domyślną, więc normalizacja usuwa go z adresu; adres z jawnie podanym `order=asc` zostanie sprowadzony do tej postaci).
+**Filtry `status`/`priority`/`assignee` w zakładce Table** (sekcja 6.3) współdzielą te same nazwy parametrów co Active, ale mają własne kontrolki (widoczne tylko nad tabelą) i własną walidację: `status=done` jest tam poprawną wartością, ponieważ Table — inaczej niż Active — pokazuje też zadania zakończone; poza tym normalizacja i domyślne „All” działają identycznie jak na Active. Filtry łączą się logicznym AND (np. `status=done&priority=high&assignee=u1` pokazuje wyłącznie zadania spełniające wszystkie trzy warunki naraz). To właśnie te filtry sprawiają, że statystyki Dashboardu i Analytics (sekcje 11.4 i 6.5) mogą linkować do dokładnie odpowiadającego im zestawu zadań w tabeli — Table liczy zadania dokładnie tą samą regułą co te statystyki, więc liczba w tabeli po przejściu z linku zawsze zgadza się z liczbą pokazaną na kafelku/wykresie, z którego link prowadził.
 
-**Filtry i paginacja per zakładka** — zgodnie z decyzją opisaną w 6.1–6.4, filtry Status/Priority/Assignee/Filter by due date oraz paginacja dotyczą wyłącznie zakładki Active; pole wyszukiwania (`TaskSearch`) nigdy nie trafia do URL, bo to osobny mechanizm (patrz sekcja 4) niezwiązany z listą/tabelą/kartami. Sortowanie (`sort`/`order`) dotyczy wyłącznie zakładki Table — `TaskTable` nie ma już własnego, niezależnego stanu sortowania; pole i kierunek są przekazywane do niego jako kontrolowane propsy z widoku `Tasks`, sterowane przez URL.
+Przykłady: `/tasks?status=in-progress&priority=high&assignee=user-1&page=2` (zakładka Active, domyślna), `/tasks?priority=high&due=overdue` (zakładka Active, zadania o wysokim priorytecie i opóźnionym terminie), `/tasks?tab=table&status=done&priority=high` (zakładka Table, zadania zakończone o wysokim priorytecie) oraz `/tasks?tab=table&sort=dueDate` (kanoniczny URL zakładki Table posortowanej po `dueDate` rosnąco — `order=asc` jest wartością domyślną, więc normalizacja usuwa go z adresu; adres z jawnie podanym `order=asc` zostanie sprowadzony do tej postaci).
 
-**Zmiana zakładki** usuwa z URL parametry nieobsługiwane przez nową zakładkę (np. przejście z Active do Grid View czyści `status`/`priority`/`assignee`/`due`/`page`; przejście na Active ustawia stronę na 1). Zaznaczenie wierszy tabeli, otwarte modale/formularze i treść pola wyszukiwania nigdy nie trafiają do URL.
+**Filtry i paginacja per zakładka** — filtry Status/Priority/Assignee działają na zakładkach Active i Table (każda z własnymi kontrolkami i, dla Status, własnym zestawem dozwolonych wartości — patrz wyżej); **Filter by due date** oraz paginacja pozostają wyłącznie na Active. Pole wyszukiwania (`TaskSearch`) nigdy nie trafia do URL, bo to osobny mechanizm (patrz sekcja 4) niezwiązany z listą/tabelą/kartami. Sortowanie (`sort`/`order`) dotyczy wyłącznie zakładki Table — `TaskTable` nie ma własnego, niezależnego stanu sortowania; pole i kierunek są przekazywane do niego jako kontrolowane propsy z widoku `Tasks`, sterowane przez URL.
+
+**Zmiana zakładki** zawsze resetuje `status`/`priority`/`assignee`/`due`/`page` do ich wartości domyślnych i usuwa je z URL, nawet między dwiema zakładkami, które oby dwie obsługują ten sam parametr (Active ↔ Table): filtr ustawiony na jednej zakładce nigdy nie „przecieka" w widoczny sposób do drugiej tylko dlatego, że współdzielą nazwę parametru w URL. Przejście na Active dodatkowo ustawia stronę na 1. Zaznaczenie wierszy tabeli, otwarte modale/formularze i treść pola wyszukiwania nigdy nie trafiają do URL.
 
 **Paginacja**: po zmianie dowolnego filtra lub zakładki strona wraca na 1. Jeśli numer strony w URL wykracza poza liczbę dostępnych stron (również po utworzeniu, edycji lub usunięciu zadania, gdy zmienia się liczba wyników), zostaje on skorygowany do ostatniej dostępnej strony (a przynajmniej do strony 1) — użytkownik nigdy nie zostaje na pustej stronie, jeśli wcześniejsze strony mają wyniki. Ta korekta następuje wyłącznie po **udanym** (`GET /api/tasks` zwróciło poprawną tablicę) pobraniu zadań. Dopóki żądanie trwa albo zakończyło się błędem (sieciowym, `5xx` lub niepoprawnym payloadem), numer strony z URL pozostaje nietknięty — inaczej pusta lista wynikająca z trwającego ładowania lub z błędu zostałaby błędnie potraktowana jako „nie ma tylu wyników” i strona zostałaby bezpowrotnie sprowadzona do 1, mimo że po stronie serwera dane mogą się znaleźć (przy ponowieniu) na stronie, o którą pierwotnie proszono.
 
@@ -560,6 +565,21 @@ Podobnie jak pozostałe filtry Active, `due` obowiązuje wyłącznie w tej zakł
 Dashboard (`/dashboard`) pokazuje dodatkową statystykę **Overdue** obok istniejących kafelków (Total Tasks, In Progress, High Priority, Completion) — licznik zadań w stanie `overdue` (sekcja 11.1), liczony na podstawie tej samej reguły klasyfikacji co lista i oznaczenia, na **wszystkich** zadaniach pobranych z API (bez uwzględniania filtrów innych widoków, analogicznie do pozostałych statystyk dashboardu).
 
 Kafelek „Overdue” jest dostępnym linkiem (`<a>` z czytelną nazwą) prowadzącym do `/tasks?due=overdue` — po przejściu użytkownik trafia do zakładki Active z filtrem Filter by due date ustawionym na „Overdue”, pokazującym dokładnie ten sam zestaw zadań, który wliczono do licznika.
+
+**Statystyki jako linki**: każdy kafelek/wykres na Dashboardzie jest jednocześnie zwykłym, czytelnym tekstem (liczba/procent pozostaje w pełni widoczna i zaznaczalna) i linkiem (`<a>` z react-router `Link`, nigdy element interaktywny zagnieżdżony w innym) do zakładki Table (sekcja 6.3) przefiltrowanej dokładnie do zestawu zadań, który dana liczba opisuje. Każdy link ma czytelną nazwę dostępności (`aria-label`) opisującą jego cel, niezależną od samej wartości liczbowej:
+
+| Element | Cel linku | Adres docelowy |
+|---|---|---|
+| Total Tasks | Wszystkie zadania | `/tasks?tab=table` |
+| In Progress | Zadania w toku | `/tasks?tab=table&status=in-progress` |
+| High Priority | Zadania o wysokim priorytecie | `/tasks?tab=table&priority=high` |
+| Completion | Zadania zakończone (mimo że kafelek pokazuje procent, a nie liczbę) | `/tasks?tab=table&status=done` |
+| Overdue | Zadania opóźnione (bez zmian względem istniejącego zachowania) | `/tasks?due=overdue` |
+| Task Status Distribution — To Do / In Progress / Done | Zadania w danym statusie | `/tasks?tab=table&status=<todo|in-progress|done>` |
+| Priority Breakdown — Low / Medium / High | Zadania o danym priorytecie | `/tasks?tab=table&priority=<low|medium|high>` |
+| Team Overview — każdy użytkownik | Profil tego użytkownika | `/users/:id` |
+
+Liczba faktycznie pokazana po przejściu do tabeli zawsze zgadza się z liczbą na kafelku/wykresie, ponieważ oba miejsca liczą po tej samej regule (patrz akapit o filtrach Table wyżej) — żaden link nie zawęża wyniku ukrytym warunkiem, którego nie widać w widocznych kontrolkach filtrów.
 
 ## Historia Aktywności Zadania (Task Activity History)
 

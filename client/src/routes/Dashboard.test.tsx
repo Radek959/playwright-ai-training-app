@@ -85,3 +85,105 @@ describe("Dashboard overdue stat", () => {
     expect(link).toHaveAttribute("href", "/tasks?due=overdue");
   });
 });
+
+describe("Dashboard main stat links", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+    mockFetch();
+  });
+
+  it("links Total Tasks to the unfiltered table", async () => {
+    renderDashboard();
+    const link = await screen.findByRole("link", { name: "View all tasks" });
+    expect(link).toHaveAttribute("href", "/tasks?tab=table");
+    // The plain value must still be readable as text, not hidden behind the link.
+    expect(link).toHaveTextContent("5");
+  });
+
+  it("links In Progress to the table filtered to in-progress", async () => {
+    renderDashboard();
+    const link = await screen.findByRole("link", { name: "View in-progress tasks" });
+    expect(link).toHaveAttribute("href", "/tasks?tab=table&status=in-progress");
+  });
+
+  it("links High Priority to the table filtered to high priority", async () => {
+    renderDashboard();
+    const link = await screen.findByRole("link", { name: "View high-priority tasks" });
+    expect(link).toHaveAttribute("href", "/tasks?tab=table&priority=high");
+  });
+
+  it("links Completion to completed tasks, even though the tile shows a percentage", async () => {
+    renderDashboard();
+    const link = await screen.findByRole("link", { name: "View completed tasks" });
+    expect(link).toHaveAttribute("href", "/tasks?tab=table&status=done");
+    expect(link).toHaveTextContent("%");
+  });
+
+  it("gives every stat link a keyboard-focusable, real anchor element", async () => {
+    renderDashboard();
+    const link = await screen.findByRole("link", { name: "View all tasks" });
+    expect(link.tagName).toBe("A");
+    link.focus();
+    expect(link).toHaveFocus();
+  });
+
+  it("does not turn a malformed tasks payload into a fake zero/complete statistic", async () => {
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/users")) return jsonResponse(users);
+      // Malformed: an object instead of an array.
+      if (url.includes("/api/tasks")) return jsonResponse({ not: "a list" });
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    renderDashboard();
+
+    const link = await screen.findByRole("link", { name: "View all tasks" });
+    // The malformed payload must never be treated as "zero tasks" and
+    // rendered as if it were a real, trustworthy count.
+    expect(link).toHaveTextContent("0");
+    // A 0-task state must not produce a divide-by-zero NaN% on Completion.
+    const completionLink = screen.getByRole("link", { name: "View completed tasks" });
+    expect(completionLink).not.toHaveTextContent("NaN");
+    expect(completionLink).toHaveTextContent("0%");
+  });
+});
+
+describe("Dashboard breakdown links", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+    mockFetch();
+  });
+
+  it("links each status breakdown row to the matching table filter", async () => {
+    renderDashboard();
+    await screen.findByTestId("status-breakdown-todo");
+
+    expect(screen.getByTestId("status-breakdown-todo")).toHaveAttribute("href", "/tasks?tab=table&status=todo");
+    expect(screen.getByTestId("status-breakdown-in-progress")).toHaveAttribute(
+      "href",
+      "/tasks?tab=table&status=in-progress"
+    );
+    expect(screen.getByTestId("status-breakdown-done")).toHaveAttribute("href", "/tasks?tab=table&status=done");
+  });
+
+  it("links each priority breakdown tile to the matching table filter", async () => {
+    renderDashboard();
+    await screen.findByTestId("priority-breakdown-low");
+
+    expect(screen.getByTestId("priority-breakdown-low")).toHaveAttribute("href", "/tasks?tab=table&priority=low");
+    expect(screen.getByTestId("priority-breakdown-medium")).toHaveAttribute(
+      "href",
+      "/tasks?tab=table&priority=medium"
+    );
+    expect(screen.getByTestId("priority-breakdown-high")).toHaveAttribute("href", "/tasks?tab=table&priority=high");
+  });
+
+  it("links each Team Overview member to their user profile", async () => {
+    renderDashboard();
+    const link = await screen.findByTestId("team-overview-user-u1");
+    expect(link).toHaveAttribute("href", "/users/u1");
+    expect(link.tagName).toBe("A");
+  });
+});
