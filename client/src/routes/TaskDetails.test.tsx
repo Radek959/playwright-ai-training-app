@@ -87,6 +87,7 @@ function mockEditableTask(options: { putResponse?: () => Response } = {}) {
     if (url === "/api/tasks/task-1") return Promise.resolve(new Response(JSON.stringify(mockTask)));
     if (url === "/api/tasks/task-2") return Promise.resolve(new Response(JSON.stringify(mockDepTask)));
     if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify(mockUsers)));
+    if (url === "/api/tasks/task-1/comments") return Promise.resolve(new Response(JSON.stringify([])));
     return Promise.resolve(new Response(null, { status: 404 }));
   });
   return { puts };
@@ -110,6 +111,8 @@ describe("TaskDetails", () => {
       if (url === "/api/tasks/task-1") return Promise.resolve(new Response(JSON.stringify(mockTask)));
       if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify(mockUsers)));
       if (url === "/api/tasks/task-2") return Promise.resolve(new Response(JSON.stringify(mockDepTask)));
+      if (url === "/api/tasks/task-1/comments") return Promise.resolve(new Response(JSON.stringify([])));
+      if (url === "/api/tasks") return Promise.resolve(new Response(JSON.stringify([mockTask, mockDepTask])));
       return Promise.resolve(new Response(null, { status: 404 }));
     });
 
@@ -170,6 +173,8 @@ describe("TaskDetails", () => {
         requiresApproval: false
       })));
       if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify([])));
+      if (url === "/api/tasks/task-empty/comments") return Promise.resolve(new Response(JSON.stringify([])));
+      if (url === "/api/tasks") return Promise.resolve(new Response(JSON.stringify([])));
       return Promise.resolve(new Response(null, { status: 404 }));
     });
 
@@ -267,6 +272,8 @@ describe("TaskDetails", () => {
       if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify([])));
       if (url === "/api/tasks/dep-done") return Promise.resolve(new Response(JSON.stringify(depDone)));
       if (url === "/api/tasks/dep-blocking") return Promise.resolve(new Response(JSON.stringify(depBlocking)));
+      if (url === "/api/tasks/task-mixed/comments") return Promise.resolve(new Response(JSON.stringify([])));
+      if (url === "/api/tasks") return Promise.resolve(new Response(JSON.stringify([taskWithMixedDeps, depDone, depBlocking])));
       return Promise.resolve(new Response(null, { status: 404 }));
     });
 
@@ -298,6 +305,8 @@ describe("TaskDetails", () => {
       const url = input.toString();
       if (url === "/api/tasks/task-overdue") return Promise.resolve(new Response(JSON.stringify(overdueTask)));
       if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify([])));
+      if (url === "/api/tasks/task-overdue/comments") return Promise.resolve(new Response(JSON.stringify([])));
+      if (url === "/api/tasks") return Promise.resolve(new Response(JSON.stringify([overdueTask])));
       return Promise.resolve(new Response(null, { status: 404 }));
     });
 
@@ -324,6 +333,8 @@ describe("TaskDetails", () => {
       const url = input.toString();
       if (url === "/api/tasks/task-overdue-2") return Promise.resolve(new Response(JSON.stringify(overdueTask)));
       if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify([])));
+      if (url === "/api/tasks/task-overdue-2/comments") return Promise.resolve(new Response(JSON.stringify([])));
+      if (url === "/api/tasks") return Promise.resolve(new Response(JSON.stringify([overdueTask])));
       return Promise.resolve(new Response(null, { status: 404 }));
     });
 
@@ -446,6 +457,7 @@ describe("TaskDetails", () => {
       if (url === "/api/tasks/task-1") return Promise.resolve(new Response(JSON.stringify(mockTask)));
       if (url === "/api/tasks/task-2") return Promise.resolve(new Response(JSON.stringify(mockDepTask)));
       if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify(mockUsers)));
+      if (url === "/api/tasks/task-1/comments") return Promise.resolve(new Response(JSON.stringify([])));
       return Promise.resolve(new Response(null, { status: 404 }));
     });
 
@@ -490,6 +502,7 @@ describe("TaskDetails", () => {
       if (url === "/api/tasks") return Promise.resolve(new Response(JSON.stringify([textDueDateTask])));
       if (url === "/api/tasks/task-text-date") return Promise.resolve(new Response(JSON.stringify(textDueDateTask)));
       if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify(mockUsers)));
+      if (url === "/api/tasks/task-text-date/comments") return Promise.resolve(new Response(JSON.stringify([])));
       return Promise.resolve(new Response(null, { status: 404 }));
     });
 
@@ -583,6 +596,8 @@ describe("TaskDetails", () => {
       const url = input.toString();
       if (url === "/api/tasks/task-done") return Promise.resolve(new Response(JSON.stringify(doneTask)));
       if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify([])));
+      if (url === "/api/tasks/task-done/comments") return Promise.resolve(new Response(JSON.stringify([])));
+      if (url === "/api/tasks") return Promise.resolve(new Response(JSON.stringify([doneTask])));
       return Promise.resolve(new Response(null, { status: 404 }));
     });
 
@@ -610,6 +625,7 @@ describe("TaskDetails", () => {
         if (url === "/api/tasks/task-1") return Promise.resolve(new Response(JSON.stringify(mockTask)));
         if (url === "/api/tasks/task-2") return Promise.resolve(new Response(JSON.stringify(mockDepTask)));
         if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify(mockUsers)));
+        if (url === "/api/tasks/task-1/comments") return Promise.resolve(new Response(JSON.stringify([])));
         return Promise.resolve(new Response(null, { status: 404 }));
       });
 
@@ -639,6 +655,7 @@ describe("TaskDetails", () => {
         if (url === "/api/tasks/task-1") return Promise.resolve(new Response(JSON.stringify(mockTask)));
         if (url === "/api/tasks/task-2") return Promise.resolve(new Response(JSON.stringify(mockDepTask)));
         if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify(mockUsers)));
+        if (url === "/api/tasks/task-1/comments") return Promise.resolve(new Response(JSON.stringify([])));
         return Promise.resolve(new Response(null, { status: 404 }));
       });
 
@@ -699,6 +716,7 @@ describe("TaskDetails", () => {
         if (url === "/api/tasks/task-1/comments") return Promise.resolve(new Response(JSON.stringify(taskComments)));
         if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify(mockUsers)));
         if (url === "/api/tasks/task-2") return Promise.resolve(new Response(JSON.stringify(mockDepTask)));
+        if (url === "/api/tasks") return Promise.resolve(new Response(JSON.stringify([mockTask, mockDepTask])));
         return Promise.resolve(new Response(null, { status: 404 }));
       });
 

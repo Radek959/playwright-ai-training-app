@@ -824,9 +824,13 @@ describe("Tasks view analytics load states", () => {
     return within(screen.getByTestId("tab-content-analytics"));
   }
 
-  it("shows a loading state and no stat numbers while tasks are still loading", () => {
+  it("shows a loading state and no stat numbers while tasks are still loading", async () => {
     mockFetch({ tasksResponse: new Promise(() => {}) }); // never resolves
     renderTasks(["/tasks?tab=analytics"]);
+
+    // The users fetch resolves normally (only tasks is held pending), so let
+    // that unrelated update settle inside act() before asserting.
+    await act(async () => {});
 
     expect(analyticsPanel().getByText(/loading/i)).toBeInTheDocument();
     expect(analyticsPanel().queryByTestId("analytics-link-all")).not.toBeInTheDocument();
@@ -893,18 +897,26 @@ describe("Tasks view analytics load states", () => {
     expect(analyticsPanel().queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("never shows a fake 0 before the first successful tasks fetch completes", () => {
+  it("never shows a fake 0 before the first successful tasks fetch completes", async () => {
     let resolveTasks!: (value: Response) => void;
     mockFetch({ tasksResponse: new Promise<Response>((resolve) => (resolveTasks = resolve)) });
     renderTasks(["/tasks?tab=analytics"]);
+
+    // The users fetch resolves normally (only tasks is held pending), so let
+    // that unrelated update settle inside act() before asserting.
+    await act(async () => {});
 
     // Still loading: nothing that looks like a real stat is in the DOM yet.
     expect(analyticsPanel().queryByTestId("analytics-link-all")).not.toBeInTheDocument();
     expect(analyticsPanel().queryByText("0")).not.toBeInTheDocument();
 
     // Resolving later with real data is fine; this test only asserts no
-    // fake zero was ever shown while the request was still in flight.
-    resolveTasks(new Response(JSON.stringify(tasks)));
+    // fake zero was ever shown while the request was still in flight. The
+    // resulting state update is flushed inside act() rather than leaking
+    // past the end of the test.
+    await act(async () => {
+      resolveTasks(new Response(JSON.stringify(tasks)));
+    });
   });
 });
 
@@ -1078,17 +1090,25 @@ describe("Tasks view load states", () => {
     vi.useRealTimers();
   });
 
-  it("never shows the empty-state message while tasks are still loading", () => {
+  it("never shows the empty-state message while tasks are still loading", async () => {
     mockFetch({ tasksResponse: new Promise(() => {}) }); // never resolves
     renderTasks();
+
+    // The users fetch resolves normally (only tasks is held pending), so let
+    // that unrelated update settle inside act() before asserting.
+    await act(async () => {});
 
     expect(activePanel().getByText("Loading tasks...")).toBeInTheDocument();
     expect(activePanel().queryByText("No tasks match your criteria")).not.toBeInTheDocument();
   });
 
-  it("never shows the Grid tab's empty-state message while tasks are still loading", () => {
+  it("never shows the Grid tab's empty-state message while tasks are still loading", async () => {
     mockFetch({ tasksResponse: new Promise(() => {}) });
     renderTasks(["/tasks?tab=grid"]);
+
+    // The users fetch resolves normally (only tasks is held pending), so let
+    // that unrelated update settle inside act() before asserting.
+    await act(async () => {});
 
     expect(within(screen.getByTestId("tab-content-grid")).getByText("Loading tasks...")).toBeInTheDocument();
     expect(screen.queryByText("No tasks to display")).not.toBeInTheDocument();
