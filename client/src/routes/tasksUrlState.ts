@@ -8,7 +8,10 @@ export type DueFilter = "all" | "overdue" | "soon";
 export const TAB_ORDER: TabView[] = ["active", "grid", "table", "archived", "analytics"];
 
 const TAB_VALUES = new Set<string>(TAB_ORDER);
-const STATUS_VALUES = new Set(["todo", "in-progress"]);
+// The Active tab never accepts "done" (its whole purpose is unfinished
+// work); the Table tab shows every task, so it also accepts "done".
+const ACTIVE_STATUS_VALUES = new Set(["todo", "in-progress"]);
+const TABLE_STATUS_VALUES = new Set(["todo", "in-progress", "done"]);
 const PRIORITY_VALUES = new Set(["low", "medium", "high"]);
 const SORT_KEY_VALUES = new Set<string>(["title", "status", "priority", "dueDate", "assigneeId"]);
 const SORT_DIR_VALUES = new Set<string>(["asc", "desc"]);
@@ -18,8 +21,15 @@ export function parseTab(raw: string | null): TabView {
   return raw !== null && TAB_VALUES.has(raw) ? (raw as TabView) : "active";
 }
 
-export function parseStatusFilter(raw: string | null): string {
-  return raw !== null && STATUS_VALUES.has(raw) ? raw : "all";
+/**
+ * `allowDone` distinguishes the Table tab (every status, including "done")
+ * from the Active tab (which never accepts "done" - see ACTIVE_STATUS_VALUES
+ * above). Defaults to the Active tab's stricter rule so existing callers are
+ * unaffected.
+ */
+export function parseStatusFilter(raw: string | null, allowDone = false): string {
+  const values = allowDone ? TABLE_STATUS_VALUES : ACTIVE_STATUS_VALUES;
+  return raw !== null && values.has(raw) ? raw : "all";
 }
 
 export function parsePriorityFilter(raw: string | null): string {
@@ -91,7 +101,13 @@ export function buildTasksSearchParams(state: TasksUrlState): URLSearchParams {
     if (state.page !== 1) params.set("page", String(state.page));
   }
 
+  // The Table tab reuses the same status/priority/assignee param names as
+  // Active (see PARAM shapes above) so a stat link built for one never needs
+  // special-casing, but keeps its own sort/order - Active has neither.
   if (state.tab === "table") {
+    if (state.status !== "all") params.set("status", state.status);
+    if (state.priority !== "all") params.set("priority", state.priority);
+    if (state.assignee !== "all") params.set("assignee", state.assignee);
     if (state.sortKey !== "title") params.set("sort", state.sortKey);
     if (state.sortDir !== "asc") params.set("order", state.sortDir);
   }

@@ -11,9 +11,17 @@ type Props = {
   };
   className?: string;
   href?: string;
+  /**
+   * Overrides the default `"${title}: ${value}"` accessible name. Use this
+   * whenever the link's destination is more specific than the stat's own
+   * label - e.g. "View completed tasks" for a tile whose visible value is a
+   * percentage, not a task count - so the purpose of the link is clear from
+   * its name alone, not just from the number next to it.
+   */
+  ariaLabel?: string;
 };
 
-export function StatCard({ title, value, icon, trend, className = "", href }: Props) {
+export function StatCard({ title, value, icon, trend, className = "", href, ariaLabel }: Props) {
   const content = (
     <div className="flex items-start justify-between">
       <div className="flex-1">
@@ -42,7 +50,7 @@ export function StatCard({ title, value, icon, trend, className = "", href }: Pr
         to={href}
         className={`block focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 rounded-xl ${cardClassName}`}
         data-testid="stat-card"
-        aria-label={`${title}: ${value}`}
+        aria-label={ariaLabel ?? `${title}: ${value}`}
       >
         {content}
       </Link>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { TaskCard } from "../components/TaskCard";
 import { TaskForm } from "../components/TaskForm";
 import { TaskEditModal } from "../components/TaskEditModal";
@@ -101,9 +101,15 @@ export default function Tasks() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const activeTab = parseTab(searchParams.get("tab"));
-  const statusFilter = activeTab === "active" ? parseStatusFilter(searchParams.get("status")) : "all";
-  const priorityFilter = activeTab === "active" ? parsePriorityFilter(searchParams.get("priority")) : "all";
-  const assigneeRaw = activeTab === "active" ? parseAssigneeFilter(searchParams.get("assignee")) : "all";
+  // Status/priority/assignee are shared between the Active and Table tabs
+  // (see tasksUrlState.ts); every other tab ignores them entirely. Only the
+  // Table tab's status filter accepts "done" - Active never shows done tasks.
+  const filtersSupported = activeTab === "active" || activeTab === "table";
+  const statusFilter = filtersSupported
+    ? parseStatusFilter(searchParams.get("status"), activeTab === "table")
+    : "all";
+  const priorityFilter = filtersSupported ? parsePriorityFilter(searchParams.get("priority")) : "all";
+  const assigneeRaw = filtersSupported ? parseAssigneeFilter(searchParams.get("assignee")) : "all";
   const assigneeFilter = isAssigneeFilterValid(assigneeRaw, users, usersLoadState === "success") ? assigneeRaw : "all";
   const dueFilter = activeTab === "active" ? parseDueFilter(searchParams.get("due")) : "all";
   const pageRaw = activeTab === "active" ? parsePage(searchParams.get("page")) : 1;
@@ -126,7 +132,11 @@ export default function Tasks() {
   };
 
   const handleTabChange = (tab: TabView) => {
-    updateTasksUrl({ tab, page: 1 });
+    // Status/priority/assignee are shared param names between Active and
+    // Table (see tasksUrlState.ts), but a filter set on one must never leak
+    // into the other just because they happen to reuse the same param name -
+    // every tab switch starts each supported filter fresh at "all".
+    updateTasksUrl({ tab, status: "all", priority: "all", assignee: "all", due: "all", page: 1 });
   };
 
   const handleStatusFilterChange = (value: string) => {
@@ -271,10 +281,22 @@ export default function Tasks() {
       if (statusFilter !== "all") result = result.filter((t) => t.status === statusFilter);
       if (priorityFilter !== "all") result = result.filter((t) => t.priority === priorityFilter);
       if (dueFilter !== "all") result = result.filter((t) => getTaskDueStatus(t) === dueFilter);
+    } else if (activeTab === "table") {
+      // Unlike Active, Table shows every status (including done) by default,
+      // and its Status/Priority/Assignee filters are the ones that make
+      // Dashboard/Analytics stat links land on the exact matching task set.
+      if (assigneeFilter === "unassigned") {
+        result = result.filter((t) => !t.assigneeId);
+      } else if (assigneeFilter !== "all") {
+        result = result.filter((t) => t.assigneeId === assigneeFilter);
+      }
+
+      if (statusFilter !== "all") result = result.filter((t) => t.status === statusFilter);
+      if (priorityFilter !== "all") result = result.filter((t) => t.priority === priorityFilter);
     }
-    // Grid View, Table and Analytics show every task on that dimension:
-    // Status/Priority/Assignee/Due-date filtering has no visible control
-    // outside the Active tab, so it must not silently narrow their results either.
+    // Grid View and Analytics show every task on that dimension: filtering
+    // has no visible control outside Active/Table, so it must not silently
+    // narrow their results either.
 
     if (search) result = result.filter((t) => t.title.toLowerCase().includes(search.toLowerCase()));
 
@@ -627,16 +649,75 @@ export default function Tasks() {
         data-testid="tab-content-table"
         hidden={activeTab !== "table"}
       >
-        <TaskTable
-          tasks={filtered}
-          users={users}
-          sortKey={sortKey}
-          sortDir={sortDir}
-          onSortChange={handleSortToggle}
-          onUpdate={handleUpdate}
-          onDelete={handleDelete}
-          onBulkDelete={handleBulkDelete}
-        />
+        <div className="space-y-4">
+          {/* Table Filters - Status/Priority/Assignee, reusing the same URL
+              params as the Active tab (see tasksUrlState.ts); Status here
+              additionally allows "Done" since the Table shows every task. */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 md:p-4">
+            <div className="flex flex-wrap gap-2 md:gap-3">
+              <label className="sr-only" htmlFor="table-status-filter-select">
+                Filter table by status
+              </label>
+              <select
+                id="table-status-filter-select"
+                aria-label="Filter table by status"
+                data-testid="table-filter-status"
+                className="flex-1 md:flex-none border border-gray-300 rounded-lg px-3 md:px-4 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[44px]"
+                value={statusFilter}
+                onChange={(e) => handleStatusFilterChange(e.target.value)}
+              >
+                <option value="all">Status: All</option>
+                <option value="todo">To Do</option>
+                <option value="in-progress">In Progress</option>
+                <option value="done">Done</option>
+              </select>
+              <label className="sr-only" htmlFor="table-priority-filter-select">
+                Filter table by priority
+              </label>
+              <select
+                id="table-priority-filter-select"
+                aria-label="Filter table by priority"
+                data-testid="table-filter-priority"
+                className="flex-1 md:flex-none border border-gray-300 rounded-lg px-3 md:px-4 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[44px]"
+                value={priorityFilter}
+                onChange={(e) => handlePriorityFilterChange(e.target.value)}
+              >
+                <option value="all">Priority: All</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+              <label className="sr-only" htmlFor="table-assignee-filter-select">
+                Filter table by assignee
+              </label>
+              <select
+                id="table-assignee-filter-select"
+                aria-label="Filter table by assignee"
+                data-testid="table-filter-assignee"
+                className="flex-1 md:flex-none border border-gray-300 rounded-lg px-3 md:px-4 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[44px]"
+                value={assigneeFilter}
+                onChange={(e) => handleAssigneeFilterChange(e.target.value)}
+              >
+                {assigneeFilterOptions.map((opt) => (
+                  <option key={opt.key} value={opt.key}>
+                    {opt.key === "all" ? "Assignee: All" : opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <TaskTable
+            tasks={filtered}
+            users={users}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSortChange={handleSortToggle}
+            onUpdate={handleUpdate}
+            onDelete={handleDelete}
+            onBulkDelete={handleBulkDelete}
+          />
+        </div>
       </div>
 
       {/* Archived Tab */}
@@ -679,28 +760,48 @@ export default function Tasks() {
         <div className="space-y-6">
             <h2 className="text-2xl font-bold text-gray-900">Task Analytics</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-6 shadow-sm">
+              <Link
+                to="/tasks?tab=table"
+                aria-label={`View all tasks (${tasks.length})`}
+                data-testid="analytics-link-all"
+                className="block bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+              >
                 <h3 className="font-semibold mb-2 text-sm text-blue-900">All Tasks</h3>
                 <p className="text-4xl font-bold text-blue-600">{tasks.length}</p>
-              </div>
-              <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl p-6 shadow-sm">
+              </Link>
+              <Link
+                to="/tasks?tab=table&status=done"
+                aria-label={`View completed tasks (${tasks.filter((t) => t.status === "done").length})`}
+                data-testid="analytics-link-completed"
+                className="block bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+              >
                 <h3 className="font-semibold mb-2 text-sm text-green-900">Completed</h3>
                 <p className="text-4xl font-bold text-green-600">
                   {tasks.filter(t => t.status === "done").length}
                 </p>
-              </div>
-              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-6 shadow-sm">
+              </Link>
+              <Link
+                to="/tasks?tab=table&status=in-progress"
+                aria-label={`View in-progress tasks (${tasks.filter((t) => t.status === "in-progress").length})`}
+                data-testid="analytics-link-in-progress"
+                className="block bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+              >
                 <h3 className="font-semibold mb-2 text-sm text-yellow-900">In Progress</h3>
                 <p className="text-4xl font-bold text-yellow-600">
                   {tasks.filter(t => t.status === "in-progress").length}
                 </p>
-              </div>
-              <div className="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl p-6 shadow-sm">
+              </Link>
+              <Link
+                to="/tasks?tab=table&priority=high"
+                aria-label={`View high-priority tasks (${tasks.filter((t) => t.priority === "high").length})`}
+                data-testid="analytics-link-high-priority"
+                className="block bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+              >
                 <h3 className="font-semibold mb-2 text-sm text-red-900">High Priority</h3>
                 <p className="text-4xl font-bold text-red-600">
                   {tasks.filter(t => t.priority === "high").length}
                 </p>
-              </div>
+              </Link>
             </div>
 
             <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
@@ -710,7 +811,13 @@ export default function Tasks() {
                   const userTasks = tasks.filter(t => t.assigneeId === user.id);
                   const percentage = tasks.length > 0 ? Math.round((userTasks.length / tasks.length) * 100) : 0;
                   return (
-                    <div key={user.id} className="p-4 bg-gray-50 rounded-lg">
+                    <Link
+                      key={user.id}
+                      to={`/users/${user.id}`}
+                      aria-label={`View profile: ${user.name} (${userTasks.length} tasks)`}
+                      data-testid={`analytics-link-user-${user.id}`}
+                      className="block p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                    >
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-semibold text-gray-900">{user.name}</span>
                         <span className="font-bold text-indigo-600">{userTasks.length} tasks</span>
@@ -721,15 +828,20 @@ export default function Tasks() {
                           style={{ width: `${percentage}%` }}
                         />
                       </div>
-                    </div>
+                    </Link>
                   );
                 })}
-                <div className="p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                <Link
+                  to="/tasks?tab=table&assignee=unassigned"
+                  aria-label={`View unassigned tasks (${tasks.filter((t) => !t.assigneeId).length})`}
+                  data-testid="analytics-link-unassigned"
+                  className="block p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 hover:bg-gray-100 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                >
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-gray-600">Unassigned</span>
                     <span className="font-bold text-gray-600">{tasks.filter(t => !t.assigneeId).length} tasks</span>
                   </div>
-                </div>
+                </Link>
               </div>
             </div>
           </div>
