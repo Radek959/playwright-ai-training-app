@@ -119,7 +119,7 @@ async function waitForFetchError() {
 
 // Waits until the Active tab has finished its first data load: either at
 // least one task card is showing, or the empty-state message is (both only
-// ever appear once `tasksLoaded` flips true).
+// ever appear once tasksLoadState flips to "success").
 async function waitForActiveTabLoaded() {
   await waitFor(() => {
     const panel = screen.getByTestId("tab-content-active");
@@ -940,5 +940,96 @@ describe("Tasks view search widget", () => {
 
     expect(activePanel().getAllByTestId(/^task-card-/).map((el) => el.dataset.testid)).toEqual(visibleBefore);
     expect((screen.getByLabelText("Filter by status") as HTMLSelectElement).value).toBe("todo");
+  });
+});
+
+describe("Tasks view load states", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("never shows the empty-state message while tasks are still loading", () => {
+    mockFetch({ tasksResponse: new Promise(() => {}) }); // never resolves
+    renderTasks();
+
+    expect(activePanel().getByText("Loading tasks...")).toBeInTheDocument();
+    expect(activePanel().queryByText("No tasks match your criteria")).not.toBeInTheDocument();
+  });
+
+  it("never shows the Grid tab's empty-state message while tasks are still loading", () => {
+    mockFetch({ tasksResponse: new Promise(() => {}) });
+    renderTasks(["/tasks?tab=grid"]);
+
+    expect(within(screen.getByTestId("tab-content-grid")).getByText("Loading tasks...")).toBeInTheDocument();
+    expect(screen.queryByText("No tasks to display")).not.toBeInTheDocument();
+  });
+
+  it("shows a genuine empty state on the Active tab only after a successful fetch of an empty list", async () => {
+    mockFetch({ tasksResponse: jsonResponse([]) });
+    renderTasks();
+
+    await waitFor(() => expect(screen.getByText("No tasks match your criteria")).toBeInTheDocument());
+    expect(screen.queryByText("Loading tasks...")).not.toBeInTheDocument();
+  });
+
+  it("shows a local error with Retry on the Active tab when GET /api/tasks fails, and recovers on retry", async () => {
+    mockFetch({ tasksResponse: Promise.resolve(new Response("Server error", { status: 500 })) });
+    renderTasks();
+
+    const alert = await activePanel().findByRole("alert");
+    expect(alert).toHaveTextContent("Failed to load tasks");
+    expect(activePanel().queryByText("No tasks match your criteria")).not.toBeInTheDocument();
+
+    mockFetch();
+    fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+
+    await waitForActiveTabLoaded();
+    expect(activePanel().queryByRole("alert")).not.toBeInTheDocument();
+    expect(activePanel().getByTestId("task-card-t1")).toBeInTheDocument();
+  });
+
+  it("still renders the task list when tasks succeed but users fails, and shows a local assignee error with Retry", async () => {
+    mockFetch({ usersResponse: Promise.resolve(new Response("Server error", { status: 500 })) });
+    renderTasks();
+    await waitForActiveTabLoaded();
+
+    // The basic list still works without user data.
+    expect(activePanel().getByTestId("task-card-t1")).toBeInTheDocument();
+
+    const assigneeAlert = await activePanel().findByRole("alert");
+    expect(assigneeAlert).toHaveTextContent("Assignee names unavailable");
+
+    mockFetch();
+    fireEvent.click(within(assigneeAlert).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(activePanel().queryByRole("alert")).not.toBeInTheDocument());
+  });
+
+  it("shows a local error with Retry on the Table tab's task list independent of the Active tab", async () => {
+    mockFetch({ tasksResponse: Promise.resolve(new Response("Server error", { status: 500 })) });
+    renderTasks(["/tasks?tab=table"]);
+
+    const panel = within(screen.getByTestId("tab-content-table"));
+    const alert = await panel.findByRole("alert");
+    expect(alert).toHaveTextContent("Failed to load tasks");
+
+    mockFetch();
+    fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(panel.queryAllByTestId(/^task-row-/).length).toBeGreaterThan(0));
+  });
+
+  it("does not update state after unmount when a slow tasks fetch resolves late", async () => {
+    let resolveTasks!: (value: Response) => void;
+    mockFetch({ tasksResponse: new Promise<Response>((resolve) => (resolveTasks = resolve)) });
+    const { unmount } = renderTasks();
+    unmount();
+
+    expect(() => resolveTasks(new Response(JSON.stringify(tasks)))).not.toThrow();
   });
 });

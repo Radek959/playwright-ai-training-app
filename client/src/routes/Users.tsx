@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { UserForm } from "../components/UserForm";
 import { UserAvatar } from "../components/UserAvatar";
@@ -8,11 +8,27 @@ import type { User } from "../types";
 
 type LocationState = { deletedUserName?: string } | null;
 
+// Distinguishes "still fetching" and "fetch failed" from a genuinely-empty
+// list, so the page never shows a real-looking empty table for data it
+// doesn't actually have yet.
+type UsersState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; data: User[] };
+
 export default function Users() {
   const { setError, clearError } = useAppError();
-  const [users, setUsers] = useState<User[]>([]);
+  const [usersState, setUsersState] = useState<UsersState>({ status: "loading" });
   const location = useLocation();
   const navigate = useNavigate();
+  const mountedRef = useRef(true);
+  // Users created locally (via the form below) while a load/retry request is
+  // still in flight. If that request's response lands after the creation, it
+  // reflects a snapshot from before the creation and must not be allowed to
+  // silently wipe the just-created user back out of the list - so any such
+  // user is merged back in once the in-flight request resolves.
+  const inFlightRef = useRef(false);
+  const pendingCreatedRef = useRef<User[]>([]);
 
   // Captured once, on first render, from whatever navigation state this
   // page was entered with — a plain component-state copy that survives the
@@ -35,26 +51,48 @@ export default function Users() {
   }, [location.pathname, location.search, location.hash, location.state, navigate]);
 
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const res = await fetch("/api/users");
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        if (!Array.isArray(data)) throw new Error("Unexpected payload");
-        if (!cancelled) {
-          setUsers(data);
-          clearError();
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Fetch error");
-      }
-    };
-    load();
+    mountedRef.current = true;
     return () => {
-      cancelled = true;
+      mountedRef.current = false;
     };
+  }, []);
+
+  const loadUsers = useCallback(async () => {
+    setUsersState({ status: "loading" });
+    inFlightRef.current = true;
+    pendingCreatedRef.current = [];
+    try {
+      const res = await fetch("/api/users");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!Array.isArray(data)) throw new Error("Unexpected payload");
+      if (mountedRef.current) {
+        const created = pendingCreatedRef.current;
+        const merged = created.length > 0 ? [...created.filter((u) => !data.some((d) => d.id === u.id)), ...data] : data;
+        setUsersState({ status: "ready", data: merged });
+        clearError();
+      }
+    } catch (err) {
+      if (mountedRef.current) {
+        const message = err instanceof Error ? err.message : "Failed to load users";
+        setUsersState({ status: "error", message });
+        setError(message);
+      }
+    } finally {
+      inFlightRef.current = false;
+    }
   }, [setError, clearError]);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
+
+  const handleUserCreated = (user: User) => {
+    setUsersState((prev) => ({ status: "ready", data: [user, ...(prev.status === "ready" ? prev.data : [])] }));
+    if (inFlightRef.current) pendingCreatedRef.current.push(user);
+  };
+
+  const users = usersState.status === "ready" ? usersState.data : [];
 
   return (
     <div className="space-y-4 md:space-y-6 pb-20 md:pb-0">
@@ -70,10 +108,39 @@ export default function Users() {
       )}
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 md:p-6">
-        <UserForm onCreated={(user) => setUsers((prev) => [user, ...prev])} />
+        <UserForm onCreated={handleUserCreated} />
       </div>
 
+      {usersState.status === "loading" && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 md:p-12 text-center" aria-live="polite">
+          <p className="text-gray-500">Loading users...</p>
+        </div>
+      )}
+
+      {usersState.status === "error" && (
+        <div
+          role="alert"
+          className="bg-red-50 border border-red-300 rounded-lg p-3 md:p-4 text-sm text-red-700 flex items-center justify-between gap-4"
+        >
+          <span>Failed to load users: {usersState.message}</span>
+          <button
+            type="button"
+            onClick={loadUsers}
+            className="bg-red-600 text-white rounded px-3 py-1.5 text-sm font-medium hover:bg-red-700 whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {usersState.status === "ready" && users.length === 0 && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 md:p-12 text-center">
+          <p className="text-gray-500 text-base md:text-lg">No users yet</p>
+        </div>
+      )}
+
       {/* Mobile: Card View */}
+      {usersState.status === "ready" && users.length > 0 && (
       <div className="md:hidden space-y-3">
         {users.map((u) => (
           <div
@@ -112,8 +179,10 @@ export default function Users() {
           </div>
         ))}
       </div>
+      )}
 
       {/* Desktop: Table View */}
+      {usersState.status === "ready" && users.length > 0 && (
       <div className="hidden md:block bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -178,6 +247,7 @@ export default function Users() {
           </table>
         </div>
       </div>
+      )}
     </div>
   );
 }
