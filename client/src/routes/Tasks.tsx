@@ -12,6 +12,7 @@ import { useAppError } from "../context/AppErrorContext";
 import { isArchived } from "../utils/taskArchive";
 import { toApiError } from "../utils/apiError";
 import { getTaskDueStatus } from "../utils/taskDueDate";
+import { effectiveAvatar } from "../utils/avatar";
 import type { Task, TaskUpdateInput, TaskWithAssignee, User } from "../types";
 import {
   TAB_ORDER,
@@ -242,7 +243,7 @@ export default function Tasks() {
   }, [setError, clearError]);
 
   const enriched: TaskWithAssignee[] = useMemo(() => {
-    const byUser = new Map(users.map((u) => [u.id, { name: u.name, avatarUrl: u.avatarUrl }] as const));
+    const byUser = new Map(users.map((u) => [u.id, { name: u.name, avatarUrl: effectiveAvatar(u) }] as const));
     return tasks.map((t) => {
       const userInfo = t.assigneeId ? byUser.get(t.assigneeId) : undefined;
       return {

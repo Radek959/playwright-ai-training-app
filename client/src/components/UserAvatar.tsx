@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Props = {
   src?: string;
@@ -16,7 +16,15 @@ const sizeClasses = {
 
 export function UserAvatar({ src, name, size = "md", className = "" }: Props) {
   const [imageError, setImageError] = useState(false);
-  
+
+  // A previous src's load failure must not keep haunting a new one: once src
+  // changes, give the new URL a fresh attempt instead of staying stuck behind
+  // the old failure (or looping — this only resets once per src change, it
+  // never re-attempts the same broken src).
+  useEffect(() => {
+    setImageError(false);
+  }, [src]);
+
   const initials = name
     .split(" ")
     .map(part => part[0])

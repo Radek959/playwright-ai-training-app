@@ -1267,7 +1267,8 @@
           "name",
           "email",
           "role"
-        ]
+        ],
+        "description": "avatar is the canonical, client-editable avatar field (settable via POST /api/users and PUT /api/users/:id). avatarUrl is legacy, server/seed-only presentation data - it is never accepted from a client (rejected by PUT /api/users/:id) and only ever appears on users seeded with it. A client rendering a user's avatar should prefer avatar and fall back to avatarUrl only when avatar is unset; PUT /api/users/:id clears avatarUrl for a user as soon as its avatar is ever explicitly set or cleared, so avatarUrl never shadows an edited avatar."
       },
       "UserDeleteBlockedResponse": {
         "type": "object",
@@ -1360,11 +1361,11 @@
           "avatar": {
             "type": "string",
             "nullable": true,
-            "description": "Send an explicit null to clear the stored avatar. Omit the field to leave it exactly as it is."
+            "description": "Send an explicit null to clear the stored avatar. Omit the field to leave it exactly as it is. Sending a new value, or null, also retires the user's legacy avatarUrl (removed from the stored record), so it can never keep showing instead of the edited avatar."
           }
         },
         "additionalProperties": false,
-        "description": "Partial update. Only these four fields may be sent; any other field - including 'id' and the server-side 'avatarUrl' - is rejected with 400. A field that is omitted keeps its stored value; there is no way to reset a field to a default by omitting it. 'avatar' is the only field that accepts null, which clears it; name, email and role are required values, so null there is invalid input rather than a clear. The patch is merged onto the stored user and then validated by exactly the same rules as POST /api/users, with this user excluded from the email-uniqueness check so resending an unchanged email is never a conflict with itself. name and email are trimmed before being stored, exactly as on creation."
+        "description": "Partial update. Only these four fields may be sent; any other field - including 'id' and the server-side 'avatarUrl' - is rejected with 400. A field that is omitted keeps its stored value; there is no way to reset a field to a default by omitting it. 'avatar' is the only field that accepts null, which clears it; name, email and role are required values, so null there is invalid input rather than a clear. Explicitly touching 'avatar' (set or cleared) also drops any legacy 'avatarUrl' the user had, so the legacy field can never shadow the edited avatar. The patch is merged onto the stored user and then validated by exactly the same rules as POST /api/users, with this user excluded from the email-uniqueness check so resending an unchanged email is never a conflict with itself. name and email are trimmed before being stored, exactly as on creation."
       },
       "ActivityType": {
         "type": "string",

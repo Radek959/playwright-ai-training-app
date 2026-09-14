@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { UserForm } from "../components/UserForm";
 import { UserAvatar } from "../components/UserAvatar";
 import { useAppError } from "../context/AppErrorContext";
+import { effectiveAvatar } from "../utils/avatar";
 import type { User } from "../types";
 
 type LocationState = { deletedUserName?: string } | null;
@@ -81,7 +82,7 @@ export default function Users() {
           >
             <div className="flex items-center gap-3 mb-3">
               <UserAvatar
-                src={u.avatarUrl || u.avatar}
+                src={effectiveAvatar(u)}
                 name={u.name}
                 size="lg"
               />
@@ -141,7 +142,7 @@ export default function Users() {
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <UserAvatar
-                        src={u.avatarUrl || u.avatar}
+                        src={effectiveAvatar(u)}
                         name={u.name}
                         size="md"
                       />

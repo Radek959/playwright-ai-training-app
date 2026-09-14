@@ -1,4 +1,5 @@
 import type { User, UserRole, UserUpdateInput } from "../types";
+import { effectiveAvatar } from "./avatar";
 
 /**
  * Form model for editing an existing user. Every value is kept in the shape an
@@ -29,13 +30,20 @@ export const USER_FORM_MESSAGES = {
 // the API for a format rule the UI could have caught first.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Builds the form state for an existing user (used when opening the edit dialog). */
+/**
+ * Builds the form state for an existing user (used when opening the edit
+ * dialog). The avatar field is prefilled from the *effective* avatar — so a
+ * seed user who only has legacy `avatarUrl` still sees their current image's
+ * URL here, not a blank field — while `buildUserUpdatePayload` below diffs
+ * against that same effective value, so leaving the field untouched never
+ * produces a spurious patch.
+ */
 export function userToFormValues(user: User): UserFormValues {
   return {
     name: user.name,
     email: user.email,
     role: user.role,
-    avatar: user.avatar ?? ""
+    avatar: effectiveAvatar(user) ?? ""
   };
 }
 
@@ -72,6 +80,12 @@ export function validateUserForm(values: UserFormValues): UserFormErrors {
  * the API stores — re-padding a field with spaces is not a change. A cleared
  * avatar is sent as the explicit `null` the API contract defines for clearing
  * (omitting it would mean "leave as is" instead).
+ *
+ * The avatar field is diffed against the *effective* avatar the form was
+ * originally populated with (see `userToFormValues`), not the raw `avatar`
+ * field alone — otherwise an untouched avatar field on a seed user (whose
+ * only image comes from legacy `avatarUrl`) would look like a "new" avatar
+ * and be sent as a no-op-but-not-empty patch.
  */
 export function buildUserUpdatePayload(values: UserFormValues, original: User): UserUpdateInput {
   const patch: UserUpdateInput = {};
@@ -85,7 +99,7 @@ export function buildUserUpdatePayload(values: UserFormValues, original: User): 
   if (values.role !== original.role) patch.role = values.role;
 
   const avatar = values.avatar.trim();
-  const originalAvatar = original.avatar ?? "";
+  const originalAvatar = effectiveAvatar(original) ?? "";
   if (avatar !== originalAvatar) {
     patch.avatar = avatar === "" ? null : avatar;
   }

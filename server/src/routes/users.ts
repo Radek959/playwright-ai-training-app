@@ -69,6 +69,15 @@ usersRouter.post("/", (req, res) => {
  * and therefore no task activity entry is created either. Previously stored
  * comment `authorName` values are historical snapshots and are deliberately
  * never rewritten when a user is renamed.
+ *
+ * `avatar` is the canonical, client-editable avatar field; `avatarUrl` is
+ * legacy seed data and is never accepted from a client (see
+ * USER_UPDATE_FIELDS). Once a request explicitly touches `avatar` — setting
+ * it to a new value, or clearing it with `null` — the legacy `avatarUrl` is
+ * retired for that user (removed from the stored record) so it can never
+ * shadow the edited value, whichever way the client renders "effective
+ * avatar". A request that omits `avatar` entirely leaves both fields exactly
+ * as they were.
  */
 usersRouter.put("/:id", (req, res) => {
   const idx = users.findIndex((u) => u.id === req.params.id);
@@ -81,6 +90,8 @@ usersRouter.put("/:id", (req, res) => {
       details: [{ field: "body", message: "request body must be a JSON object" }]
     });
   }
+
+  const avatarTouched = Object.prototype.hasOwnProperty.call(req.body, "avatar");
 
   const updateResult = applyAllowedUpdate(
     existing as unknown as Record<string, unknown>,
@@ -107,6 +118,9 @@ usersRouter.put("/:id", (req, res) => {
     name: (merged.name as string).trim(),
     email: (merged.email as string).trim()
   };
+  if (avatarTouched) {
+    delete updated.avatarUrl;
+  }
   users[idx] = updated;
 
   res.json(updated);

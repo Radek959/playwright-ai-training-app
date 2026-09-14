@@ -33,6 +33,22 @@ describe("userToFormValues", () => {
   it("renders a missing avatar as an empty field rather than 'undefined'", () => {
     expect(userToFormValues(baseUser).avatar).toBe("");
   });
+
+  it("prefills the avatar field from legacy avatarUrl for a seed user with no avatar", () => {
+    expect(userToFormValues({ ...baseUser, avatarUrl: "https://example.com/legacy.png" }).avatar).toBe(
+      "https://example.com/legacy.png"
+    );
+  });
+
+  it("prefers avatar over avatarUrl when both are present", () => {
+    expect(
+      userToFormValues({
+        ...baseUser,
+        avatar: "https://example.com/new.png",
+        avatarUrl: "https://example.com/legacy.png"
+      }).avatar
+    ).toBe("https://example.com/new.png");
+  });
 });
 
 describe("validateUserForm", () => {
@@ -128,5 +144,23 @@ describe("buildUserUpdatePayload", () => {
   it("never includes an id, even though the form was built from a user that has one", () => {
     const patch = buildUserUpdatePayload(valuesFor(baseUser, { name: "Changed" }), baseUser);
     expect("id" in patch).toBe(false);
+  });
+
+  it("does not treat an untouched avatarUrl-derived field as a changed avatar", () => {
+    const user = { ...baseUser, avatarUrl: "https://example.com/legacy.png" };
+    // The form was prefilled from the effective avatar (avatarUrl, here); the
+    // user never touched the field, so no patch should be produced for it.
+    expect(buildUserUpdatePayload(valuesFor(user), user)).toEqual({});
+  });
+
+  it("sends the new avatar when it replaces a legacy avatarUrl", () => {
+    const user = { ...baseUser, avatarUrl: "https://example.com/legacy.png" };
+    const values = valuesFor(user, { avatar: "https://example.com/new.png" });
+    expect(buildUserUpdatePayload(values, user)).toEqual({ avatar: "https://example.com/new.png" });
+  });
+
+  it("sends avatar: null when clearing a field prefilled from legacy avatarUrl", () => {
+    const user = { ...baseUser, avatarUrl: "https://example.com/legacy.png" };
+    expect(buildUserUpdatePayload(valuesFor(user, { avatar: "" }), user)).toEqual({ avatar: null });
   });
 });

@@ -3,6 +3,7 @@ import { useAppError } from "../context/AppErrorContext";
 import { StatCard } from "../components/StatCard";
 import { UserAvatar } from "../components/UserAvatar";
 import { isTaskOverdue } from "../utils/taskDueDate";
+import { effectiveAvatar } from "../utils/avatar";
 import type { Task, User } from "../types";
 
 function normalizeTask(raw: Partial<Task>): Task {
@@ -185,8 +186,8 @@ export default function Dashboard() {
               className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-lg p-4 border border-indigo-100 text-center hover:shadow-md transition-shadow"
             >
               <div className="flex justify-center mb-2">
-                <UserAvatar 
-                  src={user.avatarUrl || user.avatar}
+                <UserAvatar
+                  src={effectiveAvatar(user)}
                   name={user.name}
                   size="lg"
                   className="shadow-lg"
