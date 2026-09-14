@@ -12,7 +12,26 @@ const __dirname = path.dirname(__filename);
 
 export const app = express();
 
-app.use(cors());
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173"
+];
+
+if (process.env.ALLOWED_ORIGINS) {
+  const extraOrigins = process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim());
+  allowedOrigins.push(...extraOrigins);
+}
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // allow requests with no origin (like mobile apps, curl, or swagger)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      return callback(new Error("Not allowed by CORS"));
+    }
+    return callback(null, true);
+  }
+}));
 app.use(express.json());
 
 // Malformed JSON bodies should still come back as a controlled JSON 400,

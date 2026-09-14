@@ -17,6 +17,11 @@ npm install
 npm run dev
 ```
 
+> [!WARNING]
+> The application has no authentication or authorization layer. It is designed to be run locally for training purposes only.
+> By default, the backend listens only on `127.0.0.1` and restricts CORS to local frontend origins.
+> If you need to access the application from other devices on your local network, you can run it with `HOST=0.0.0.0 npm run dev`. Note that doing so exposes the application to your network. If you need to allow other origins in CORS, use the `ALLOWED_ORIGINS` environment variable (e.g. `ALLOWED_ORIGINS=http://192.168.1.10:5173`).
+
 📄 **Product documentation:** [`docs/dokumentacja-produktowa.md`](./docs/dokumentacja-produktowa.md) (Polish) describes the application's expected behavior — tasks, users, search, archiving and validation rules.
 
 Created and maintained by **Radosław Wasik**.
