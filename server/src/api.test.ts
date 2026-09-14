@@ -1107,6 +1107,298 @@ describe("API Integration Tests", () => {
     });
   });
 
+  describe("Update user (PUT /api/users/:id)", () => {
+    const createUser = async (overrides: Record<string, unknown> = {}) => {
+      const response = await request(app)
+        .post("/api/users")
+        .send({ name: "Editable User", email: "editable@example.com", role: "viewer", ...overrides });
+      expect(response.status).toBe(201);
+      return response.body as User;
+    };
+
+    it("updates a single field and leaves every other field untouched", async () => {
+      const user = await createUser({ avatar: "https://example.com/a.png" });
+
+      const response = await request(app).put(`/api/users/${user.id}`).send({ name: "Renamed User" });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ ...user, name: "Renamed User" });
+    });
+
+    it("updates several fields at once", async () => {
+      const user = await createUser();
+
+      const response = await request(app).put(`/api/users/${user.id}`).send({
+        name: "Multi Field",
+        email: "multi-field@example.com",
+        role: "admin",
+        avatar: "https://example.com/multi.png"
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        id: user.id,
+        name: "Multi Field",
+        email: "multi-field@example.com",
+        role: "admin",
+        avatar: "https://example.com/multi.png"
+      });
+    });
+
+    it("treats an empty body as a no-op that changes nothing", async () => {
+      const user = await createUser();
+
+      const response = await request(app).put(`/api/users/${user.id}`).send({});
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(user);
+    });
+
+    it("treats resending identical values as a no-op", async () => {
+      const user = await createUser();
+
+      const response = await request(app)
+        .put(`/api/users/${user.id}`)
+        .send({ name: user.name, email: user.email, role: user.role });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(user);
+    });
+
+    it("trims name and email exactly the way creation does", async () => {
+      const user = await createUser();
+
+      const response = await request(app)
+        .put(`/api/users/${user.id}`)
+        .send({ name: "  Padded Name  ", email: "  padded@example.com  " });
+
+      expect(response.status).toBe(200);
+      expect(response.body.name).toBe("Padded Name");
+      expect(response.body.email).toBe("padded@example.com");
+    });
+
+    it("clears the avatar when it is sent as an explicit null", async () => {
+      const user = await createUser({ avatar: "https://example.com/old.png" });
+      expect(user.avatar).toBe("https://example.com/old.png");
+
+      const response = await request(app).put(`/api/users/${user.id}`).send({ avatar: null });
+
+      expect(response.status).toBe(200);
+      expect(response.body.avatar).toBeUndefined();
+      expect("avatar" in response.body).toBe(false);
+
+      const fetched = await request(app).get(`/api/users/${user.id}`);
+      expect("avatar" in fetched.body).toBe(false);
+    });
+
+    it("keeps the avatar when the field is omitted", async () => {
+      const user = await createUser({ avatar: "https://example.com/keep.png" });
+
+      const response = await request(app).put(`/api/users/${user.id}`).send({ name: "Still Has Avatar" });
+
+      expect(response.status).toBe(200);
+      expect(response.body.avatar).toBe("https://example.com/keep.png");
+    });
+
+    it("rejects an attempt to change the id", async () => {
+      const user = await createUser();
+
+      const response = await request(app).put(`/api/users/${user.id}`).send({ id: "something-else" });
+
+      expect(response.status).toBe(400);
+      expect(response.body.details).toContainEqual({ field: "id", message: "id cannot be updated" });
+
+      const fetched = await request(app).get(`/api/users/${user.id}`);
+      expect(fetched.body).toEqual(user);
+    });
+
+    it("rejects an unsupported field", async () => {
+      const user = await createUser();
+
+      const response = await request(app).put(`/api/users/${user.id}`).send({ nickname: "nope" });
+
+      expect(response.status).toBe(400);
+      expect(response.body.details).toContainEqual({
+        field: "nickname",
+        message: "nickname is not an updatable field"
+      });
+    });
+
+    it("rejects avatarUrl, which is not client-editable", async () => {
+      const user = await createUser();
+
+      const response = await request(app).put(`/api/users/${user.id}`).send({ avatarUrl: "https://example.com/x.png" });
+
+      expect(response.status).toBe(400);
+      expect(response.body.details).toContainEqual({
+        field: "avatarUrl",
+        message: "avatarUrl is not an updatable field"
+      });
+    });
+
+    it("rejects a null on a field that is not clearable", async () => {
+      const user = await createUser();
+
+      const response = await request(app).put(`/api/users/${user.id}`).send({ name: null });
+
+      expect(response.status).toBe(400);
+      expect(response.body.details).toContainEqual({ field: "name", message: "name cannot be null" });
+    });
+
+    it("rejects an empty or whitespace-only name", async () => {
+      const user = await createUser();
+
+      const response = await request(app).put(`/api/users/${user.id}`).send({ name: "   " });
+
+      expect(response.status).toBe(400);
+      expect(response.body.details).toContainEqual({ field: "name", message: "name is required" });
+    });
+
+    it("rejects an invalid email", async () => {
+      const user = await createUser();
+
+      const response = await request(app).put(`/api/users/${user.id}`).send({ email: "not-an-email" });
+
+      expect(response.status).toBe(400);
+      expect(response.body.details).toContainEqual({
+        field: "email",
+        message: "email must be a valid email address"
+      });
+    });
+
+    it("rejects an invalid role", async () => {
+      const user = await createUser();
+
+      const response = await request(app).put(`/api/users/${user.id}`).send({ role: "superuser" });
+
+      expect(response.status).toBe(400);
+      expect(response.body.details).toContainEqual({ field: "role", message: "invalid role" });
+    });
+
+    it("rejects a non-string avatar", async () => {
+      const user = await createUser();
+
+      const response = await request(app).put(`/api/users/${user.id}`).send({ avatar: 42 });
+
+      expect(response.status).toBe(400);
+      expect(response.body.details).toContainEqual({ field: "avatar", message: "avatar must be a string" });
+    });
+
+    it("rejects a request body that is not a JSON object", async () => {
+      const user = await createUser();
+
+      const response = await request(app)
+        .put(`/api/users/${user.id}`)
+        .set("Content-Type", "application/json")
+        .send(JSON.stringify(["not", "an", "object"]));
+
+      expect(response.status).toBe(400);
+      expect(response.body.details).toContainEqual({
+        field: "body",
+        message: "request body must be a JSON object"
+      });
+    });
+
+    it("rejects an email already used by another user, case-insensitively", async () => {
+      const other = await createUser({ name: "Other User", email: "taken@example.com" });
+      const user = await createUser({ name: "Editing User", email: "editing@example.com" });
+
+      const response = await request(app).put(`/api/users/${user.id}`).send({ email: "TAKEN@example.com" });
+
+      expect(response.status).toBe(400);
+      expect(response.body.details).toContainEqual({ field: "email", message: "email is already in use" });
+
+      // Neither user changed.
+      expect((await request(app).get(`/api/users/${user.id}`)).body).toEqual(user);
+      expect((await request(app).get(`/api/users/${other.id}`)).body).toEqual(other);
+    });
+
+    it("accepts the user's own unchanged email", async () => {
+      const user = await createUser({ email: "own-email@example.com" });
+
+      const response = await request(app)
+        .put(`/api/users/${user.id}`)
+        .send({ name: "Own Email Kept", email: "own-email@example.com" });
+
+      expect(response.status).toBe(200);
+      expect(response.body.email).toBe("own-email@example.com");
+    });
+
+    it("accepts the user's own email in a different case", async () => {
+      const user = await createUser({ email: "case-test@example.com" });
+
+      const response = await request(app).put(`/api/users/${user.id}`).send({ email: "Case-Test@Example.com" });
+
+      expect(response.status).toBe(200);
+      expect(response.body.email).toBe("Case-Test@Example.com");
+    });
+
+    it("returns 404 for a user that does not exist", async () => {
+      const response = await request(app).put("/api/users/non-existent-id").send({ name: "Ghost" });
+
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({ error: "User not found" });
+    });
+
+    it("writes nothing at all when one field of a multi-field update is invalid", async () => {
+      const user = await createUser({ avatar: "https://example.com/keep.png" });
+
+      const response = await request(app)
+        .put(`/api/users/${user.id}`)
+        .send({ name: "Valid Name", email: "valid@example.com", role: "not-a-role" });
+
+      expect(response.status).toBe(400);
+      const fetched = await request(app).get(`/api/users/${user.id}`);
+      expect(fetched.body).toEqual(user);
+    });
+
+    it("keeps task assignments intact and records no task activity", async () => {
+      const user = await createUser({ name: "Assignee Before", email: "assignee@example.com" });
+      const task = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Task for the renamed user", assigneeId: user.id });
+      const activityBefore = (await request(app).get(`/api/tasks/${task.body.id}/activity`)).body;
+
+      const response = await request(app).put(`/api/users/${user.id}`).send({ name: "Assignee After" });
+      expect(response.status).toBe(200);
+
+      const taskAfter = await request(app).get(`/api/tasks/${task.body.id}`);
+      expect(taskAfter.body).toEqual(task.body);
+      expect(taskAfter.body.assigneeId).toBe(user.id);
+
+      const activityAfter = (await request(app).get(`/api/tasks/${task.body.id}/activity`)).body;
+      expect(activityAfter).toEqual(activityBefore);
+    });
+
+    it("never rewrites the authorName snapshot on comments the user already wrote", async () => {
+      const user = await createUser({ name: "Comment Author", email: "comment-author@example.com" });
+      const task = await request(app).post("/api/tasks").send({ title: "Task with a comment" });
+      const comment = await request(app)
+        .post(`/api/tasks/${task.body.id}/comments`)
+        .send({ authorId: user.id, content: "Written before the rename" });
+      expect(comment.body.authorName).toBe("Comment Author");
+
+      const response = await request(app).put(`/api/users/${user.id}`).send({ name: "Renamed Author" });
+      expect(response.status).toBe(200);
+
+      const commentsAfter = await request(app).get(`/api/tasks/${task.body.id}/comments`);
+      expect(commentsAfter.body).toEqual([comment.body]);
+      expect(commentsAfter.body[0].authorName).toBe("Comment Author");
+      expect(commentsAfter.body[0].authorId).toBe(user.id);
+    });
+
+    it("leaves the seeded avatarUrl in place across an update", async () => {
+      const seeded = users.find((u) => u.avatarUrl);
+      expect(seeded).toBeDefined();
+
+      const response = await request(app).put(`/api/users/${seeded!.id}`).send({ role: "admin" });
+
+      expect(response.status).toBe(200);
+      expect(response.body.avatarUrl).toBe(seeded!.avatarUrl);
+      expect(response.body.role).toBe("admin");
+    });
+  });
+
   describe("Task Comments API", () => {
     describe("GET /api/tasks/:id/comments", () => {
       it("returns 404 for a non-existent task", async () => {

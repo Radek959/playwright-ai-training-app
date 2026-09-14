@@ -162,6 +162,19 @@ Sposób, w jaki `null` na tych polach jest obsługiwany, różni się jednak mi�
 - Zwraca pełny obiekt istniejącego użytkownika (`200`) albo `404` z ciałem `{ "error": "User not found" }`, gdy identyfikator nie istnieje.
 - Endpoint nie dolicza żadnych statystyk ani listy zadań do obiektu użytkownika — widok szczegółów w UI (sekcja 6.7) pobiera zadania osobno z `GET /api/tasks` i sam wylicza podsumowanie po stronie klienta.
 
+### 2.9a Edycja użytkownika (`PUT /api/users/:id`)
+
+- Aktualizacja **częściowa**: pola edytowalne to `name`, `email`, `role` i `avatar`. Pole pominięte w żądaniu zachowuje zapisaną wartość — nie wraca do wartości domyślnej.
+- **Czyszczenie awatara**: `avatar: null` usuwa zapisany awatar (pole znika z obiektu użytkownika). Pominięcie `avatar` zostawia go bez zmian. To jedyne pole przyjmujące `null` — dla `name`, `email` i `role` `null` jest błędem walidacji (`"<pole> cannot be null"`), dokładnie tą samą konwencją co `PUT /api/tasks/:id` (sekcja 2.3).
+- `id` **nie jest edytowalne**: próba jego przesłania zwraca `400` z `{ "field": "id", "message": "id cannot be updated" }`. Każde inne nieobsługiwane pole (w tym serwerowe `avatarUrl`) zwraca `400` z `"<pole> is not an updatable field"`.
+- Po scaleniu żądania z zapisanym użytkownikiem obowiązują **dokładnie te same reguły walidacji co przy tworzeniu** (sekcja 1.2): `name` wymagane i niepuste, `email` wymagany i poprawny formatem, `role` z zamkniętej listy, `avatar` musi być tekstem. `name` i `email` są przycinane (`trim`) przed zapisem — tak samo jak przy tworzeniu.
+- **Unikalność e-maila** jest sprawdzana z pominięciem edytowanego użytkownika, więc ponowne przesłanie własnego, niezmienionego adresu (również w innej wielkości liter) nigdy nie jest konfliktem. Kolizja z adresem **innego** użytkownika zwraca `400` z `{ "field": "email", "message": "email is already in use" }` — to ta sama konwencja, co przy `POST /api/users`; API nie ma osobnego kodu konfliktu dla unikalności.
+- Nieistniejące `id` zwraca `404` z ciałem `{ "error": "User not found" }`.
+- **Brak częściowych zapisów**: dopóki którakolwiek kontrola nie przejdzie, nie jest zapisywana żadna zmiana — użytkownik pozostaje dokładnie taki, jaki był.
+- **Przypisania zadań pozostają nietknięte**: zadania wskazują użytkownika przez stabilne `id`, którego nie da się zmienić, więc edycja użytkownika nie modyfikuje żadnego zadania. W konsekwencji **nie powstaje żaden wpis w historii aktywności zadania** (sekcja 12).
+- **`authorName` w istniejących komentarzach nigdy nie jest przepisywane**: to migawka zapisana w chwili dodania komentarza (sekcja 2.11), więc zmiana nazwy użytkownika nie zmienia wstecz treści historycznych komentarzy. Nowe komentarze dodane po zmianie nazwy zapisują już nową migawkę.
+- Odpowiedź `200` zawiera pełny, zapisany obiekt użytkownika (łącznie z niezmienionym `avatarUrl`, jeśli występuje).
+
 ### 2.10 Usuwanie użytkownika (`DELETE /api/users/:id`)
 
 - Reguła biznesowa: jeśli usuwany użytkownik ma przypisane zadania o statusie innym niż `"done"` (czyli `"todo"` lub `"in-progress"`), żądanie zwraca `409 Conflict` z ciałem `{ "error": "Cannot delete user with active tasks", "conflictingTasks": [{ "id", "title", "status" }, ...] }`, a użytkownik **nie** zostaje usunięty. `conflictingTasks` zawiera wyłącznie zadania o statusie `"todo"` lub `"in-progress"` — zadania `"done"` przypisane do tego użytkownika nigdy się tam nie pojawiają.
@@ -169,7 +182,7 @@ Sposób, w jaki `null` na tych polach jest obsługiwany, różni się jednak mi�
 - Usunięcie użytkownika powoduje automatyczne wyczyszczenie pola `assigneeId` we wszystkich pozostałych zadaniach, które nadal na niego wskazywały (czyli w jego zadaniach o statusie `"done"`) — po ponownym pobraniu takie zadania pokazują brak przypisania.
 - Usunięcie użytkownika **nie usuwa** komentarzy, które napisał (patrz sekcja 2.11) — zostają zachowane razem z ich treścią i czasem utworzenia. Zamiast tego czyszczone jest wyłącznie pole `authorId` w tych komentarzach (staje się nieobecne), natomiast `authorName` (migawka nazwy zapisana przy tworzeniu komentarza) pozostaje bez zmian, więc komentarz nadal da się poprawnie wyświetlić.
 - Nieistniejące `id` zwraca `404` z ciałem `{ "error": "User not found" }` — zarówno przy próbie usunięcia użytkownika, który nigdy nie istniał, jak i przy ponownej próbie usunięcia użytkownika już wcześniej usuniętego.
-- Nie istnieje endpoint do edycji użytkownika (`PUT`/`PATCH`) — po utworzeniu nazwy, e-maila, roli ani awatara nie da się zmienić ani przez UI, ani przez udokumentowane API.
+- Usunięcie jest operacją nieodwracalną i całkowicie niezależną od edycji użytkownika (sekcja 2.9a).
 
 ### 2.11 Komentarze do zadania (`/api/tasks/:id/comments`)
 
@@ -364,6 +377,18 @@ Osobna sekcja widoku szczegółów, poniżej „Approval”, dająca `POST`/`GET
 - **Użytkownik już nie istnieje (`404`)** podczas próby usunięcia: modal pokazuje informację, że użytkownik już nie istnieje, wraz z linkiem powrotu do `/users`.
 - **Błąd sieciowy lub `5xx`**: modal pozostaje otwarty z komunikatem błędu i możliwością ponowienia — operacja nie jest traktowana tak, jakby zwróciła `409`, ani jakby się powiodła.
 
+### 6.8a Edycja użytkownika z poziomu UI
+
+- Na stronie `/users/:id`, obok „Delete user”, znajduje się przycisk **„Edit user”** otwierający modal edycji. Modal jest oparty na tym samym komponencie dialogu co pozostałe modale aplikacji, więc ma pułapkę fokusu, zamykanie klawiszem Escape i kliknięciem w tło oraz przywracanie fokusu na przycisk, który go otworzył. Po otwarciu fokus trafia na pierwsze pole („Name”).
+- Formularz obejmuje cztery pola z etykietami powiązanymi przez `htmlFor`/`id` (pełna obsługa klawiaturą): **Name**, **Email**, **Role** (lista `admin`/`editor`/`viewer`) i **Avatar URL**. Wszystkie są wypełnione aktualnymi wartościami użytkownika; pod polem awatara widnieje podpowiedź, że wyczyszczenie pola usuwa awatar.
+- Walidacja po stronie klienta sprawdza te same reguły co API, które da się sprawdzić lokalnie: niepusta nazwa oraz niepusty, poprawny formatem e-mail. **Unikalność e-maila nie jest zgadywana lokalnie** — tylko API zna pełną listę użytkowników, więc ten błąd pochodzi wyłącznie z odpowiedzi serwera.
+- Zapis wysyła `PUT /api/users/:id` i przekazuje **wyłącznie pola, które faktycznie się zmieniły** (formularz bez żadnej zmiany wysyła pusty obiekt). `name` i `email` są porównywane po przycięciu, więc samo dodanie spacji nie jest zmianą. Wyczyszczone pole „Avatar URL” jest wysyłane jako jawne `avatar: null`, zgodnie z kontraktem z sekcji 2.9a.
+- W trakcie żądania przycisk zapisu pokazuje „Saving…” i jest zablokowany, a ponowne wysłanie formularza (również klawiszem Enter) jest ignorowane — drugie żądanie nie powstaje. Dopóki żądanie trwa, modalu nie da się zamknąć („Cancel”, Escape i kliknięcie w tło są zablokowane).
+- **Sukces (`200`)**: modal się zamyka, a widok szczegółów jest odświeżany **w miejscu** danymi zwróconymi przez API (nigdy zgadywanym lokalnie stanem). Adres pozostaje ten sam (`/users/:id`) — nie ma przekierowania ani powrotu na listę. Lista przypisanych zadań i podsumowanie liczbowe pozostają takie same, bo zadania wskazują użytkownika przez niezmienne `id`.
+- **Błąd walidacji (`400`)**: modal pozostaje otwarty ze **wszystkimi wpisanymi wartościami**, błędy dotyczące konkretnych pól są pokazywane pod tymi polami (jako `role="alert"`, więc nie zależą wyłącznie od koloru), a pozostałe trafiają do ogólnego komunikatu na górze modalu. Widok pod modalem nadal pokazuje ostatnią poprawnie zapisaną wersję użytkownika — niezapisane wartości nigdy nie są prezentowane jako zapisane. Edycja pola czyści jego błąd od razu, a ponowny zapis po poprawce kończy się sukcesem.
+- **Błąd sieciowy lub `5xx`**: zachowanie jak wyżej — modal pozostaje otwarty z komunikatem i możliwością ponowienia; operacja nie jest traktowana jako udana.
+- Anulowanie (przycisk „Cancel”, Escape, kliknięcie w tło) nie wysyła żadnego żądania i nie zmienia żadnych wyświetlanych danych.
+
 ### 6.9 Udostępnialny stan widoku Tasks (parametry URL)
 
 Adres `/tasks` jednoznacznie opisuje aktualnie wyświetlany widok: aktywną zakładkę, filtry (tam, gdzie mają zastosowanie — patrz 6.1–6.4), numer strony i sortowanie tabeli. URL jest jedynym źródłem prawdy dla tego stanu — komponent nie trzyma równoległego stanu Reacta dla tych wartości. Skopiowanie adresu, otwarcie go w nowej karcie, odświeżenie strony oraz przyciski Wstecz/Dalej przeglądarki zawsze odtwarzają dokładnie to, co było widoczne (bez pełnego przeładowania SPA w przypadku Wstecz/Dalej i zmiany zakładki/filtrów/strony/sortowania).
@@ -447,7 +472,7 @@ Modal edycji jest **jednym, wspólnym komponentem** używanym zarówno z listy z
 
 Formularz na stronie **Users** tworzy użytkownika przez `POST /api/users`, wysyłając: `name`, `email`, `role` (domyślnie `viewer`), `avatar` (URL, opcjonalny). Błędy walidacji z API (patrz sekcja 1.2) są mapowane na te same cztery pola formularza.
 
-Lista użytkowników pokazuje każdego użytkownika jako kartę (widok mobilny) lub wiersz tabeli (widok desktopowy) z awatarem (lub inicjałami zastępczymi), imieniem i nazwiskiem, e-mailem oraz kolorową plakietką roli. Tabela desktopowa ma kolumnę **Actions** zamiast statycznej etykiety statusu konta — takiego statusu backend nie przechowuje, więc UI go nie sugeruje. Zarówno na kartach mobilnych, jak i w kolumnie Actions tabeli, znajduje się link „View details” prowadzący do widoku szczegółów danego użytkownika (`/users/:id`, patrz sekcja 6.7) — sama karta ani cały wiersz nie są klikalne, tylko ten link. Usuwanie użytkownika jest dostępne wyłącznie z poziomu widoku szczegółów (patrz sekcje 6.7–6.8 i 2.10). Nadal nie istnieje żadna forma edycji użytkownika (patrz sekcja 2.10) — ani na liście, ani w widoku szczegółów.
+Lista użytkowników pokazuje każdego użytkownika jako kartę (widok mobilny) lub wiersz tabeli (widok desktopowy) z awatarem (lub inicjałami zastępczymi), imieniem i nazwiskiem, e-mailem oraz kolorową plakietką roli. Tabela desktopowa ma kolumnę **Actions** zamiast statycznej etykiety statusu konta — takiego statusu backend nie przechowuje, więc UI go nie sugeruje. Zarówno na kartach mobilnych, jak i w kolumnie Actions tabeli, znajduje się link „View details” prowadzący do widoku szczegółów danego użytkownika (`/users/:id`, patrz sekcja 6.7) — sama karta ani cały wiersz nie są klikalne, tylko ten link. Usuwanie i edycja użytkownika są dostępne wyłącznie z poziomu widoku szczegółów (patrz sekcje 6.7–6.9, 2.9a i 2.10) — na liście nie ma ani przycisku edycji, ani usuwania.
 
 ---
 

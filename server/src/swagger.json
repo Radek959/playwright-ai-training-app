@@ -527,6 +527,73 @@
           }
         }
       },
+      "put": {
+        "summary": "Update user",
+        "description": "Partial update of an existing user. Editable fields: name, email, role, avatar (see UserUpdateInput). 'id' is never editable - an attempt to set it returns 400 - so task assignments, which reference the user by id, and comment authorship both stay intact by construction. Updating a user touches no task, so no task activity entry is ever created by this endpoint. Previously stored comment 'authorName' values are historical snapshots taken when the comment was written and are deliberately never rewritten when a user is renamed. Nothing is written until every check has passed, so a rejected request leaves the user completely unchanged (no partial mutation). Email uniqueness conflicts are reported as a 400 validation error on the 'email' field, the same way POST /api/users reports them - this API has no separate conflict code for uniqueness.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserUpdateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The full updated user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error: an unsupported field (including id/avatarUrl), a null on a field that is not clearable, an invalid name/email/role/avatar, or an email already used by another user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": [
+                        "User not found"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "summary": "Delete user",
         "description": "Deleting a user succeeds only if none of their assigned tasks has status 'todo' or 'in-progress'. On success, assigneeId is cleared on every remaining task that was assigned to this user (i.e. their completed tasks become unassigned). Comments this user authored are kept — including their 'authorName' snapshot — but their now-dangling 'authorId' is cleared to absent.",
@@ -1270,6 +1337,33 @@
           "email"
         ],
         "description": "email must be unique and a valid email address; role must be one of the listed values (an invalid role is rejected, never silently downgraded)."
+      },
+      "UserUpdateInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "editor",
+              "viewer"
+            ]
+          },
+          "avatar": {
+            "type": "string",
+            "nullable": true,
+            "description": "Send an explicit null to clear the stored avatar. Omit the field to leave it exactly as it is."
+          }
+        },
+        "additionalProperties": false,
+        "description": "Partial update. Only these four fields may be sent; any other field - including 'id' and the server-side 'avatarUrl' - is rejected with 400. A field that is omitted keeps its stored value; there is no way to reset a field to a default by omitting it. 'avatar' is the only field that accepts null, which clears it; name, email and role are required values, so null there is invalid input rather than a clear. The patch is merged onto the stored user and then validated by exactly the same rules as POST /api/users, with this user excluded from the email-uniqueness check so resending an unchanged email is never a conflict with itself. name and email are trimmed before being stored, exactly as on creation."
       },
       "ActivityType": {
         "type": "string",
