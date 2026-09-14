@@ -4,6 +4,7 @@ import { useAppError } from "../context/AppErrorContext";
 import { getApproverLabel } from "../utils/approvers";
 import { DueDateLabel } from "../components/DueDateLabel";
 import { TaskEditModal } from "../components/TaskEditModal";
+import type { DependencyOptionsState } from "../components/TaskDependencyPicker";
 import { formatDueDateUtc } from "../utils/taskDueDate";
 import { toApiError } from "../utils/apiError";
 import type { Task, TaskUpdateInput, User } from "../types";
@@ -30,12 +31,39 @@ export function TaskDetails() {
   const [task, setTask] = useState<Task | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [allTasks, setAllTasks] = useState<Task[]>([]);
+  // "success" is the only state in which allTasks may be treated as the real
+  // list of tasks. A failed GET /api/tasks leaves it empty, and an empty
+  // array must not be read as "no task exists" — that would make the edit
+  // modal reject this task's own saved dependencies.
+  const [allTasksState, setAllTasksState] = useState<DependencyOptionsState>("loading");
   const [dependencies, setDependencies] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const { setError, clearError } = useAppError();
+
+  /**
+   * The full task list only powers the edit modal's dependency picker, so a
+   * failure here must not break the read-only details view — but it is
+   * recorded as an error state (not as an empty list) and can be retried on
+   * its own from inside the picker.
+   */
+  const loadAllTasks = useCallback(async () => {
+    setAllTasksState("loading");
+    try {
+      const tasksRes = await fetch("/api/tasks");
+      if (!tasksRes.ok) throw new Error(`HTTP ${tasksRes.status}`);
+      const tasksData = await tasksRes.json();
+      if (!Array.isArray(tasksData)) throw new Error("Unexpected payload");
+      setAllTasks(tasksData as Task[]);
+      setAllTasksState("success");
+    } catch (err) {
+      console.warn("Failed to fetch tasks", err);
+      setAllTasks([]);
+      setAllTasksState("error");
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     if (!id) return;
@@ -70,17 +98,7 @@ export function TaskDetails() {
         console.warn("Failed to fetch users", err);
       }
 
-      // The full task list only powers the edit modal's dependency picker,
-      // so a failure here must not break the read-only details view.
-      try {
-        const tasksRes = await fetch("/api/tasks");
-        if (tasksRes.ok) {
-          const tasksData = await tasksRes.json();
-          if (Array.isArray(tasksData)) setAllTasks(tasksData as Task[]);
-        }
-      } catch (err) {
-        console.warn("Failed to fetch tasks", err);
-      }
+      await loadAllTasks();
 
       setDependencies(await fetchDependencyTasks(taskData.dependencies));
     } catch (err) {
@@ -90,7 +108,7 @@ export function TaskDetails() {
     } finally {
       setLoading(false);
     }
-  }, [id, clearError, setError]);
+  }, [id, clearError, setError, loadAllTasks]);
 
   useEffect(() => {
     loadData();
@@ -377,6 +395,8 @@ export function TaskDetails() {
         open={isEditing}
         users={users}
         existingTasks={allTasks}
+        existingTasksState={allTasksState}
+        onRetryExistingTasks={loadAllTasks}
         onClose={() => setIsEditing(false)}
         onSave={handleSave}
       />

@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Dialog } from "./Dialog";
-import { TaskDependencyPicker } from "./TaskDependencyPicker";
+import { TaskDependencyPicker, type DependencyOptionsState } from "./TaskDependencyPicker";
 import { ApiError, mapFieldErrors } from "../utils/apiError";
 import { APPROVERS } from "../utils/approvers";
 import {
@@ -19,6 +19,15 @@ type Props = {
   users: User[];
   /** Tasks that may be picked as dependencies (the edited task is excluded). */
   existingTasks?: Task[];
+  /**
+   * Whether `existingTasks` is a successfully fetched list. Defaults to
+   * "success"; "loading"/"error" mean the list is unknown, in which case the
+   * saved dependencies are never validated against it (an empty array after a
+   * failed request is not evidence that a dependency no longer exists).
+   */
+  existingTasksState?: DependencyOptionsState;
+  /** Retries the task-list fetch from inside the dependency picker. */
+  onRetryExistingTasks?: () => void;
   onClose: () => void;
   onSave: (updated: TaskUpdateInput) => Promise<void> | void;
 };
@@ -59,7 +68,16 @@ const FIELD_ERROR_ID: Record<string, string> = {
   approver: "edit-task-approver-error"
 };
 
-export function TaskEditModal({ task, open, users, existingTasks = [], onClose, onSave }: Props) {
+export function TaskEditModal({
+  task,
+  open,
+  users,
+  existingTasks = [],
+  existingTasksState = "success",
+  onRetryExistingTasks,
+  onClose,
+  onSave
+}: Props) {
   const titleInputRef = useRef<HTMLInputElement>(null);
 
   const [values, setValues] = useState<TaskFormValues>(() =>
@@ -111,9 +129,13 @@ export function TaskEditModal({ task, open, users, existingTasks = [], onClose, 
 
     // The same rules the API enforces, checked up front so an avoidable
     // round-trip never happens (see validateTaskForm).
+    // The dependency reference check runs only against a list that was
+    // actually fetched: an empty array left behind by a failed (or still
+    // pending) GET /api/tasks would otherwise make every saved dependency
+    // look like it no longer exists and block an unrelated edit.
     const clientErrors: TaskFormErrors = validateTaskForm(values, {
       mode: "edit",
-      availableTaskIds: existingTasks.map((t) => t.id),
+      availableTaskIds: existingTasksState === "success" ? existingTasks.map((t) => t.id) : undefined,
       currentTaskId: task.id
     });
     if (Object.keys(clientErrors).length > 0) {
@@ -376,6 +398,8 @@ export function TaskEditModal({ task, open, users, existingTasks = [], onClose, 
           onChange={(next) => setValue("dependencies", next)}
           excludeTaskId={task.id}
           error={fieldErrors.dependencies}
+          state={existingTasksState}
+          onRetry={onRetryExistingTasks}
         />
 
         <div className="flex flex-col gap-2">

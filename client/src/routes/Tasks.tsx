@@ -741,6 +741,7 @@ export default function Tasks() {
         open={Boolean(editing)}
         users={users}
         existingTasks={tasks}
+        existingTasksState={tasksLoadState}
         onClose={() => setEditing(null)}
         onSave={async (patch) => {
           try {

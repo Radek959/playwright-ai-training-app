@@ -412,6 +412,82 @@ describe("TaskDetails", () => {
     });
   });
 
+  it("still saves an unrelated field when the task list could not be fetched, without touching dependencies", async () => {
+    const puts: unknown[] = [];
+    let listRequests = 0;
+    fetchSpy.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (init?.method === "PUT") {
+        puts.push(JSON.parse(String(init.body)));
+        return Promise.resolve(new Response(JSON.stringify({ ...mockTask, title: "Renamed task" }), { status: 200 }));
+      }
+      // The task itself and its dependency load fine; only the list used by
+      // the dependency picker fails.
+      if (url === "/api/tasks") {
+        listRequests += 1;
+        return Promise.resolve(new Response(null, { status: 500, statusText: "Internal Server Error" }));
+      }
+      if (url === "/api/tasks/task-1") return Promise.resolve(new Response(JSON.stringify(mockTask)));
+      if (url === "/api/tasks/task-2") return Promise.resolve(new Response(JSON.stringify(mockDepTask)));
+      if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify(mockUsers)));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+
+    renderComponent();
+
+    // The read-only view still works, dependencies included.
+    await waitFor(() => expect(screen.getByText("Dependency Task")).toBeInTheDocument());
+
+    await openEditModal();
+
+    // A failed list is not "an empty list": dependency editing is blocked
+    // and explained, with a way to retry, while the saved dependency stays
+    // visible and is never reported as unknown.
+    const status = screen.getByTestId("edit-task-dependency-status");
+    expect(status).toHaveTextContent(/task list could not be loaded/i);
+    expect(screen.getByLabelText("Add dependency")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Remove dependency task-2" })).toBeDisabled();
+    expect(screen.getByTestId("edit-task-dependency-task-2")).toBeInTheDocument();
+    expect(listRequests).toBe(1);
+    fireEvent.click(screen.getByTestId("edit-task-dependency-retry"));
+    await waitFor(() => expect(listRequests).toBe(2));
+
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Renamed task" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({ title: "Renamed task" });
+    expect(screen.queryByText(/Unknown dependency ids/)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId("task-edit-modal")).not.toBeInTheDocument());
+  });
+
+  it("does not send a change or a clear for a dueDate stored in a non-ISO format the API accepts", async () => {
+    const puts: unknown[] = [];
+    const textDueDateTask = { ...mockTask, id: "task-text-date", dueDate: "May 1, 2026 00:00:00 GMT", dependencies: [] };
+    fetchSpy.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (init?.method === "PUT") {
+        puts.push(JSON.parse(String(init.body)));
+        return Promise.resolve(new Response(JSON.stringify({ ...textDueDateTask, title: "Renamed task" }), { status: 200 }));
+      }
+      if (url === "/api/tasks") return Promise.resolve(new Response(JSON.stringify([textDueDateTask])));
+      if (url === "/api/tasks/task-text-date") return Promise.resolve(new Response(JSON.stringify(textDueDateTask)));
+      if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify(mockUsers)));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+
+    renderComponent("task-text-date");
+    await openEditModal();
+
+    expect((screen.getByLabelText("Due date") as HTMLInputElement).value).toBe("2026-05-01");
+
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Renamed task" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({ title: "Renamed task" });
+  });
+
   it("leaves the displayed data untouched when the edit is cancelled", async () => {
     const { puts } = mockEditableTask();
     renderComponent();
