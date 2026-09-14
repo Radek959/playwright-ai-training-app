@@ -119,6 +119,8 @@ This starts:
 * **Frontend (UI):** http://localhost:5173 — open this in your browser
 * **Backend (API):** http://localhost:3001 — not a page to open directly; `/` returns `Cannot GET /`. Useful addresses are `/api/health` (health check) and `/api-docs` (Swagger UI)
 
+> **Ports must be free:** the backend needs port `3001` and the frontend needs port `5173`. The app does not automatically pick a different port if one is busy. If startup fails because a port is in use, stop the process using that port and run `npm run dev` again.
+
 Open the frontend in your browser:
 
 ```text
@@ -278,12 +280,13 @@ Every push and pull request targeting `main` runs the [`CI` workflow](./.github/
 
 1. checks out the repository;
 2. sets up Node.js using the version pinned in `.nvmrc`;
-3. runs `npm install` (the same install path participants use locally);
-4. verifies that `npm install` did not modify any of the three committed lockfiles;
-5. runs `npm run check` (lint, typecheck, unit tests, build);
-6. starts the application with `npm run dev`;
-7. waits for the backend (`http://localhost:3001/api/health`) and the frontend (`http://localhost:5173`) to become available, failing the build if either does not start;
-8. stops the application processes.
+3. installs dependencies with separate, lockfile-respecting installs — `npm ci --ignore-scripts` at the root, `npm ci --prefix server` and `npm ci --prefix client` (this is not the same as the single `npm install` participants run locally; see [Installation](#installation));
+4. verifies that the install did not modify any of the three committed lockfiles;
+5. runs `npm run audit:all` (security audit);
+6. runs `npm run check` (lint, typecheck, unit tests, build);
+7. starts the application with `npm run dev`;
+8. waits for the backend (`http://localhost:3001/api/health`) and the frontend (`http://localhost:5173`) to become available, failing the build if either does not start;
+9. stops the application processes.
 
 This workflow intentionally does not run Playwright or install browsers — end-to-end tests are written by participants during the training and are not part of this baseline.
 
