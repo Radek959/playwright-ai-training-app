@@ -320,3 +320,127 @@ describe("TaskEditModal status handling on a rejected save", () => {
     );
   });
 });
+
+describe("TaskEditModal cyclic dependency handling", () => {
+  const cycleError = (cycle: { id: string; title: string }[], message: string) =>
+    new ApiError(message, [], [], [], undefined, undefined, cycle);
+
+  it("explains a rejected self-dependency next to the dependency picker", async () => {
+    const task = makeTask();
+    const onSave = vi.fn().mockRejectedValue(
+      cycleError(
+        [{ id: "t1", title: "Task with a dependency" }],
+        "Cannot save cyclic task dependencies: Task with a dependency → Task with a dependency"
+      )
+    );
+    renderModal(task, onSave);
+
+    save();
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(
+      await screen.findByText(/A task cannot depend on itself: Task with a dependency → Task with a dependency/)
+    ).toBeInTheDocument();
+  });
+
+  it("explains a rejected indirect cycle and lists the loop", async () => {
+    const task = makeTask();
+    const onSave = vi.fn().mockRejectedValue(
+      cycleError(
+        [
+          { id: "t1", title: "Task with a dependency" },
+          { id: "t2", title: "Second task" }
+        ],
+        "Cannot save cyclic task dependencies: Task with a dependency → Second task → Task with a dependency"
+      )
+    );
+    renderModal(task, onSave);
+
+    save();
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    const message = await screen.findByText(
+      /These dependencies form a loop: Task with a dependency → Second task → Task with a dependency/
+    );
+    // The explanation is an alert, so it is announced rather than being
+    // distinguishable only by its colour.
+    expect(message).toHaveAttribute("role", "alert");
+  });
+
+  it("keeps the modal open with the entered values after a cycle conflict", async () => {
+    const task = makeTask({ dependencies: [] });
+    const onSave = vi
+      .fn()
+      .mockRejectedValue(
+        cycleError(
+          [
+            { id: "t1", title: "Task with a dependency" },
+            { id: "t2", title: "Second task" }
+          ],
+          "Cannot save cyclic task dependencies"
+        )
+      );
+    renderModal(task, onSave);
+
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Renamed while editing" } });
+    fireEvent.change(screen.getByLabelText("Add dependency"), { target: { value: "t2" } });
+    fireEvent.click(screen.getByTestId("edit-task-dependency-add"));
+    save();
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+
+    // Nothing was saved, so the form keeps exactly what the user typed and
+    // picked — including the dependency the API rejected — ready to be fixed.
+    expect(screen.getByTestId("task-edit-modal")).toBeInTheDocument();
+    expect((screen.getByLabelText("Title") as HTMLInputElement).value).toBe("Renamed while editing");
+    expect(screen.getByTestId("edit-task-dependency-t2")).toBeInTheDocument();
+  });
+
+  it("does not revert the status field for a cycle conflict", async () => {
+    const task = makeTask();
+    const onSave = vi
+      .fn()
+      .mockRejectedValue(
+        cycleError([{ id: "t1", title: "Task with a dependency" }], "Cannot save cyclic task dependencies")
+      );
+    renderModal(task, onSave);
+
+    const statusSelect = screen.getByLabelText("Status") as HTMLSelectElement;
+    fireEvent.change(statusSelect, { target: { value: "in-progress" } });
+    save();
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    // The rejection is about the dependency graph, not about completing the
+    // task, so the status the user picked is left alone.
+    expect(statusSelect.value).toBe("in-progress");
+  });
+
+  it("succeeds on retry once the offending dependency is removed", async () => {
+    const task = makeTask({ dependencies: ["t2"] });
+    const onSave = vi
+      .fn()
+      .mockRejectedValueOnce(
+        cycleError(
+          [
+            { id: "t1", title: "Task with a dependency" },
+            { id: "t2", title: "Second task" }
+          ],
+          "Cannot save cyclic task dependencies"
+        )
+      )
+      .mockResolvedValueOnce(undefined);
+    renderModal(task, onSave);
+
+    save();
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/These dependencies form a loop/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove dependency Second task" }));
+    save();
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(2));
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ dependencies: [] }));
+    // The previous conflict message is gone once the retry is accepted.
+    await waitFor(() => expect(screen.queryByText(/These dependencies form a loop/)).not.toBeInTheDocument());
+  });
+});

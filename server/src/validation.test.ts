@@ -98,13 +98,15 @@ describe("validateTaskFields", () => {
       expect(errors).toContainEqual({ field: "dependencies", message: "unknown dependency ids: ghost" });
     });
 
-    it("rejects a task depending on itself", () => {
+    it("leaves a task depending on itself to the cycle check instead of reporting an unknown id", () => {
+      // "t1" exists, so it is not a dangling reference; a self-reference is a
+      // cycle and is reported as a 409 by the update route (see
+      // taskDependencyGraph), not as a 400 here.
       const errors = validateTaskFields(validTask({ dependencies: ["t1"] }), {
         users: baseUsers,
-        tasks: baseTasks,
-        taskId: "t1"
+        tasks: baseTasks
       });
-      expect(errors).toContainEqual({ field: "dependencies", message: "unknown dependency ids: t1" });
+      expect(errors).toEqual([]);
     });
 
     it("rejects a non-array-of-strings dependencies value", () => {

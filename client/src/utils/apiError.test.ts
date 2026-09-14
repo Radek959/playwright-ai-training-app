@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ApiError, toApiError } from "./apiError";
+import { ApiError, formatDependencyCycle, toApiError } from "./apiError";
 
 function jsonResponse(body: unknown, status = 400): Response {
   return new Response(JSON.stringify(body), { status });
@@ -127,5 +127,66 @@ describe("toApiError", () => {
     expect(err.details).toEqual([]);
     expect(err.blockingDependencies).toEqual([]);
     expect(err.conflictingTasks).toEqual([]);
+  });
+
+  it("parses a cyclic-dependency 409 and names the tasks in the message", async () => {
+    const res = jsonResponse(
+      {
+        error: "Cannot save cyclic task dependencies",
+        dependencyCycle: [
+          { id: "a", title: "Task A" },
+          { id: "b", title: "Task B" }
+        ]
+      },
+      409
+    );
+
+    const err = await toApiError(res, "fallback");
+
+    expect(err.dependencyCycle).toEqual([
+      { id: "a", title: "Task A" },
+      { id: "b", title: "Task B" }
+    ]);
+    expect(err.message).toBe("Cannot save cyclic task dependencies: Task A → Task B → Task A");
+  });
+
+  it("ignores malformed dependencyCycle entries", async () => {
+    const res = jsonResponse(
+      { error: "Cannot save cyclic task dependencies", dependencyCycle: [{ id: 1 }, "nope"] },
+      409
+    );
+
+    const err = await toApiError(res, "fallback");
+
+    expect(err.dependencyCycle).toEqual([]);
+    expect(err.message).toBe("Cannot save cyclic task dependencies");
+  });
+
+  it("leaves dependencyCycle empty for errors that are not dependency cycles", async () => {
+    const res = jsonResponse({ error: "not found" }, 404);
+
+    const err = await toApiError(res, "fallback");
+
+    expect(err.dependencyCycle).toEqual([]);
+  });
+});
+
+describe("formatDependencyCycle", () => {
+  it("renders a self-dependency as the task pointing at itself", () => {
+    expect(formatDependencyCycle([{ id: "a", title: "Task A" }])).toBe("Task A → Task A");
+  });
+
+  it("renders a multi-task cycle as a closed chain", () => {
+    expect(
+      formatDependencyCycle([
+        { id: "a", title: "Task A" },
+        { id: "b", title: "Task B" },
+        { id: "c", title: "Task C" }
+      ])
+    ).toBe("Task A → Task B → Task C → Task A");
+  });
+
+  it("renders an empty cycle as an empty string", () => {
+    expect(formatDependencyCycle([])).toBe("");
   });
 });

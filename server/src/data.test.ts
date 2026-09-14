@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { tasks, users } from "./data.js";
 import { validateTaskFields, validateUserFields } from "./validation.js";
+import { findDependencyCycle } from "./taskDependencyGraph.js";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -24,8 +25,14 @@ describe("seed data", () => {
   it("passes the same field validation the API applies on create/update", () => {
     for (const task of tasks) {
       const { id: _id, coverImage: _coverImage, ...candidate } = task;
-      const errors = validateTaskFields(candidate, { users, tasks, taskId: task.id });
+      const errors = validateTaskFields(candidate, { users, tasks });
       expect(errors, `task ${task.id} (${task.title}) failed validation: ${JSON.stringify(errors)}`).toEqual([]);
+    }
+  });
+
+  it("seeds an acyclic dependency graph", () => {
+    for (const task of tasks) {
+      expect(findDependencyCycle(tasks, task.id), `task ${task.id} (${task.title}) is part of a dependency cycle`).toBeNull();
     }
   });
 

@@ -24,6 +24,13 @@ export type ApprovalBlocker = { status: ApprovalStatusValue; approver?: string }
 export type CurrentApproval = { status: "approved" | "rejected"; comment?: string; decidedAt?: string };
 
 /**
+ * One task on a rejected dependency cycle (PUT /api/tasks/:id, 409). The
+ * entries are in traversal order and the last one depends back on the first,
+ * so a single-entry cycle means the task was made to depend on itself.
+ */
+export type DependencyCycleTask = { id: string; title: string };
+
+/**
  * Error thrown for a failed API response. Carries the structured
  * `details[]` the server returns for validation failures (each with a
  * `field` and `message`) alongside a human-readable summary message, so
@@ -37,7 +44,9 @@ export type CurrentApproval = { status: "approved" | "rejected"; comment?: strin
  * the 409 the approval-completion gate returns, so callers can show who
  * still needs to decide instead of only the summary message.
  * `currentApproval` is populated for the 409 a repeated/conflicting
- * approval decision returns.
+ * approval decision returns. `dependencyCycle` is populated for the 409 a
+ * cyclic dependency graph returns, so callers can name the tasks forming the
+ * cycle instead of only showing the summary message.
  */
 export class ApiError extends Error {
   details: ApiFieldError[];
@@ -45,6 +54,7 @@ export class ApiError extends Error {
   conflictingTasks: ConflictingTask[];
   approvalBlocker?: ApprovalBlocker;
   currentApproval?: CurrentApproval;
+  dependencyCycle: DependencyCycleTask[];
 
   constructor(
     message: string,
@@ -52,7 +62,8 @@ export class ApiError extends Error {
     blockingDependencies: BlockingDependency[] = [],
     conflictingTasks: ConflictingTask[] = [],
     approvalBlocker?: ApprovalBlocker,
-    currentApproval?: CurrentApproval
+    currentApproval?: CurrentApproval,
+    dependencyCycle: DependencyCycleTask[] = []
   ) {
     super(message);
     this.name = "ApiError";
@@ -61,7 +72,18 @@ export class ApiError extends Error {
     this.conflictingTasks = conflictingTasks;
     this.approvalBlocker = approvalBlocker;
     this.currentApproval = currentApproval;
+    this.dependencyCycle = dependencyCycle;
   }
+}
+
+/**
+ * Renders a dependency cycle as the chain a reader can follow, repeating the
+ * first task at the end so the loop is visible: "A → B → A". A task depending
+ * on itself renders as "A → A".
+ */
+export function formatDependencyCycle(cycle: DependencyCycleTask[]): string {
+  if (cycle.length === 0) return "";
+  return [...cycle, cycle[0]].map((task) => task.title).join(" → ");
 }
 
 function isFieldError(value: unknown): value is ApiFieldError {
@@ -102,6 +124,12 @@ function isApprovalBlocker(value: unknown): value is ApprovalBlocker {
   );
 }
 
+function isDependencyCycleTask(value: unknown): value is DependencyCycleTask {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.id === "string" && typeof candidate.title === "string";
+}
+
 function isCurrentApproval(value: unknown): value is CurrentApproval {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Record<string, unknown>;
@@ -129,6 +157,9 @@ export async function toApiError(res: Response, fallback: string): Promise<ApiEr
       : [];
     const approvalBlocker = isApprovalBlocker(data?.approvalBlocker) ? data.approvalBlocker : undefined;
     const currentApproval = isCurrentApproval(data?.currentApproval) ? data.currentApproval : undefined;
+    const dependencyCycle = Array.isArray(data?.dependencyCycle)
+      ? data.dependencyCycle.filter(isDependencyCycleTask)
+      : [];
     const baseMessage =
       details.length > 0
         ? details.map((d: ApiFieldError) => d.message).join("; ")
@@ -140,8 +171,18 @@ export async function toApiError(res: Response, fallback: string): Promise<ApiEr
         ? `${baseMessage}: ${blockingDependencies.map((d: BlockingDependency) => `${d.title} (${d.status})`).join(", ")}`
         : approvalBlocker
         ? `${baseMessage}: ${approvalBlocker.status}${approvalBlocker.approver ? ` (approver: ${approvalBlocker.approver})` : ""}`
+        : dependencyCycle.length > 0
+        ? `${baseMessage}: ${formatDependencyCycle(dependencyCycle)}`
         : baseMessage;
-    return new ApiError(message, details, blockingDependencies, conflictingTasks, approvalBlocker, currentApproval);
+    return new ApiError(
+      message,
+      details,
+      blockingDependencies,
+      conflictingTasks,
+      approvalBlocker,
+      currentApproval,
+      dependencyCycle
+    );
   } catch {
     return new ApiError(fallback, []);
   }

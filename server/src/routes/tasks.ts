@@ -20,6 +20,7 @@ import {
   resolveCompletedAt,
   significantFieldsChanged
 } from "../taskLifecycle.js";
+import { findDependencyCycle } from "../taskDependencyGraph.js";
 import { buildComment, removeCommentsForTask, sortComments } from "../commentLifecycle.js";
 import { activities } from "../data.js";
 import {
@@ -153,9 +154,26 @@ tasksRouter.put("/:id", (req, res) => {
   }
   const merged = updateResult.merged;
 
-  const errors = validateTaskFields(merged, { users, tasks, taskId: existing.id });
+  const errors = validateTaskFields(merged, { users, tasks });
   if (errors.length > 0) {
     return res.status(400).json({ error: "Validation failed", details: errors });
+  }
+
+  // Checked against the graph as it *would* be once this patch is saved: the
+  // stored tasks with the edited one swapped for the merged result. Runs
+  // before anything is written, so a rejected request leaves the task — and
+  // the activity log — completely untouched.
+  const cycle = findDependencyCycle(
+    tasks.map((t) => (t.id === existing.id ? { id: t.id, dependencies: merged.dependencies as string[] | undefined } : t)),
+    existing.id
+  );
+  if (cycle) {
+    const titleOf = (id: string) =>
+      id === existing.id ? (merged.title as string).trim() : (tasks.find((t) => t.id === id)?.title ?? id);
+    return res.status(409).json({
+      error: "Cannot save cyclic task dependencies",
+      dependencyCycle: cycle.map((id) => ({ id, title: titleOf(id) }))
+    });
   }
 
   let resultStatus = merged.status as Task["status"];
