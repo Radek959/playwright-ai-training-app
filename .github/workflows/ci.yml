@@ -27,6 +27,9 @@ jobs:
       - name: Verify lockfiles were not modified by install
         run: git diff --exit-code -- package-lock.json client/package-lock.json server/package-lock.json
 
+      - name: Security audit
+        run: npm run audit:all
+
       - name: Lint, typecheck, test and build
         run: npm run check
 
