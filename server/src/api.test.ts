@@ -249,14 +249,11 @@ describe("API Integration Tests", () => {
       });
     });
 
-    it("rejects a dependency on the task itself", async () => {
+    it("rejects a dependency on the task itself as a cycle", async () => {
       const task = tasks[0];
       const response = await request(app).put(`/api/tasks/${task.id}`).send({ dependencies: [task.id] });
-      expect(response.status).toBe(400);
-      expect(response.body.details).toContainEqual({
-        field: "dependencies",
-        message: `unknown dependency ids: ${task.id}`
-      });
+      expect(response.status).toBe(409);
+      expect(response.body.error).toBe("Cannot save cyclic task dependencies");
     });
 
     it("searches tasks", async () => {
@@ -443,6 +440,157 @@ describe("API Integration Tests", () => {
       expect(response.status).toBe(200);
       expect(response.body.status).toBe("done");
       expect(response.body.title).toBe("Completed task, renamed");
+    });
+  });
+
+  describe("Cyclic task dependency rule", () => {
+    const createTask = async (title: string, dependencies: string[] = []) => {
+      const response = await request(app).post("/api/tasks").send({ title, dependencies });
+      expect(response.status).toBe(201);
+      return response.body as Task;
+    };
+
+    it("returns 409 when a task is made to depend on itself", async () => {
+      const task = await createTask("Self dependent");
+
+      const response = await request(app).put(`/api/tasks/${task.id}`).send({ dependencies: [task.id] });
+
+      expect(response.status).toBe(409);
+      expect(response.body).toEqual({
+        error: "Cannot save cyclic task dependencies",
+        dependencyCycle: [{ id: task.id, title: "Self dependent" }]
+      });
+    });
+
+    it("returns 409 for a two-task cycle", async () => {
+      const a = await createTask("Cycle A");
+      const b = await createTask("Cycle B", [a.id]);
+
+      const response = await request(app).put(`/api/tasks/${a.id}`).send({ dependencies: [b.id] });
+
+      expect(response.status).toBe(409);
+      expect(response.body.error).toBe("Cannot save cyclic task dependencies");
+      expect(response.body.dependencyCycle).toEqual([
+        { id: a.id, title: "Cycle A" },
+        { id: b.id, title: "Cycle B" }
+      ]);
+    });
+
+    it("returns 409 for an indirect three-task cycle", async () => {
+      const a = await createTask("Chain A");
+      const b = await createTask("Chain B", [a.id]);
+      const c = await createTask("Chain C", [b.id]);
+
+      const response = await request(app).put(`/api/tasks/${a.id}`).send({ dependencies: [c.id] });
+
+      expect(response.status).toBe(409);
+      expect(response.body.dependencyCycle).toEqual([
+        { id: a.id, title: "Chain A" },
+        { id: c.id, title: "Chain C" },
+        { id: b.id, title: "Chain B" }
+      ]);
+    });
+
+    it("returns 409 for an indirect four-task cycle", async () => {
+      const a = await createTask("Long A");
+      const b = await createTask("Long B", [a.id]);
+      const c = await createTask("Long C", [b.id]);
+      const d = await createTask("Long D", [c.id]);
+
+      const response = await request(app).put(`/api/tasks/${a.id}`).send({ dependencies: [d.id] });
+
+      expect(response.status).toBe(409);
+      expect(response.body.dependencyCycle.map((entry: { id: string }) => entry.id)).toEqual([
+        a.id,
+        d.id,
+        c.id,
+        b.id
+      ]);
+    });
+
+    it("reports the cycle with the title the patch is trying to save", async () => {
+      const a = await createTask("Old name");
+      const b = await createTask("Other", [a.id]);
+
+      const response = await request(app)
+        .put(`/api/tasks/${a.id}`)
+        .send({ title: "  New name  ", dependencies: [b.id] });
+
+      expect(response.status).toBe(409);
+      expect(response.body.dependencyCycle[0]).toEqual({ id: a.id, title: "New name" });
+    });
+
+    it("accepts a valid, acyclic dependency graph", async () => {
+      const base = await createTask("Base");
+      const middle = await createTask("Middle", [base.id]);
+      const top = await createTask("Top");
+
+      const response = await request(app).put(`/api/tasks/${top.id}`).send({ dependencies: [middle.id] });
+
+      expect(response.status).toBe(200);
+      expect(response.body.dependencies).toEqual([middle.id]);
+    });
+
+    it("accepts several tasks sharing the same dependency", async () => {
+      const shared = await createTask("Shared dependency");
+      const first = await createTask("First dependent", [shared.id]);
+      const second = await createTask("Second dependent");
+
+      const response = await request(app).put(`/api/tasks/${second.id}`).send({ dependencies: [shared.id, first.id] });
+
+      expect(response.status).toBe(200);
+      expect(response.body.dependencies).toEqual([shared.id, first.id]);
+    });
+
+    it("does not mutate the task in any way when a cycle is rejected", async () => {
+      const a = await createTask("Unchanged A");
+      const b = await createTask("Unchanged B", [a.id]);
+      const before = (await request(app).get(`/api/tasks/${a.id}`)).body;
+
+      const response = await request(app)
+        .put(`/api/tasks/${a.id}`)
+        .send({ title: "Renamed during rejected save", priority: "high", dependencies: [b.id] });
+
+      expect(response.status).toBe(409);
+      const after = (await request(app).get(`/api/tasks/${a.id}`)).body;
+      expect(after).toEqual(before);
+    });
+
+    it("does not record an activity entry for a rejected cyclic update", async () => {
+      const a = await createTask("Activity A");
+      const b = await createTask("Activity B", [a.id]);
+      const before = (await request(app).get(`/api/tasks/${a.id}/activity`)).body;
+
+      const response = await request(app).put(`/api/tasks/${a.id}`).send({ dependencies: [b.id] });
+      expect(response.status).toBe(409);
+
+      const after = (await request(app).get(`/api/tasks/${a.id}/activity`)).body;
+      expect(after).toEqual(before);
+    });
+
+    it("saves successfully once the cyclic dependency is replaced with a valid one", async () => {
+      const a = await createTask("Retry A");
+      const b = await createTask("Retry B", [a.id]);
+      const c = await createTask("Retry C");
+
+      const rejected = await request(app).put(`/api/tasks/${a.id}`).send({ dependencies: [b.id] });
+      expect(rejected.status).toBe(409);
+
+      const retry = await request(app).put(`/api/tasks/${a.id}`).send({ dependencies: [c.id] });
+      expect(retry.status).toBe(200);
+      expect(retry.body.dependencies).toEqual([c.id]);
+    });
+
+    it("still reports an unknown dependency id as a 400 rather than a cycle", async () => {
+      const task = await createTask("Known task");
+
+      const response = await request(app).put(`/api/tasks/${task.id}`).send({ dependencies: ["does-not-exist"] });
+
+      expect(response.status).toBe(400);
+      expect(response.body.details).toContainEqual({
+        field: "dependencies",
+        message: "unknown dependency ids: does-not-exist"
+      });
     });
   });
 

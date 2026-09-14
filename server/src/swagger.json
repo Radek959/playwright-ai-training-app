@@ -224,7 +224,7 @@
       },
       "put": {
         "summary": "Update task",
-        "description": "id is not an updatable field and any attempt to set it (or any other field outside TaskUpdateInput — including approvalStatus, approvalComment or approvalDecidedAt, which are never settable through this endpoint) returns 400. Whenever the resulting task (existing fields merged with the patch) has status 'done' — whether status is changing to 'done' now or the task was already 'done' and only 'dependencies' changed — every id in the resulting 'dependencies' must reference a task whose status is 'done', AND if the resulting task has 'requiresApproval: true' its approval process must be 'approved'; otherwise the request is rejected with 409 (see TaskCompletionBlockedResponse / TaskApprovalBlockedResponse) and the task is left completely unchanged. Approval workflow: if 'requiresApproval' flips from false to true, a new process starts at 'pending'; if it flips from true to false, all approval-process fields are cleared; if it stays true and the resulting task's approval process is currently 'approved' or 'rejected', a *significant* field actually changing value (title, description, priority, dueDate, assigneeId, taskType, severity, estimatedHours, tags, dependencies, or approver — status changes alone do not count) resets the process back to 'pending', clearing any comment/decidedAt. Automatic reopening: if the task being edited is already status 'done' with an 'approved' approval process, and this same request triggers that significant-field reset described above, the task is reopened atomically as part of this request — status is set to 'in-progress' and completedAt is cleared — instead of returning 409; the response is 200 with the full saved task (status 'in-progress', approvalStatus 'pending', completedAt absent). This reopening only happens on a genuine change to a significant field; a no-op resend or a status-only change never reopens the task, and any validation or dependency-conflict error still leaves the task completely unchanged. Use PUT /api/tasks/{id}/approval to move a pending process to approved/rejected.",
+        "description": "id is not an updatable field and any attempt to set it (or any other field outside TaskUpdateInput — including approvalStatus, approvalComment or approvalDecidedAt, which are never settable through this endpoint) returns 400. Whenever the resulting task (existing fields merged with the patch) has status 'done' — whether status is changing to 'done' now or the task was already 'done' and only 'dependencies' changed — every id in the resulting 'dependencies' must reference a task whose status is 'done', AND if the resulting task has 'requiresApproval: true' its approval process must be 'approved'; otherwise the request is rejected with 409 (see TaskCompletionBlockedResponse / TaskApprovalBlockedResponse) and the task is left completely unchanged. Approval workflow: if 'requiresApproval' flips from false to true, a new process starts at 'pending'; if it flips from true to false, all approval-process fields are cleared; if it stays true and the resulting task's approval process is currently 'approved' or 'rejected', a *significant* field actually changing value (title, description, priority, dueDate, assigneeId, taskType, severity, estimatedHours, tags, dependencies, or approver — status changes alone do not count) resets the process back to 'pending', clearing any comment/decidedAt. Automatic reopening: if the task being edited is already status 'done' with an 'approved' approval process, and this same request triggers that significant-field reset described above, the task is reopened atomically as part of this request — status is set to 'in-progress' and completedAt is cleared — instead of returning 409; the response is 200 with the full saved task (status 'in-progress', approvalStatus 'pending', completedAt absent). This reopening only happens on a genuine change to a significant field; a no-op resend or a status-only change never reopens the task, and any validation or dependency-conflict error still leaves the task completely unchanged. Dependency cycles: the resulting dependency graph (the stored tasks with this task's merged 'dependencies') must stay acyclic. A task depending on itself, or an indirect loop of any length (A -> B -> A, A -> B -> C -> A, ...), is rejected with 409 (see CyclicDependencyResponse) before anything is written, so the task is left completely unchanged and no activity entry is recorded. Several tasks sharing the same dependency is not a cycle and is accepted. Use PUT /api/tasks/{id}/approval to move a pending process to approved/rejected.",
         "parameters": [
           {
             "name": "id",
@@ -270,7 +270,7 @@
             "description": "Not found"
           },
           "409": {
-            "description": "Either the resulting status is 'done' but at least one direct dependency is not yet 'done' (TaskCompletionBlockedResponse), or the resulting status is 'done' but requiresApproval is true and not yet approved (TaskApprovalBlockedResponse)",
+            "description": "Either the resulting status is 'done' but at least one direct dependency is not yet 'done' (TaskCompletionBlockedResponse), or the resulting status is 'done' but requiresApproval is true and not yet approved (TaskApprovalBlockedResponse), or the resulting dependency graph contains a cycle (CyclicDependencyResponse)",
             "content": {
               "application/json": {
                 "schema": {
@@ -280,6 +280,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/TaskApprovalBlockedResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CyclicDependencyResponse"
                     }
                   ]
                 }
@@ -817,7 +820,7 @@
         "required": [
           "title"
         ],
-        "description": "Business rules: estimatedHours, when sent, must be a positive number; bug requires severity; research requires estimatedHours >= 1; high priority tasks with estimatedHours cannot exceed 24; requiresApproval=true requires approver; dependencies must reference existing tasks (never the task itself); status 'done' requires every direct dependency to already be 'done', and if requiresApproval is true, requires approvalStatus to be 'approved' — impossible on creation, since a brand-new approval process always starts 'pending' (see Task's Approval workflow description). approvalStatus/approvalComment/approvalDecidedAt are not accepted here; requiresApproval=true always starts the new task at approvalStatus 'pending'."
+        "description": "Business rules: estimatedHours, when sent, must be a positive number; bug requires severity; research requires estimatedHours >= 1; high priority tasks with estimatedHours cannot exceed 24; requiresApproval=true requires approver; dependencies must reference existing tasks (a brand-new task has no id yet, so it cannot reference itself; cycles are only reachable through PUT /api/tasks/{id}); status 'done' requires every direct dependency to already be 'done', and if requiresApproval is true, requires approvalStatus to be 'approved' — impossible on creation, since a brand-new approval process always starts 'pending' (see Task's Approval workflow description). approvalStatus/approvalComment/approvalDecidedAt are not accepted here; requiresApproval=true always starts the new task at approvalStatus 'pending'."
       },
       "TaskUpdateInput": {
         "type": "object",
@@ -913,7 +916,7 @@
           }
         },
         "additionalProperties": false,
-        "description": "Partial update. Only these fields may be sent; any other field (including id, and including approvalStatus/approvalComment/approvalDecidedAt) is rejected with 400 — approval-process fields can only be moved by PUT /api/tasks/:id/approval, or implicitly by this endpoint's start/reset/clear rules below. Fields marked nullable accept null to clear the stored value (required fields such as title/status/priority do not accept null); the array fields (tags, dependencies) are cleared by sending [] instead, since they do not accept null. Fields are merged with the existing task before the same business rules as TaskCreateInput are re-validated. Note what that does and does not require: the API never rejects a leftover conditional value, so a task may keep a severity while taskType is not 'bug', and keep an approver while requiresApproval is false — only the reverse is enforced (taskType 'bug' without a severity, or requiresApproval true without an approver, is rejected with 400). Clearing such leftovers is therefore a client choice, not part of the contract: the task edit form sends severity: null together with a taskType that moves away from 'bug', and approver: null together with requiresApproval: false, so the stored task matches what its form shows. If the resulting status is 'done', every direct dependency must already be 'done', and (if requiresApproval is true) approvalStatus must be 'approved'. See Task's Approval workflow description for how requiresApproval/approver changes start, reset or clear the approval process."
+        "description": "Partial update. Only these fields may be sent; any other field (including id, and including approvalStatus/approvalComment/approvalDecidedAt) is rejected with 400 — approval-process fields can only be moved by PUT /api/tasks/:id/approval, or implicitly by this endpoint's start/reset/clear rules below. Fields marked nullable accept null to clear the stored value (required fields such as title/status/priority do not accept null); the array fields (tags, dependencies) are cleared by sending [] instead, since they do not accept null. Fields are merged with the existing task before the same business rules as TaskCreateInput are re-validated. Note what that does and does not require: the API never rejects a leftover conditional value, so a task may keep a severity while taskType is not 'bug', and keep an approver while requiresApproval is false — only the reverse is enforced (taskType 'bug' without a severity, or requiresApproval true without an approver, is rejected with 400). Clearing such leftovers is therefore a client choice, not part of the contract: the task edit form sends severity: null together with a taskType that moves away from 'bug', and approver: null together with requiresApproval: false, so the stored task matches what its form shows. If the resulting status is 'done', every direct dependency must already be 'done', and (if requiresApproval is true) approvalStatus must be 'approved'. The resulting dependency graph must also stay acyclic: a self-reference or an indirect loop of any length is rejected with 409 (CyclicDependencyResponse), leaving the task unchanged. See Task's Approval workflow description for how requiresApproval/approver changes start, reset or clear the approval process."
       },
       "ValidationErrorResponse": {
         "type": "object",
@@ -1071,6 +1074,40 @@
         "required": [
           "error",
           "blockingDependencies"
+        ]
+      },
+      "CyclicDependencyResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "Cannot save cyclic task dependencies"
+            ]
+          },
+          "dependencyCycle": {
+            "type": "array",
+            "description": "The tasks forming the detected cycle, in traversal order: each entry depends on the next one and the last entry depends back on the first. A single entry means the task was made to depend on itself. Titles reflect the state the rejected request would have produced, so a title being renamed in the same request is reported under its new title.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title"
+              ]
+            }
+          }
+        },
+        "required": [
+          "error",
+          "dependencyCycle"
         ]
       },
       "Comment": {

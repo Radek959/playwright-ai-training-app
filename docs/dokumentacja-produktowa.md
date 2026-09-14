@@ -100,13 +100,20 @@ Sposób, w jaki `null` na tych polach jest obsługiwany, różni się jednak mi�
 
 ### 2.6 Zależności (`dependencies`) — czym są, a czym nie są
 
-- `dependencies` to tablica identyfikatorów innych zadań, walidowana wyłącznie pod kątem tego, że każdy identyfikator istnieje i nie jest identyfikatorem samego zadania.
+- `dependencies` to tablica identyfikatorów innych zadań, walidowana pod kątem tego, że każdy identyfikator istnieje (nieistniejący identyfikator to `400`), oraz — przy aktualizacji — że wynikowy graf zależności nie zawiera cyklu (patrz niżej).
 - **Reguła biznesowa ukończenia zadania**: zadania nie można oznaczyć jako `"done"`, dopóki wszystkie zadania wskazane w jego `dependencies` nie mają statusu `"done"`. Reguła jest egzekwowana zarówno przy tworzeniu (`POST /api/tasks`), jak i przy aktualizacji (`PUT /api/tasks/:id`) zadania — w tym drugim przypadku dotyczy każdej sytuacji, w której wynikowy (scalony) stan zadania ma status `"done"`: zarówno gdy status zmienia się na `"done"`, jak i wtedy, gdy zadanie pozostaje `"done"`, a zmienia się tylko jego lista `dependencies`.
   - Zadanie bez zależności (`dependencies: []` lub brak pola) może zostać ukończone bez żadnych dodatkowych warunków.
   - Sprawdzane są wyłącznie **bezpośrednie** zależności — zależności zależności nie są brane pod uwagę.
   - Jeśli wszystkie bezpośrednie zależności mają status `"done"`, operacja się powodzi tak jak dotychczas.
   - Jeśli przynajmniej jedna bezpośrednia zależność ma status inny niż `"done"`, żądanie jest odrzucane z kodem `409 Conflict` i ciałem postaci `{ "error": "Cannot complete task with incomplete dependencies", "blockingDependencies": [{ "id", "title", "status" }, ...] }`, gdzie `blockingDependencies` zawiera wyłącznie te bezpośrednie zależności, których status nie jest `"done"` (zależności już ukończone są pomijane). Zadanie w takim wypadku **nie** zostaje utworzone (przy `POST`) ani zmienione w żaden sposób — łącznie ze statusem i `completedAt` — (przy `PUT`).
   - Ta reguła i reguła zatwierdzania (sekcja 2.7) są od siebie niezależne i obie muszą być spełnione, żeby zadanie mogło mieć status `"done"`; jeśli obie są naruszone, zwracany jest błąd zależności (sprawdzany jako pierwszy).
+- **Reguła braku cykli**: `PUT /api/tasks/:id` sprawdza **wynikowy** graf zależności — czyli zapisane zadania, w których edytowane zadanie ma już scaloną listę `dependencies` z żądania — i odrzuca każdy cykl, zanim cokolwiek zostanie zapisane.
+  - Wykrywany jest zarówno cykl bezpośredni (zadanie wskazujące samo siebie: `A → A`), jak i cykle pośrednie dowolnej długości (`A → B → A`, `A → B → C → A`, ...).
+  - Kilka zadań wskazujących **tę samą** zależność (np. `A → C` i `B → C`) **nie** jest cyklem i jest akceptowane — tak samo jak dowolny inny graf bez pętli.
+  - Odrzucone żądanie zwraca `409 Conflict` z ciałem `{ "error": "Cannot save cyclic task dependencies", "dependencyCycle": [{ "id", "title" }, ...] }`. `dependencyCycle` wymienia zadania tworzące cykl w kolejności przejścia: każde kolejne zadanie jest zależnością poprzedniego, a ostatnie wskazuje z powrotem na pierwsze (jeden element oznacza zadanie wskazujące samo siebie). Tytuły odpowiadają stanowi, jaki dałoby odrzucone żądanie — zadanie zmieniające w tym samym żądaniu tytuł jest raportowane pod nowym tytułem.
+  - Zadanie **nie** jest przy tym zmieniane w żaden sposób (brak zapisów częściowych) i **nie** powstaje żaden wpis w historii aktywności (sekcja 12).
+  - Reguła dotyczy wyłącznie aktualizacji: nowo tworzone zadanie (`POST /api/tasks`) nie ma jeszcze identyfikatora, więc nie może znaleźć się w cyklu.
+  - Sprawdzenie cyklu wykonywane jest **przed** regułą ukończenia zadania i regułą zatwierdzania, więc przy jednoczesnym naruszeniu zwracany jest błąd cyklu.
 
 ### 2.7 Proces zatwierdzania (`requiresApproval` / `approver` / `approvalStatus`)
 
@@ -425,6 +432,7 @@ Modal edycji jest **jednym, wspólnym komponentem** używanym zarówno z listy z
 - Ustawienie `status` na `"done"` uruchamia tę samą automatyczną logikę `completedAt`, co przy każdej innej ścieżce aktualizacji (sekcja 2.3) — formularz sam nie wysyła `completedAt`.
 - Błędy walidacji z API są mapowane na konkretne pola formularza (czerwony komunikat pod danym polem); błędy dotyczące pól spoza formularza trafiają tylko do ogólnego komunikatu błędu.
 - Odrzucenie zmiany statusu na `"done"` z powodu nieukończonych zależności (`409`, sekcja 2.6) pokazuje komunikat z nazwami blokujących zadań, a pole `status` wraca do rzeczywistej, zapisanej wartości — modal nie prezentuje statusu, który nigdy nie został zapisany.
+- Odrzucenie zapisu z powodu cyklu zależności (`409`, sekcja 2.6) pokazuje komunikat przy selektorze zależności — wyjaśnia, że zależności tworzą pętlę, i wypisuje ją tytułami zadań (np. „Task A → Task B → Task A”; przy zadaniu wskazującym samo siebie — „A task cannot depend on itself”). Komunikat jest zwykłym tekstem oznaczonym `role="alert"`, więc nie zależy wyłącznie od koloru. Modal **pozostaje otwarty** ze wszystkimi wprowadzonymi wartościami (łącznie z odrzuconymi zależnościami) — nic nie zostało zapisane, więc formularz nie pokazuje odrzuconych danych jako zapisanych. Wystarczy usunąć jedną z zależności tworzących pętlę i ponowić „Save”, żeby zapis się powiódł. W odróżnieniu od konfliktu ukończenia zadania pole `status` **nie** jest cofane — odrzucenie dotyczy grafu zależności, a nie zmiany statusu.
 - Anulowanie edycji (przycisk „Cancel”, Escape, kliknięcie w tło) nie zmienia żadnych wyświetlanych danych.
 
 ### 7.3 API bezpośrednio

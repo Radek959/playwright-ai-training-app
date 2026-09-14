@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Dialog } from "./Dialog";
 import { TaskDependencyPicker, type DependencyOptionsState } from "./TaskDependencyPicker";
-import { ApiError, mapFieldErrors } from "../utils/apiError";
+import { ApiError, formatDependencyCycle, mapFieldErrors } from "../utils/apiError";
 import { APPROVERS } from "../utils/approvers";
 import {
   buildTaskUpdatePayload,
@@ -154,6 +154,16 @@ export function TaskEditModal({
     } catch (err) {
       if (err instanceof ApiError) {
         const { mapped } = mapFieldErrors(err.details, KNOWN_FIELDS);
+        // A cyclic graph comes back as a 409 without field-level details, so
+        // the explanation is pinned onto the dependency picker here. The
+        // entered values (including the rejected dependencies) are kept as
+        // they are so the user can remove the offending one and retry.
+        if (err.dependencyCycle.length > 0) {
+          mapped.dependencies =
+            err.dependencyCycle.length === 1
+              ? `A task cannot depend on itself: ${formatDependencyCycle(err.dependencyCycle)}. Remove that dependency and try again.`
+              : `These dependencies form a loop: ${formatDependencyCycle(err.dependencyCycle)}. Remove one of them and try again.`;
+        }
         setFieldErrors(mapped);
         // The API rejected the status change because of incomplete
         // dependencies, so the task's real status is still whatever it was

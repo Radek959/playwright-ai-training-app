@@ -87,7 +87,7 @@ export function buildTaskCreateCandidate(body: Record<string, unknown>): Record<
  */
 export function validateTaskFields(
   candidate: Record<string, unknown>,
-  context: { users: User[]; tasks: Task[]; taskId?: string }
+  context: { users: User[]; tasks: Task[] }
 ): ValidationError[] {
   const errors: ValidationError[] = [];
 
@@ -134,9 +134,11 @@ export function validateTaskFields(
     if (!isStringArray(candidate.dependencies)) {
       errors.push({ field: "dependencies", message: "dependencies must be an array of strings" });
     } else {
-      const invalidIds = candidate.dependencies.filter(
-        (id) => id === context.taskId || !context.tasks.some((t) => t.id === id)
-      );
+      // Only *unknown* ids are a validation error here. A task referencing
+      // itself is a real (if degenerate) cycle rather than a dangling
+      // reference, so it is left to the cycle check on the update route,
+      // which reports it as a 409 alongside every other cycle shape.
+      const invalidIds = candidate.dependencies.filter((id) => !context.tasks.some((t) => t.id === id));
       if (invalidIds.length > 0) {
         errors.push({ field: "dependencies", message: `unknown dependency ids: ${invalidIds.join(", ")}` });
       }
