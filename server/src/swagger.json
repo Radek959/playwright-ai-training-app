@@ -271,7 +271,7 @@
           "priority": { "type": "string", "enum": ["low", "medium", "high"] },
           "dueDate": { "type": "string", "description": "Any value parseable as a JavaScript Date, e.g. an ISO 8601 date ('2024-01-01') or date-time ('2024-01-01T00:00:00.000Z')." },
           "completedAt": { "type": "string", "format": "date-time", "description": "Optional. Only honored when status is 'done'; null is rejected." },
-          "assigneeId": { "type": "string", "description": "Must reference an existing user. Optional (Quick Add can omit it)." },
+          "assigneeId": { "type": "string", "description": "Optional: a task may be created unassigned (Quick Add and the creation wizard both allow it). When sent and non-empty, it must reference an existing user." },
           "taskType": { "type": "string", "enum": ["bug", "feature", "research"] },
           "estimatedHours": { "type": "number", "minimum": 0, "exclusiveMinimum": true, "description": "Must be a positive number (fractions such as 0.5 are accepted). Research tasks additionally require at least 1." },
           "tags": { "type": "array", "items": { "type": "string" } },
@@ -302,7 +302,7 @@
           "approver": { "type": "string", "nullable": true, "description": "Pass null to clear." }
         },
         "additionalProperties": false,
-        "description": "Partial update. Only these fields may be sent; any other field (including id) is rejected with 400. Fields marked nullable accept null to clear the stored value (required fields such as title/status/priority do not accept null); the array fields (tags, dependencies) are cleared by sending [] instead, since they do not accept null. Fields are merged with the existing task before the same business rules as TaskCreateInput are re-validated, so conditional values must be cleared together with what made them required: moving taskType away from 'bug' must send severity: null in the same request, and setting requiresApproval: false must send approver: null. Likewise, if the resulting status is 'done', every direct dependency must already be 'done'."
+        "description": "Partial update. Only these fields may be sent; any other field (including id) is rejected with 400. Fields marked nullable accept null to clear the stored value (required fields such as title/status/priority do not accept null); the array fields (tags, dependencies) are cleared by sending [] instead, since they do not accept null. Fields are merged with the existing task before the same business rules as TaskCreateInput are re-validated. Note what that does and does not require: the API never rejects a leftover conditional value, so a task may keep a severity while taskType is not 'bug', and keep an approver while requiresApproval is false — only the reverse is enforced (taskType 'bug' without a severity, or requiresApproval true without an approver, is rejected with 400). Clearing such leftovers is therefore a client choice, not part of the contract: the task edit form sends severity: null together with a taskType that moves away from 'bug', and approver: null together with requiresApproval: false, so the stored task matches what its form shows. Finally, if the resulting status is 'done', every direct dependency must already be 'done'."
       },
       "ValidationErrorResponse": {
         "type": "object",

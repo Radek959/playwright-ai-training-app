@@ -176,6 +176,41 @@ describe("API Integration Tests", () => {
       expect(accepted.body.taskType).toBe("feature");
     });
 
+    it("does not require conditional values to be cleared: a leftover severity/approver is accepted", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "A bug to reclassify", taskType: "bug", severity: "major", requiresApproval: true, approver: "manager-a" });
+      expect(created.status).toBe(201);
+
+      // Changing the type alone — without severity: null — is accepted, and
+      // the severity simply stays on the (now non-bug) task.
+      const retyped = await request(app).put(`/api/tasks/${created.body.id}`).send({ taskType: "feature" });
+      expect(retyped.status).toBe(200);
+      expect(retyped.body.taskType).toBe("feature");
+      expect(retyped.body.severity).toBe("major");
+
+      // Likewise, turning approval off alone — without approver: null — is
+      // accepted, and the approver stays stored.
+      const unapproved = await request(app).put(`/api/tasks/${created.body.id}`).send({ requiresApproval: false });
+      expect(unapproved.status).toBe(200);
+      expect(unapproved.body.requiresApproval).toBe(false);
+      expect(unapproved.body.approver).toBe("manager-a");
+
+      // And such a task can still be created directly.
+      const createdLoose = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Feature with a severity", taskType: "feature", severity: "minor", requiresApproval: false, approver: "manager-b" });
+      expect(createdLoose.status).toBe(201);
+      expect(createdLoose.body.severity).toBe("minor");
+      expect(createdLoose.body.approver).toBe("manager-b");
+    });
+
+    it("creates a task with no assigneeId (an unassigned task is valid)", async () => {
+      const response = await request(app).post("/api/tasks").send({ title: "Nobody owns this yet" });
+      expect(response.status).toBe(201);
+      expect(response.body.assigneeId).toBeUndefined();
+    });
+
     it("accepts a fractional positive estimatedHours and rejects zero or negative values", async () => {
       const accepted = await request(app)
         .post("/api/tasks")

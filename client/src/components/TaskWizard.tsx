@@ -38,7 +38,9 @@ const STEP_LABELS: Record<WizardStep, string> = {
 // never drift apart from each other or from the API contract.
 const STEP_FIELDS: Record<1 | 2, TaskFormField[]> = {
   1: ["title", "priority", "taskType"],
-  2: ["assigneeId", "estimatedHours", "severity", "approver", "dependencies"]
+  // assigneeId is not listed: it is optional (see validateTaskForm), so this
+  // step can never produce an error for it.
+  2: ["estimatedHours", "severity", "approver", "dependencies"]
 };
 
 export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props) {
@@ -229,30 +231,24 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
 
             <div>
               <label htmlFor="task-assignee-select" className="block text-sm font-semibold mb-1">
-                Assign to *
+                Assign to
               </label>
+              {/* Optional, exactly like the API contract: a task may be
+                  created unassigned and assigned later. */}
               <select
                 id="task-assignee-select"
                 data-testid="task-assignee-select"
                 className="w-full border rounded px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
                 value={values.assigneeId}
                 onChange={(e) => setValue("assigneeId", e.target.value)}
-                aria-invalid={Boolean(errors.assigneeId)}
-                aria-describedby={errors.assigneeId ? errorId("assigneeId") : undefined}
-                required
               >
-                <option value="">Choose a user...</option>
+                <option value="">-- unassigned --</option>
                 {users.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.name}
                   </option>
                 ))}
               </select>
-              {errors.assigneeId && (
-                <p id={errorId("assigneeId")} className="text-red-600 text-sm mt-1" role="alert">
-                  {errors.assigneeId}
-                </p>
-              )}
             </div>
 
             <div>
