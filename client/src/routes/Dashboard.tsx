@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAppError } from "../context/useAppError";
 import { StatCard } from "../components/StatCard";
 import { UserAvatar } from "../components/UserAvatar";
 import { isTaskOverdue } from "../utils/taskDueDate";
 import { effectiveAvatar } from "../utils/avatar";
+import { isAbortError, useLatestRequest } from "../hooks/useLatestRequest";
 import type { Task, User } from "../types";
 
 // Stable empty-array references so a "not ready yet" fallback never causes
@@ -38,44 +39,44 @@ export default function Dashboard() {
   const { setError, clearError } = useAppError();
   const [tasksState, setTasksState] = useState<FetchState<Task[]>>({ status: "loading" });
   const [usersState, setUsersState] = useState<FetchState<User[]>>({ status: "loading" });
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
+  // Guards against an older in-flight request's response overwriting a newer
+  // one's result (React.StrictMode's double effect invocation in dev, a fast
+  // Retry click, etc.) - see useLatestRequest for details. A separate tracked
+  // request per section so tasks and users can race independently.
+  const beginTasksRequest = useLatestRequest();
+  const beginUsersRequest = useLatestRequest();
 
   const loadTasks = useCallback(async () => {
     setTasksState({ status: "loading" });
+    const { signal, isCurrent } = beginTasksRequest();
     try {
-      const res = await fetch("/api/tasks");
+      const res = await fetch("/api/tasks", { signal });
       if (!res.ok) throw new Error(`Tasks HTTP ${res.status}`);
       const data = await res.json();
       if (!Array.isArray(data)) throw new Error("Unexpected tasks payload");
-      if (mountedRef.current) setTasksState({ status: "ready", data: data.map(normalizeTask) });
+      if (!isCurrent()) return;
+      setTasksState({ status: "ready", data: data.map(normalizeTask) });
     } catch (err) {
-      if (mountedRef.current) {
-        setTasksState({ status: "error", message: err instanceof Error ? err.message : "Failed to load tasks" });
-      }
+      if (isAbortError(err) || !isCurrent()) return;
+      setTasksState({ status: "error", message: err instanceof Error ? err.message : "Failed to load tasks" });
     }
-  }, []);
+  }, [beginTasksRequest]);
 
   const loadUsers = useCallback(async () => {
     setUsersState({ status: "loading" });
+    const { signal, isCurrent } = beginUsersRequest();
     try {
-      const res = await fetch("/api/users");
+      const res = await fetch("/api/users", { signal });
       if (!res.ok) throw new Error(`Users HTTP ${res.status}`);
       const data = await res.json();
       if (!Array.isArray(data)) throw new Error("Unexpected users payload");
-      if (mountedRef.current) setUsersState({ status: "ready", data });
+      if (!isCurrent()) return;
+      setUsersState({ status: "ready", data });
     } catch (err) {
-      if (mountedRef.current) {
-        setUsersState({ status: "error", message: err instanceof Error ? err.message : "Failed to load users" });
-      }
+      if (isAbortError(err) || !isCurrent()) return;
+      setUsersState({ status: "error", message: err instanceof Error ? err.message : "Failed to load users" });
     }
-  }, []);
+  }, [beginUsersRequest]);
 
   useEffect(() => {
     loadTasks();

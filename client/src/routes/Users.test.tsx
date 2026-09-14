@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Link, MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import Users from "./Users";
@@ -20,6 +21,22 @@ function renderComponent(initialEntries: { pathname: string; state?: unknown }[]
         </Routes>
       </MemoryRouter>
     </AppErrorProvider>
+  );
+}
+
+function renderComponentInStrictMode(
+  initialEntries: { pathname: string; state?: unknown }[] = [{ pathname: "/users" }]
+) {
+  return render(
+    <StrictMode>
+      <AppErrorProvider>
+        <MemoryRouter initialEntries={initialEntries}>
+          <Routes>
+            <Route path="/users" element={<Users />} />
+          </Routes>
+        </MemoryRouter>
+      </AppErrorProvider>
+    </StrictMode>
   );
 }
 
@@ -177,5 +194,61 @@ describe("Users list", () => {
 
     await waitFor(() => expect(screen.getAllByText("Alice Johnson").length).toBeGreaterThan(0));
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+});
+
+describe("Users list stale response protection", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+  });
+
+  it("in React.StrictMode, only the latest of the double-invoked initial requests ends up reflected in the UI", async () => {
+    const responses: { resolve: (value: Response) => void }[] = [];
+    fetchSpy.mockImplementation(() => {
+      return new Promise<Response>((resolve) => {
+        responses.push({ resolve });
+      });
+    });
+
+    renderComponentInStrictMode();
+
+    await waitFor(() => expect(responses.length).toBeGreaterThanOrEqual(2));
+
+    const olderUsers = [{ id: "old1", name: "Old User", email: "old@example.com", role: "viewer" }];
+    const newerUsersList = [
+      { id: "new1", name: "New User One", email: "new1@example.com", role: "admin" },
+      { id: "new2", name: "New User Two", email: "new2@example.com", role: "editor" }
+    ];
+
+    // Resolve the later-started request first, then the earlier one late.
+    responses[responses.length - 1].resolve(new Response(JSON.stringify(newerUsersList)));
+    await waitFor(() => expect(screen.getAllByText("New User One").length).toBeGreaterThan(0));
+
+    responses[0].resolve(new Response(JSON.stringify(olderUsers)));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(screen.queryByText("Old User")).not.toBeInTheDocument();
+    expect(screen.getAllByText("New User One").length).toBeGreaterThan(0);
+  });
+
+  it("in React.StrictMode, an aborted duplicate request never surfaces as an error", async () => {
+    fetchSpy.mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+      return new Promise<Response>((resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject(new DOMException("Aborted", "AbortError"));
+        });
+        if (!init?.signal?.aborted) {
+          setTimeout(() => {
+            if (!init?.signal?.aborted) resolve(new Response(JSON.stringify(mockUsers)));
+          }, 0);
+        }
+      });
+    });
+
+    renderComponentInStrictMode();
+
+    await waitFor(() => expect(screen.getAllByText("Alice Johnson").length).toBeGreaterThan(0));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

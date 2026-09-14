@@ -4,6 +4,7 @@ import { UserForm } from "../components/UserForm";
 import { UserAvatar } from "../components/UserAvatar";
 import { useAppError } from "../context/useAppError";
 import { effectiveAvatar } from "../utils/avatar";
+import { isAbortError, useLatestRequest } from "../hooks/useLatestRequest";
 import type { User } from "../types";
 
 type LocationState = { deletedUserName?: string } | null;
@@ -21,7 +22,12 @@ export default function Users() {
   const [usersState, setUsersState] = useState<UsersState>({ status: "loading" });
   const location = useLocation();
   const navigate = useNavigate();
-  const mountedRef = useRef(true);
+  // Guards against an older in-flight request's response overwriting a newer
+  // one's result (React.StrictMode's double effect invocation in dev, a fast
+  // Retry click, etc.) - see useLatestRequest for details. Aborting on
+  // unmount also means a request already in flight when the page unmounts
+  // never calls a state setter afterwards.
+  const beginUsersRequest = useLatestRequest();
   // Users created locally (via the form below) while a load/retry request is
   // still in flight. If that request's response lands after the creation, it
   // reflects a snapshot from before the creation and must not be allowed to
@@ -50,38 +56,30 @@ export default function Users() {
     }
   }, [location.pathname, location.search, location.hash, location.state, navigate]);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
   const loadUsers = useCallback(async () => {
     setUsersState({ status: "loading" });
+    const { signal, isCurrent } = beginUsersRequest();
     inFlightRef.current = true;
     pendingCreatedRef.current = [];
     try {
-      const res = await fetch("/api/users");
+      const res = await fetch("/api/users", { signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (!Array.isArray(data)) throw new Error("Unexpected payload");
-      if (mountedRef.current) {
-        const created = pendingCreatedRef.current;
-        const merged = created.length > 0 ? [...created.filter((u) => !data.some((d) => d.id === u.id)), ...data] : data;
-        setUsersState({ status: "ready", data: merged });
-        clearError();
-      }
+      if (!isCurrent()) return;
+      const created = pendingCreatedRef.current;
+      const merged = created.length > 0 ? [...created.filter((u) => !data.some((d) => d.id === u.id)), ...data] : data;
+      setUsersState({ status: "ready", data: merged });
+      clearError();
     } catch (err) {
-      if (mountedRef.current) {
-        const message = err instanceof Error ? err.message : "Failed to load users";
-        setUsersState({ status: "error", message });
-        setError(message);
-      }
+      if (isAbortError(err) || !isCurrent()) return;
+      const message = err instanceof Error ? err.message : "Failed to load users";
+      setUsersState({ status: "error", message });
+      setError(message);
     } finally {
-      inFlightRef.current = false;
+      if (isCurrent()) inFlightRef.current = false;
     }
-  }, [setError, clearError]);
+  }, [setError, clearError, beginUsersRequest]);
 
   useEffect(() => {
     loadUsers();

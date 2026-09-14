@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach, afterEach, MockInstance } from "vitest";
@@ -50,6 +51,18 @@ function renderDashboard() {
         <Dashboard />
       </MemoryRouter>
     </AppErrorProvider>
+  );
+}
+
+function renderDashboardInStrictMode() {
+  return render(
+    <StrictMode>
+      <AppErrorProvider>
+        <MemoryRouter>
+          <Dashboard />
+        </MemoryRouter>
+      </AppErrorProvider>
+    </StrictMode>
   );
 }
 
@@ -300,5 +313,80 @@ describe("Dashboard breakdown links", () => {
     const link = await screen.findByTestId("team-overview-user-u1");
     expect(link).toHaveAttribute("href", "/users/u1");
     expect(link.tagName).toBe("A");
+  });
+});
+
+describe("Dashboard stale response protection", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+  });
+
+  it("in React.StrictMode, only the latest of the double-invoked initial tasks requests ends up reflected in the UI", async () => {
+    const responses: { resolve: (value: Response) => void }[] = [];
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/users")) return jsonResponse(users);
+      if (url.includes("/api/tasks")) {
+        return new Promise<Response>((resolve) => {
+          responses.push({ resolve });
+        });
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    renderDashboardInStrictMode();
+
+    // React.StrictMode (dev only) mounts, cleans up, and re-mounts effects -
+    // so the tasks effect fires twice, producing two in-flight requests.
+    await waitFor(() => expect(responses.length).toBeGreaterThanOrEqual(2));
+
+    const olderTasks: Task[] = [{ id: "old1", title: "Stale", status: "todo", priority: "low" }];
+    const newerTasksList: Task[] = [
+      { id: "new1", title: "Fresh 1", status: "todo", priority: "low" },
+      { id: "new2", title: "Fresh 2", status: "in-progress", priority: "medium" },
+      { id: "new3", title: "Fresh 3", status: "done", priority: "high" }
+    ];
+
+    // Resolve the *later-started* request first, then the earlier one late,
+    // with different data - the classic out-of-order race.
+    responses[responses.length - 1].resolve(new Response(JSON.stringify(newerTasksList)));
+    await waitFor(() =>
+      expect(screen.getByRole("link", { name: "View all tasks" })).toHaveTextContent(String(newerTasksList.length))
+    );
+
+    responses[0].resolve(new Response(JSON.stringify(olderTasks)));
+    // Give the stale response's promise chain a chance to run.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const link = screen.getByRole("link", { name: "View all tasks" });
+    expect(link).toHaveTextContent(String(newerTasksList.length));
+    expect(link).not.toHaveTextContent(String(olderTasks.length));
+  });
+
+  it("in React.StrictMode, an aborted duplicate request never surfaces as an error", async () => {
+    fetchSpy.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/users")) return jsonResponse(users);
+      if (url.includes("/api/tasks")) {
+        return new Promise<Response>((resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+          // Only the still-current request actually resolves with data.
+          if (!init?.signal?.aborted) {
+            setTimeout(() => {
+              if (!init?.signal?.aborted) resolve(new Response(JSON.stringify(tasks)));
+            }, 0);
+          }
+        });
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    renderDashboardInStrictMode();
+
+    await waitFor(() => expect(screen.getByRole("link", { name: "View all tasks" })).toHaveTextContent(String(tasks.length)));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

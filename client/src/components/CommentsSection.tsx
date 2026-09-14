@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { toApiError } from "../utils/apiError";
 import { sortComments } from "../utils/comments";
+import { isAbortError, useLatestRequest } from "../hooks/useLatestRequest";
 import type { Comment, User } from "../types";
 
 type FetchState = "loading" | "success" | "error";
@@ -34,35 +35,48 @@ export function CommentsSection({ taskId }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  // Guards against an older in-flight request's response overwriting a newer
+  // one's result (e.g. React.StrictMode's double effect invocation in dev, a
+  // fast Retry click, or navigating to a different task before this task's
+  // comments have finished loading) - see useLatestRequest for details.
+  const beginCommentsRequest = useLatestRequest();
+  const beginUsersRequest = useLatestRequest();
+
   const loadComments = useCallback(async () => {
     setCommentsState("loading");
+    const { signal, isCurrent } = beginCommentsRequest();
     try {
-      const res = await fetch(`/api/tasks/${taskId}/comments`);
+      const res = await fetch(`/api/tasks/${taskId}/comments`, { signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (!Array.isArray(data)) throw new Error("Unexpected payload");
+      if (!isCurrent()) return;
       setComments(sortComments(data as Comment[]));
       setCommentsState("success");
     } catch (err) {
+      if (isAbortError(err) || !isCurrent()) return;
       console.warn("Failed to fetch comments", err);
       setCommentsState("error");
     }
-  }, [taskId]);
+  }, [taskId, beginCommentsRequest]);
 
   const loadUsers = useCallback(async () => {
     setUsersState("loading");
+    const { signal, isCurrent } = beginUsersRequest();
     try {
-      const res = await fetch("/api/users");
+      const res = await fetch("/api/users", { signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (!Array.isArray(data)) throw new Error("Unexpected payload");
+      if (!isCurrent()) return;
       setUsers(data as User[]);
       setUsersState("success");
     } catch (err) {
+      if (isAbortError(err) || !isCurrent()) return;
       console.warn("Failed to fetch users", err);
       setUsersState("error");
     }
-  }, []);
+  }, [beginUsersRequest]);
 
   useEffect(() => {
     loadComments();

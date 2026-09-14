@@ -1818,23 +1818,59 @@ describe("API Integration Tests", () => {
       expect(response.body).toEqual([]);
     });
 
-    it("returns sorted history (createdAt desc, then id desc)", async () => {
+    it("returns sorted history (createdAt desc, then insertion order desc)", async () => {
       const { activities } = await import("./data.js");
       activities.length = 0;
+      // Ids are intentionally out of alphabetical/insertion order (z-prefixed
+      // first, a-prefixed pushed later) so this test fails if sorting ever
+      // regresses to comparing activity ids instead of insertion order.
       activities.push({
-        id: "a1", taskId: "t1", type: "task_created", changes: [], createdAt: "2023-01-01T10:00:00Z"
+        id: "z-oldest", taskId: "t1", type: "task_created", changes: [], createdAt: "2023-01-01T10:00:00Z"
       });
       activities.push({
-        id: "a3", taskId: "t1", type: "task_updated", changes: [], createdAt: "2023-01-01T12:00:00Z"
+        id: "z-first-tied", taskId: "t1", type: "task_updated", changes: [], createdAt: "2023-01-01T12:00:00Z"
       });
       activities.push({
-        id: "a2", taskId: "t1", type: "task_updated", changes: [], createdAt: "2023-01-01T12:00:00Z"
+        id: "a-second-tied", taskId: "t1", type: "task_updated", changes: [], createdAt: "2023-01-01T12:00:00Z"
       });
 
       const response = await request(app).get("/api/tasks/t1/activity");
       expect(response.status).toBe(200);
       expect(response.body).toHaveLength(3);
-      expect(response.body.map((a: TaskActivity) => a.id)).toEqual(["a3", "a2", "a1"]);
+      // Same createdAt ("z-first-tied" vs "a-second-tied") is broken by
+      // insertion order: whichever was pushed (created) later is newer,
+      // regardless of how the ids compare lexicographically.
+      expect(response.body.map((a: TaskActivity) => a.id)).toEqual([
+        "a-second-tied",
+        "z-first-tied",
+        "z-oldest"
+      ]);
+    });
+
+    it("keeps stable, deterministic order across repeated requests when many activities share the same createdAt", async () => {
+      const { activities } = await import("./data.js");
+      activities.length = 0;
+      const tiedTimestamp = "2023-06-15T09:30:00.000Z";
+      const expectedIds: string[] = [];
+      for (let i = 0; i < 8; i++) {
+        const id = `tied-${i}`;
+        expectedIds.unshift(id); // later insertions should sort first
+        activities.push({
+          id,
+          taskId: "t1",
+          type: "task_updated",
+          changes: [],
+          createdAt: tiedTimestamp
+        });
+      }
+
+      // Run several times to prove the order is stable, not incidentally
+      // correct on a single request.
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const response = await request(app).get("/api/tasks/t1/activity");
+        expect(response.status).toBe(200);
+        expect(response.body.map((a: TaskActivity) => a.id)).toEqual(expectedIds);
+      }
     });
 
     it("creates task_created when a task is created", async () => {

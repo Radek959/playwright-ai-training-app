@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach, afterEach, MockInstance } from "vitest";
@@ -103,6 +104,23 @@ function renderTasks(initialEntries: string[] = ["/tasks"]) {
         </Routes>
       </MemoryRouter>
     </AppErrorProvider>
+  );
+}
+
+function renderTasksInStrictMode(initialEntries: string[] = ["/tasks"]) {
+  return render(
+    <StrictMode>
+      <AppErrorProvider>
+        <MemoryRouter initialEntries={initialEntries}>
+          <LocationProbe />
+          <ErrorProbe />
+          <NavControls />
+          <Routes>
+            <Route path="/tasks" element={<Tasks />} />
+          </Routes>
+        </MemoryRouter>
+      </AppErrorProvider>
+    </StrictMode>
   );
 }
 
@@ -780,9 +798,113 @@ describe("Tasks view analytics links", () => {
     mockFetch({ tasksResponse: jsonResponse({ not: "a list" }) });
     renderTasks(["/tasks?tab=analytics"]);
 
-    const link = await screen.findByTestId("analytics-link-all");
+    // A malformed (non-array) payload is treated as a failed fetch, so the
+    // Analytics tab must show its error state - never a stat tile with a
+    // fake "0" that looks like a real, successfully-loaded count.
+    const panel = within(screen.getByTestId("tab-content-analytics"));
+    const alert = await panel.findByRole("alert");
+    expect(alert).toHaveTextContent("Failed to load analytics");
+    expect(panel.queryByTestId("analytics-link-all")).not.toBeInTheDocument();
+  });
+});
+
+describe("Tasks view analytics load states", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function analyticsPanel() {
+    return within(screen.getByTestId("tab-content-analytics"));
+  }
+
+  it("shows a loading state and no stat numbers while tasks are still loading", () => {
+    mockFetch({ tasksResponse: new Promise(() => {}) }); // never resolves
+    renderTasks(["/tasks?tab=analytics"]);
+
+    expect(analyticsPanel().getByText(/loading/i)).toBeInTheDocument();
+    expect(analyticsPanel().queryByTestId("analytics-link-all")).not.toBeInTheDocument();
+    expect(analyticsPanel().queryByTestId("analytics-link-unassigned")).not.toBeInTheDocument();
+  });
+
+  it("shows an error with a working Retry button when the tasks fetch fails, and Retry recovers", async () => {
+    mockFetch({ tasksResponse: Promise.resolve(new Response("Server error", { status: 500 })) });
+    renderTasks(["/tasks?tab=analytics"]);
+
+    const alert = await analyticsPanel().findByRole("alert");
+    expect(alert).toHaveTextContent("Failed to load analytics");
+    expect(analyticsPanel().queryByTestId("analytics-link-all")).not.toBeInTheDocument();
+
+    mockFetch();
+    fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+
+    const link = await analyticsPanel().findByTestId("analytics-link-all");
+    expect(link).toHaveTextContent(String(tasks.length));
+    expect(analyticsPanel().queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows real (non-fake) zeros once an empty-but-successful task list loads", async () => {
+    mockFetch({ tasksResponse: jsonResponse([]) });
+    renderTasks(["/tasks?tab=analytics"]);
+
+    const link = await analyticsPanel().findByTestId("analytics-link-all");
     expect(link).toHaveTextContent("0");
-    expect(link).not.toHaveTextContent("NaN");
+    const unassigned = analyticsPanel().getByTestId("analytics-link-unassigned");
+    expect(unassigned).toHaveTextContent("0");
+  });
+
+  it("shows real numbers for a non-empty, successfully-loaded task list", async () => {
+    mockFetch();
+    renderTasks(["/tasks?tab=analytics"]);
+
+    const link = await analyticsPanel().findByTestId("analytics-link-all");
+    expect(link).toHaveTextContent(String(tasks.length));
+    const completed = analyticsPanel().getByTestId("analytics-link-completed");
+    expect(completed).toHaveTextContent(String(tasks.filter((t) => t.status === "done").length));
+  });
+
+  it("shows task-only stats plus a contained error in the team-member section when users fails", async () => {
+    mockFetch({ usersResponse: Promise.resolve(new Response("Server error", { status: 500 })) });
+    renderTasks(["/tasks?tab=analytics"]);
+
+    // The task-dependent stats render fine without user data.
+    const link = await analyticsPanel().findByTestId("analytics-link-all");
+    expect(link).toHaveTextContent(String(tasks.length));
+    // Unassigned only needs tasks, so it still shows a real count.
+    expect(analyticsPanel().getByTestId("analytics-link-unassigned")).toHaveTextContent(
+      String(tasks.filter((t) => !t.assigneeId).length)
+    );
+
+    // The user-dependent section shows its own contained error, without
+    // blanking the rest of the tab.
+    const alert = await analyticsPanel().findByRole("alert");
+    expect(alert).toHaveTextContent("Failed to load team members");
+    expect(analyticsPanel().queryByTestId("analytics-link-user-u1")).not.toBeInTheDocument();
+
+    mockFetch();
+    fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+    await analyticsPanel().findByTestId("analytics-link-user-u1");
+    expect(analyticsPanel().queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("never shows a fake 0 before the first successful tasks fetch completes", () => {
+    let resolveTasks!: (value: Response) => void;
+    mockFetch({ tasksResponse: new Promise<Response>((resolve) => (resolveTasks = resolve)) });
+    renderTasks(["/tasks?tab=analytics"]);
+
+    // Still loading: nothing that looks like a real stat is in the DOM yet.
+    expect(analyticsPanel().queryByTestId("analytics-link-all")).not.toBeInTheDocument();
+    expect(analyticsPanel().queryByText("0")).not.toBeInTheDocument();
+
+    // Resolving later with real data is fine; this test only asserts no
+    // fake zero was ever shown while the request was still in flight.
+    resolveTasks(new Response(JSON.stringify(tasks)));
   });
 });
 
@@ -1032,5 +1154,109 @@ describe("Tasks view load states", () => {
     unmount();
 
     expect(() => resolveTasks(new Response(JSON.stringify(tasks)))).not.toThrow();
+  });
+});
+
+describe("Tasks view stale response protection", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+  });
+
+  it("in React.StrictMode, only the latest of the double-invoked initial tasks requests ends up reflected in the Active tab and Analytics", async () => {
+    const responses: { resolve: (value: Response) => void }[] = [];
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/users")) return jsonResponse(users);
+      if (url.includes("/api/tasks")) {
+        return new Promise<Response>((resolve) => {
+          responses.push({ resolve });
+        });
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    renderTasksInStrictMode(["/tasks?tab=analytics"]);
+
+    await waitFor(() => expect(responses.length).toBeGreaterThanOrEqual(2));
+
+    const olderTasks: Task[] = [{ id: "old1", title: "Stale", status: "todo", priority: "low" }];
+    const newerTasksList: Task[] = [
+      { id: "new1", title: "Fresh 1", status: "todo", priority: "low" },
+      { id: "new2", title: "Fresh 2", status: "done", priority: "high" },
+      { id: "new3", title: "Fresh 3", status: "in-progress", priority: "medium" }
+    ];
+
+    // Resolve the later-started (newer) request first, then the earlier
+    // (now-stale) one late, with different data.
+    responses[responses.length - 1].resolve(new Response(JSON.stringify(newerTasksList)));
+    const analyticsPanel = within(screen.getByTestId("tab-content-analytics"));
+    await waitFor(() =>
+      expect(analyticsPanel.getByTestId("analytics-link-all")).toHaveTextContent(String(newerTasksList.length))
+    );
+
+    responses[0].resolve(new Response(JSON.stringify(olderTasks)));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(analyticsPanel.getByTestId("analytics-link-all")).toHaveTextContent(String(newerTasksList.length));
+    expect(analyticsPanel.queryByTestId("analytics-link-all")).not.toHaveTextContent(String(olderTasks.length));
+  });
+
+  it("in React.StrictMode, an aborted duplicate tasks request never surfaces as an error", async () => {
+    fetchSpy.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/users")) return jsonResponse(users);
+      if (url.includes("/api/tasks")) {
+        return new Promise<Response>((resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+          if (!init?.signal?.aborted) {
+            setTimeout(() => {
+              if (!init?.signal?.aborted) resolve(new Response(JSON.stringify(tasks)));
+            }, 0);
+          }
+        });
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    renderTasksInStrictMode();
+
+    await waitForActiveTabLoaded();
+    expect(errorProbeText()).toBe("");
+  });
+
+  it("in React.StrictMode, only the latest of the double-invoked initial users requests ends up reflected in the assignee filter and Analytics team section", async () => {
+    const userResponses: { resolve: (value: Response) => void }[] = [];
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/users")) {
+        return new Promise<Response>((resolve) => {
+          userResponses.push({ resolve });
+        });
+      }
+      if (url.includes("/api/tasks")) return jsonResponse(tasks);
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+
+    renderTasksInStrictMode(["/tasks?tab=analytics"]);
+    await waitFor(() => expect(userResponses.length).toBeGreaterThanOrEqual(2));
+
+    const olderUsers: User[] = [{ id: "old1", name: "Stale Person", email: "stale@example.com", role: "viewer" }];
+    const newerUsersList: User[] = [
+      { id: "u1", name: "Alice", email: "alice@example.com", role: "admin" },
+      { id: "u2", name: "Bob", email: "bob@example.com", role: "editor" }
+    ];
+
+    userResponses[userResponses.length - 1].resolve(new Response(JSON.stringify(newerUsersList)));
+    const analyticsPanel = within(screen.getByTestId("tab-content-analytics"));
+    await analyticsPanel.findByTestId("analytics-link-user-u1");
+
+    userResponses[0].resolve(new Response(JSON.stringify(olderUsers)));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(analyticsPanel.queryByText("Stale Person")).not.toBeInTheDocument();
+    expect(analyticsPanel.getByTestId("analytics-link-user-u1")).toBeInTheDocument();
   });
 });

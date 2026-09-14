@@ -10,6 +10,7 @@ import { TaskActivitySection } from "../components/TaskActivitySection";
 import type { DependencyOptionsState } from "../components/TaskDependencyPicker";
 import { formatDueDateUtc } from "../utils/taskDueDate";
 import { toApiError } from "../utils/apiError";
+import { isAbortError, useLatestRequest } from "../hooks/useLatestRequest";
 import type { Task, TaskUpdateInput, User } from "../types";
 
 /**
@@ -47,6 +48,13 @@ export function TaskDetails() {
   const [activityRefreshKey, setActivityRefreshKey] = useState(0);
   const { setError, clearError } = useAppError();
 
+  // Guards against an older in-flight request's response overwriting a newer
+  // one's result (e.g. React.StrictMode's double effect invocation in dev, a
+  // fast Retry click, or navigating from one task's page to another's before
+  // the first task's fetch has settled) - see useLatestRequest for details.
+  const beginTaskRequest = useLatestRequest();
+  const beginAllTasksRequest = useLatestRequest();
+
   /**
    * The full task list only powers the edit modal's dependency picker, so a
    * failure here must not break the read-only details view — but it is
@@ -55,31 +63,36 @@ export function TaskDetails() {
    */
   const loadAllTasks = useCallback(async () => {
     setAllTasksState("loading");
+    const { signal, isCurrent } = beginAllTasksRequest();
     try {
-      const tasksRes = await fetch("/api/tasks");
+      const tasksRes = await fetch("/api/tasks", { signal });
       if (!tasksRes.ok) throw new Error(`HTTP ${tasksRes.status}`);
       const tasksData = await tasksRes.json();
       if (!Array.isArray(tasksData)) throw new Error("Unexpected payload");
+      if (!isCurrent()) return;
       setAllTasks(tasksData as Task[]);
       setAllTasksState("success");
     } catch (err) {
+      if (isAbortError(err) || !isCurrent()) return;
       console.warn("Failed to fetch tasks", err);
       setAllTasks([]);
       setAllTasksState("error");
     }
-  }, []);
+  }, [beginAllTasksRequest]);
 
   const loadData = useCallback(async () => {
     if (!id) return;
+    const { signal, isCurrent } = beginTaskRequest();
     try {
       setLoading(true);
       setFetchError(null);
       setNotFound(false);
       clearError();
 
-      const taskRes = await fetch(`/api/tasks/${id}`);
+      const taskRes = await fetch(`/api/tasks/${id}`, { signal });
 
       if (taskRes.status === 404) {
+        if (!isCurrent()) return;
         setNotFound(true);
         return;
       }
@@ -89,30 +102,34 @@ export function TaskDetails() {
       }
 
       const taskData = await taskRes.json() as Task;
+      if (!isCurrent()) return;
       setTask(taskData);
 
       // Try fetching users, but don"t fail the whole page if it fails
       try {
-        const usersRes = await fetch("/api/users");
+        const usersRes = await fetch("/api/users", { signal });
         if (usersRes.ok) {
           const usersData = await usersRes.json() as User[];
-          setUsers(usersData);
+          if (isCurrent()) setUsers(usersData);
         }
       } catch (err) {
-        console.warn("Failed to fetch users", err);
+        if (!isAbortError(err)) console.warn("Failed to fetch users", err);
       }
 
       await loadAllTasks();
 
-      setDependencies(await fetchDependencyTasks(taskData.dependencies));
+      const deps = await fetchDependencyTasks(taskData.dependencies);
+      if (!isCurrent()) return;
+      setDependencies(deps);
     } catch (err) {
+      if (isAbortError(err) || !isCurrent()) return;
       const msg = err instanceof Error ? err.message : "Error loading task details";
       setFetchError(msg);
       setError(msg);
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [id, clearError, setError, loadAllTasks]);
+  }, [id, clearError, setError, loadAllTasks, beginTaskRequest]);
 
   useEffect(() => {
     loadData();
