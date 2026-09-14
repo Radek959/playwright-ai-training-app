@@ -5,7 +5,9 @@
     "version": "0.3.0"
   },
   "servers": [
-    { "url": "http://localhost:3001" }
+    {
+      "url": "http://localhost:3001"
+    }
   ],
   "paths": {
     "/api/tasks": {
@@ -16,7 +18,12 @@
             "description": "List of tasks",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Task" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Task"
+                  }
+                }
               }
             }
           }
@@ -29,7 +36,9 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/TaskCreateInput" }
+              "schema": {
+                "$ref": "#/components/schemas/TaskCreateInput"
+              }
             }
           }
         },
@@ -37,13 +46,21 @@
           "201": {
             "description": "Created task",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/Task" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
             }
           },
           "400": {
             "description": "Validation error",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/ValidationErrorResponse" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
             }
           },
           "409": {
@@ -52,8 +69,12 @@
               "application/json": {
                 "schema": {
                   "oneOf": [
-                    { "$ref": "#/components/schemas/TaskCompletionBlockedResponse" },
-                    { "$ref": "#/components/schemas/TaskApprovalBlockedResponse" }
+                    {
+                      "$ref": "#/components/schemas/TaskCompletionBlockedResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TaskApprovalBlockedResponse"
+                    }
                   ]
                 }
               }
@@ -67,23 +88,49 @@
         "summary": "Record an approval decision for a task",
         "description": "Moves a task's approval process from 'pending' to 'approved' or 'rejected'. There is no login in this app: this endpoint does not authenticate anyone as the approver — it only records that a decision was made on behalf of the task's `approver` value. Requires the task to have `requiresApproval: true` (409 otherwise). Idempotent: repeating the identical decision (same decision, same comment after trimming, empty treated as no comment) returns 200 without moving `approvalDecidedAt`. A *different* decision or comment against an already-decided (approved/rejected) task is rejected with 409 and reports the current decision; to change a decision, first edit the task with a significant field change (see TaskUpdateInput), which resets the process back to 'pending'.",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/ApprovalDecisionInput" } }
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDecisionInput"
+              }
+            }
           }
         },
         "responses": {
-          "200": { "description": "Updated task", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Task" } } } },
+          "200": {
+            "description": "Updated task",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
           "400": {
             "description": "Validation error (invalid decision, or comment present but not a string — including an explicit null, which is not part of the contract and is rejected the same as any other non-string value — or comment over 500 characters after trim)",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/ValidationErrorResponse" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
             }
           },
-          "404": { "description": "Not found" },
+          "404": {
+            "description": "Not found"
+          },
           "409": {
             "description": "Either the task does not require approval, or a different decision/comment was sent against an already-decided (approved/rejected) task",
             "content": {
@@ -92,10 +139,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "properties": { "error": { "type": "string", "enum": ["Task does not require approval"] } },
-                      "required": ["error"]
+                      "properties": {
+                        "error": {
+                          "type": "string",
+                          "enum": [
+                            "Task does not require approval"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ]
                     },
-                    { "$ref": "#/components/schemas/ApprovalDecisionConflictResponse" }
+                    {
+                      "$ref": "#/components/schemas/ApprovalDecisionConflictResponse"
+                    }
                   ]
                 }
               }
@@ -113,7 +171,9 @@
             "in": "query",
             "required": false,
             "description": "Search query. Fewer than 2 characters returns an empty array.",
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -121,7 +181,12 @@
             "description": "Matching tasks (max 10)",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Task" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Task"
+                  }
+                }
               }
             }
           }
@@ -132,42 +197,90 @@
       "get": {
         "summary": "Get a single task",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
-          "200": { "description": "Task", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Task" } } } },
-          "404": { "description": "Not found" }
+          "200": {
+            "description": "Task",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
         }
       },
       "put": {
         "summary": "Update task",
         "description": "id is not an updatable field and any attempt to set it (or any other field outside TaskUpdateInput — including approvalStatus, approvalComment or approvalDecidedAt, which are never settable through this endpoint) returns 400. Whenever the resulting task (existing fields merged with the patch) has status 'done' — whether status is changing to 'done' now or the task was already 'done' and only 'dependencies' changed — every id in the resulting 'dependencies' must reference a task whose status is 'done', AND if the resulting task has 'requiresApproval: true' its approval process must be 'approved'; otherwise the request is rejected with 409 (see TaskCompletionBlockedResponse / TaskApprovalBlockedResponse) and the task is left completely unchanged. Approval workflow: if 'requiresApproval' flips from false to true, a new process starts at 'pending'; if it flips from true to false, all approval-process fields are cleared; if it stays true and the resulting task's approval process is currently 'approved' or 'rejected', a *significant* field actually changing value (title, description, priority, dueDate, assigneeId, taskType, severity, estimatedHours, tags, dependencies, or approver — status changes alone do not count) resets the process back to 'pending', clearing any comment/decidedAt. Automatic reopening: if the task being edited is already status 'done' with an 'approved' approval process, and this same request triggers that significant-field reset described above, the task is reopened atomically as part of this request — status is set to 'in-progress' and completedAt is cleared — instead of returning 409; the response is 200 with the full saved task (status 'in-progress', approvalStatus 'pending', completedAt absent). This reopening only happens on a genuine change to a significant field; a no-op resend or a status-only change never reopens the task, and any validation or dependency-conflict error still leaves the task completely unchanged. Use PUT /api/tasks/{id}/approval to move a pending process to approved/rejected.",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/TaskUpdateInput" } }
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskUpdateInput"
+              }
+            }
           }
         },
         "responses": {
-          "200": { "description": "Updated task", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Task" } } } },
+          "200": {
+            "description": "Updated task",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
           "400": {
             "description": "Validation error",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/ValidationErrorResponse" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
             }
           },
-          "404": { "description": "Not found" },
+          "404": {
+            "description": "Not found"
+          },
           "409": {
             "description": "Either the resulting status is 'done' but at least one direct dependency is not yet 'done' (TaskCompletionBlockedResponse), or the resulting status is 'done' but requiresApproval is true and not yet approved (TaskApprovalBlockedResponse)",
             "content": {
               "application/json": {
                 "schema": {
                   "oneOf": [
-                    { "$ref": "#/components/schemas/TaskCompletionBlockedResponse" },
-                    { "$ref": "#/components/schemas/TaskApprovalBlockedResponse" }
+                    {
+                      "$ref": "#/components/schemas/TaskCompletionBlockedResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TaskApprovalBlockedResponse"
+                    }
                   ]
                 }
               }
@@ -179,11 +292,22 @@
         "summary": "Delete task",
         "description": "Deleting a task removes its ID from the dependencies of all remaining tasks, and deletes all of that task's comments.",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
-          "204": { "description": "Deleted" },
-          "404": { "description": "Not found" }
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found"
+          }
         }
       }
     },
@@ -192,44 +316,81 @@
         "summary": "List a task's comments",
         "description": "Comments are returned oldest to newest by 'createdAt'. Comments with an identical 'createdAt' are then ordered by 'id', so the order is always deterministic.",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "The task's comments, oldest first (empty array if it has none)",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Comment" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Comment"
+                  }
+                }
               }
             }
           },
-          "404": { "description": "Not found" }
+          "404": {
+            "description": "Not found"
+          }
         }
       },
       "post": {
         "summary": "Add a comment to a task",
         "description": "There is no login in this app: 'authorId' is picked explicitly from the existing user list by whoever submits the form, and the comment is recorded on that user's behalf — the endpoint never authenticates the caller as that user. Only 'authorId' and 'content' may be sent; 'id', 'taskId', 'authorName' and 'createdAt' are always server-controlled and, like any other unknown field, are rejected with 400 if present. 'content' is trimmed before storage; empty or whitespace-only content is rejected, as is content over 1000 characters after trimming.",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/CommentCreateInput" } }
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommentCreateInput"
+              }
+            }
           }
         },
         "responses": {
           "201": {
             "description": "Created comment",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Comment" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comment"
+                }
+              }
+            }
           },
           "400": {
             "description": "Validation error (missing/invalid authorId, authorId not referencing an existing user, missing/invalid/empty/too-long content, an unknown field, or a server-controlled field such as id/taskId/authorName/createdAt)",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/ValidationErrorResponse" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
             }
           },
-          "404": { "description": "Not found" }
+          "404": {
+            "description": "Not found"
+          }
         }
       }
     },
@@ -241,7 +402,12 @@
             "description": "List of users",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/User" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/User"
+                  }
+                }
               }
             }
           }
@@ -252,18 +418,32 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/UserInput" } }
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserInput"
+              }
+            }
           }
         },
         "responses": {
           "201": {
             "description": "Created user",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
           },
           "400": {
             "description": "Validation error",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/ValidationErrorResponse" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
             }
           }
         }
@@ -279,8 +459,17 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "status": { "type": "string", "enum": ["ok"] } },
-                  "required": ["status"]
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ]
                 }
               }
             }
@@ -292,18 +481,43 @@
       "get": {
         "summary": "Get a single user",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
-          "200": { "description": "User", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
+          "200": {
+            "description": "User",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "error": { "type": "string", "enum": ["User not found"] } },
-                  "required": ["error"]
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": [
+                        "User not found"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
                 }
               }
             }
@@ -314,18 +528,36 @@
         "summary": "Delete user",
         "description": "Deleting a user succeeds only if none of their assigned tasks has status 'todo' or 'in-progress'. On success, assigneeId is cleared on every remaining task that was assigned to this user (i.e. their completed tasks become unassigned). Comments this user authored are kept — including their 'authorName' snapshot — but their now-dangling 'authorId' is cleared to absent.",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
-          "204": { "description": "Deleted. assigneeId is cleared from all remaining (completed) tasks assigned to this user." },
+          "204": {
+            "description": "Deleted. assigneeId is cleared from all remaining (completed) tasks assigned to this user."
+          },
           "404": {
             "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "error": { "type": "string", "enum": ["User not found"] } },
-                  "required": ["error"]
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "enum": [
+                        "User not found"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
                 }
               }
             }
@@ -333,8 +565,46 @@
           "409": {
             "description": "User has active (non-done) tasks assigned and cannot be deleted",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/UserDeleteBlockedResponse" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserDeleteBlockedResponse"
+                }
+              }
             }
+          }
+        }
+      }
+    },
+    "/api/tasks/{id}/activity": {
+      "get": {
+        "summary": "Get task activity history",
+        "description": "Returns a history of successful final changes to the task (creation, updates, approval decisions). The history is stored in-memory, resets on server restart, and does not identify authenticated users. It is purely an audit of final operations recorded by the app. Events are returned sorted from newest to oldest.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of activities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskActivity"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found"
           }
         }
       }
@@ -345,72 +615,302 @@
       "Task": {
         "type": "object",
         "properties": {
-          "id": { "type": "string" },
-          "title": { "type": "string" },
-          "description": { "type": "string", "nullable": true },
-          "status": { "type": "string", "enum": ["todo", "in-progress", "done"] },
-          "priority": { "type": "string", "enum": ["low", "medium", "high"] },
-          "dueDate": { "type": "string", "nullable": true, "description": "ISO 8601 date or date-time, e.g. '2024-01-01' or '2024-01-01T00:00:00.000Z'." },
-          "completedAt": { "type": "string", "format": "date-time", "description": "Set automatically when status becomes done unless provided explicitly; cleared when status is not done." },
-          "assigneeId": { "type": "string", "nullable": true },
-          "coverImage": { "type": "string", "nullable": true },
-          "taskType": { "type": "string", "enum": ["bug", "feature", "research"], "nullable": true },
-          "estimatedHours": { "type": "number", "nullable": true },
-          "tags": { "type": "array", "items": { "type": "string" } },
-          "dependencies": { "type": "array", "items": { "type": "string" }, "description": "IDs of other tasks this task depends on. A task cannot have status 'done' while any of these directly referenced tasks is not itself 'done'." },
-          "severity": { "type": "string", "enum": ["critical", "major", "minor"], "nullable": true, "description": "Required when taskType is bug." },
-          "requiresApproval": { "type": "boolean" },
-          "approver": { "type": "string", "nullable": true, "description": "Required when requiresApproval is true. This app has no login: `approver` only names who a decision is recorded on behalf of, never an authenticated identity." },
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "todo",
+              "in-progress",
+              "done"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "dueDate": {
+            "type": "string",
+            "nullable": true,
+            "description": "ISO 8601 date or date-time, e.g. '2024-01-01' or '2024-01-01T00:00:00.000Z'."
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Set automatically when status becomes done unless provided explicitly; cleared when status is not done."
+          },
+          "assigneeId": {
+            "type": "string",
+            "nullable": true
+          },
+          "coverImage": {
+            "type": "string",
+            "nullable": true
+          },
+          "taskType": {
+            "type": "string",
+            "enum": [
+              "bug",
+              "feature",
+              "research"
+            ],
+            "nullable": true
+          },
+          "estimatedHours": {
+            "type": "number",
+            "nullable": true
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "IDs of other tasks this task depends on. A task cannot have status 'done' while any of these directly referenced tasks is not itself 'done'."
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "major",
+              "minor"
+            ],
+            "nullable": true,
+            "description": "Required when taskType is bug."
+          },
+          "requiresApproval": {
+            "type": "boolean"
+          },
+          "approver": {
+            "type": "string",
+            "nullable": true,
+            "description": "Required when requiresApproval is true. This app has no login: `approver` only names who a decision is recorded on behalf of, never an authenticated identity."
+          },
           "approvalStatus": {
             "type": "string",
-            "enum": ["pending", "approved", "rejected"],
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ],
             "nullable": true,
             "description": "Present only while requiresApproval is/was true. See the Approval workflow section below."
           },
-          "approvalComment": { "type": "string", "nullable": true, "description": "Optional, max 500 chars after trim. Only ever present alongside a terminal (approved/rejected) approvalStatus." },
-          "approvalDecidedAt": { "type": "string", "format": "date-time", "nullable": true, "description": "Only ever present alongside a terminal (approved/rejected) approvalStatus." }
+          "approvalComment": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional, max 500 chars after trim. Only ever present alongside a terminal (approved/rejected) approvalStatus."
+          },
+          "approvalDecidedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Only ever present alongside a terminal (approved/rejected) approvalStatus."
+          }
         },
-        "required": ["id", "title", "status", "priority"],
+        "required": [
+          "id",
+          "title",
+          "status",
+          "priority"
+        ],
         "description": "Approval workflow: requiresApproval/approver are given real meaning by an approvalStatus state machine (pending -> approved/rejected), set by POST /api/tasks, PUT /api/tasks/:id (start/reset/clear only) and PUT /api/tasks/:id/approval (the only way to move pending -> approved/rejected). There is still no login in this app: nothing here authenticates the named approver, it only records who a decision is made on behalf of. A task with requiresApproval: true cannot have status 'done' unless approvalStatus is 'approved' (see TaskApprovalBlockedResponse)."
       },
       "TaskCreateInput": {
         "type": "object",
         "properties": {
-          "title": { "type": "string", "minLength": 3 },
-          "description": { "type": "string" },
-          "status": { "type": "string", "enum": ["todo", "in-progress", "done"] },
-          "priority": { "type": "string", "enum": ["low", "medium", "high"] },
-          "dueDate": { "type": "string", "description": "Any value parseable as a JavaScript Date, e.g. an ISO 8601 date ('2024-01-01') or date-time ('2024-01-01T00:00:00.000Z')." },
-          "completedAt": { "type": "string", "format": "date-time", "description": "Optional. Only honored when status is 'done'; null is rejected." },
-          "assigneeId": { "type": "string", "description": "Optional: a task may be created unassigned (Quick Add and the creation wizard both allow it). When sent and non-empty, it must reference an existing user." },
-          "taskType": { "type": "string", "enum": ["bug", "feature", "research"] },
-          "estimatedHours": { "type": "number", "minimum": 0, "exclusiveMinimum": true, "description": "Must be a positive number (fractions such as 0.5 are accepted). Research tasks additionally require at least 1." },
-          "tags": { "type": "array", "items": { "type": "string" } },
-          "dependencies": { "type": "array", "items": { "type": "string" }, "description": "Must reference existing task IDs. If status is 'done', every referenced task must already be 'done' (see TaskCompletionBlockedResponse)." },
-          "severity": { "type": "string", "enum": ["critical", "major", "minor"] },
-          "requiresApproval": { "type": "boolean" },
-          "approver": { "type": "string" }
+          "title": {
+            "type": "string",
+            "minLength": 3
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "todo",
+              "in-progress",
+              "done"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "dueDate": {
+            "type": "string",
+            "description": "Any value parseable as a JavaScript Date, e.g. an ISO 8601 date ('2024-01-01') or date-time ('2024-01-01T00:00:00.000Z')."
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Optional. Only honored when status is 'done'; null is rejected."
+          },
+          "assigneeId": {
+            "type": "string",
+            "description": "Optional: a task may be created unassigned (Quick Add and the creation wizard both allow it). When sent and non-empty, it must reference an existing user."
+          },
+          "taskType": {
+            "type": "string",
+            "enum": [
+              "bug",
+              "feature",
+              "research"
+            ]
+          },
+          "estimatedHours": {
+            "type": "number",
+            "minimum": 0,
+            "exclusiveMinimum": true,
+            "description": "Must be a positive number (fractions such as 0.5 are accepted). Research tasks additionally require at least 1."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Must reference existing task IDs. If status is 'done', every referenced task must already be 'done' (see TaskCompletionBlockedResponse)."
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "major",
+              "minor"
+            ]
+          },
+          "requiresApproval": {
+            "type": "boolean"
+          },
+          "approver": {
+            "type": "string"
+          }
         },
-        "required": ["title"],
+        "required": [
+          "title"
+        ],
         "description": "Business rules: estimatedHours, when sent, must be a positive number; bug requires severity; research requires estimatedHours >= 1; high priority tasks with estimatedHours cannot exceed 24; requiresApproval=true requires approver; dependencies must reference existing tasks (never the task itself); status 'done' requires every direct dependency to already be 'done', and if requiresApproval is true, requires approvalStatus to be 'approved' — impossible on creation, since a brand-new approval process always starts 'pending' (see Task's Approval workflow description). approvalStatus/approvalComment/approvalDecidedAt are not accepted here; requiresApproval=true always starts the new task at approvalStatus 'pending'."
       },
       "TaskUpdateInput": {
         "type": "object",
         "properties": {
-          "title": { "type": "string", "minLength": 3 },
-          "description": { "type": "string", "nullable": true, "description": "Pass null to clear." },
-          "status": { "type": "string", "enum": ["todo", "in-progress", "done"] },
-          "priority": { "type": "string", "enum": ["low", "medium", "high"] },
-          "dueDate": { "type": "string", "nullable": true, "description": "Any value parseable as a JavaScript Date, e.g. an ISO 8601 date ('2024-01-01') or date-time ('2024-01-01T00:00:00.000Z'). Pass null to clear." },
-          "completedAt": { "type": "string", "format": "date-time", "description": "Derived from status; null is rejected. To clear it, set status away from 'done' instead." },
-          "assigneeId": { "type": "string", "nullable": true, "description": "Pass null to unassign." },
-          "taskType": { "type": "string", "enum": ["bug", "feature", "research"], "nullable": true, "description": "Pass null to clear." },
-          "estimatedHours": { "type": "number", "minimum": 0, "exclusiveMinimum": true, "nullable": true, "description": "Must be a positive number (fractions such as 0.5 are accepted); research tasks additionally require at least 1. Pass null to clear." },
-          "tags": { "type": "array", "items": { "type": "string" }, "description": "Send [] to clear; null is not accepted for array fields." },
-          "dependencies": { "type": "array", "items": { "type": "string" }, "description": "Send [] to clear; null is not accepted for array fields. If the resulting task's status is 'done', every referenced task must already be 'done' (see TaskCompletionBlockedResponse)." },
-          "severity": { "type": "string", "enum": ["critical", "major", "minor"], "nullable": true, "description": "Pass null to clear." },
-          "requiresApproval": { "type": "boolean" },
-          "approver": { "type": "string", "nullable": true, "description": "Pass null to clear." }
+          "title": {
+            "type": "string",
+            "minLength": 3
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Pass null to clear."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "todo",
+              "in-progress",
+              "done"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "dueDate": {
+            "type": "string",
+            "nullable": true,
+            "description": "Any value parseable as a JavaScript Date, e.g. an ISO 8601 date ('2024-01-01') or date-time ('2024-01-01T00:00:00.000Z'). Pass null to clear."
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Derived from status; null is rejected. To clear it, set status away from 'done' instead."
+          },
+          "assigneeId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Pass null to unassign."
+          },
+          "taskType": {
+            "type": "string",
+            "enum": [
+              "bug",
+              "feature",
+              "research"
+            ],
+            "nullable": true,
+            "description": "Pass null to clear."
+          },
+          "estimatedHours": {
+            "type": "number",
+            "minimum": 0,
+            "exclusiveMinimum": true,
+            "nullable": true,
+            "description": "Must be a positive number (fractions such as 0.5 are accepted); research tasks additionally require at least 1. Pass null to clear."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Send [] to clear; null is not accepted for array fields."
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Send [] to clear; null is not accepted for array fields. If the resulting task's status is 'done', every referenced task must already be 'done' (see TaskCompletionBlockedResponse)."
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "major",
+              "minor"
+            ],
+            "nullable": true,
+            "description": "Pass null to clear."
+          },
+          "requiresApproval": {
+            "type": "boolean"
+          },
+          "approver": {
+            "type": "string",
+            "nullable": true,
+            "description": "Pass null to clear."
+          }
         },
         "additionalProperties": false,
         "description": "Partial update. Only these fields may be sent; any other field (including id, and including approvalStatus/approvalComment/approvalDecidedAt) is rejected with 400 — approval-process fields can only be moved by PUT /api/tasks/:id/approval, or implicitly by this endpoint's start/reset/clear rules below. Fields marked nullable accept null to clear the stored value (required fields such as title/status/priority do not accept null); the array fields (tags, dependencies) are cleared by sending [] instead, since they do not accept null. Fields are merged with the existing task before the same business rules as TaskCreateInput are re-validated. Note what that does and does not require: the API never rejects a leftover conditional value, so a task may keep a severity while taskType is not 'bug', and keep an approver while requiresApproval is false — only the reverse is enforced (taskType 'bug' without a severity, or requiresApproval true without an approver, is rejected with 400). Clearing such leftovers is therefore a client choice, not part of the contract: the task edit form sends severity: null together with a taskType that moves away from 'bug', and approver: null together with requiresApproval: false, so the stored task matches what its form shows. If the resulting status is 'done', every direct dependency must already be 'done', and (if requiresApproval is true) approvalStatus must be 'approved'. See Task's Approval workflow description for how requiresApproval/approver changes start, reset or clear the approval process."
@@ -418,14 +918,20 @@
       "ValidationErrorResponse": {
         "type": "object",
         "properties": {
-          "error": { "type": "string" },
+          "error": {
+            "type": "string"
+          },
           "details": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
-                "field": { "type": "string" },
-                "message": { "type": "string" }
+                "field": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -434,129 +940,369 @@
       "ApprovalDecisionInput": {
         "type": "object",
         "properties": {
-          "decision": { "type": "string", "enum": ["approved", "rejected"] },
-          "comment": { "type": "string", "maxLength": 500, "description": "Optional. Trimmed before storage/comparison; empty or whitespace-only is treated as no comment. Not nullable: unlike the nullable fields on plain task updates, an explicit null here is not part of the contract and is rejected with 400, the same as any other non-string value." }
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "rejected"
+            ]
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Optional. Trimmed before storage/comparison; empty or whitespace-only is treated as no comment. Not nullable: unlike the nullable fields on plain task updates, an explicit null here is not part of the contract and is rejected with 400, the same as any other non-string value."
+          }
         },
-        "required": ["decision"],
+        "required": [
+          "decision"
+        ],
         "description": "Body for PUT /api/tasks/{id}/approval. There is no login in this app: the caller is never authenticated as the task's `approver` — this only records that a decision was made on their behalf."
       },
       "TaskApprovalBlockedResponse": {
         "type": "object",
         "properties": {
-          "error": { "type": "string", "enum": ["Cannot complete task without approval"] },
+          "error": {
+            "type": "string",
+            "enum": [
+              "Cannot complete task without approval"
+            ]
+          },
           "approvalBlocker": {
             "type": "object",
             "properties": {
-              "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
-              "approver": { "type": "string", "description": "Who the still-needed decision is recorded on behalf of, not an authenticated identity." }
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "approved",
+                  "rejected"
+                ]
+              },
+              "approver": {
+                "type": "string",
+                "description": "Who the still-needed decision is recorded on behalf of, not an authenticated identity."
+              }
             },
-            "required": ["status"]
+            "required": [
+              "status"
+            ]
           }
         },
-        "required": ["error", "approvalBlocker"]
+        "required": [
+          "error",
+          "approvalBlocker"
+        ]
       },
       "ApprovalDecisionConflictResponse": {
         "type": "object",
         "properties": {
-          "error": { "type": "string", "enum": ["Approval decision conflict"] },
+          "error": {
+            "type": "string",
+            "enum": [
+              "Approval decision conflict"
+            ]
+          },
           "currentApproval": {
             "type": "object",
             "properties": {
-              "status": { "type": "string", "enum": ["approved", "rejected"] },
-              "comment": { "type": "string" },
-              "decidedAt": { "type": "string", "format": "date-time" }
+              "status": {
+                "type": "string",
+                "enum": [
+                  "approved",
+                  "rejected"
+                ]
+              },
+              "comment": {
+                "type": "string"
+              },
+              "decidedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
             },
-            "required": ["status"]
+            "required": [
+              "status"
+            ]
           }
         },
-        "required": ["error", "currentApproval"],
+        "required": [
+          "error",
+          "currentApproval"
+        ],
         "description": "Returned with 409 when PUT /api/tasks/{id}/approval would overwrite an already-decided (approved/rejected) task with a different decision or a different comment. Repeating the identical decision + comment instead returns 200 with no change."
       },
       "TaskCompletionBlockedResponse": {
         "type": "object",
         "properties": {
-          "error": { "type": "string", "enum": ["Cannot complete task with incomplete dependencies"] },
+          "error": {
+            "type": "string",
+            "enum": [
+              "Cannot complete task with incomplete dependencies"
+            ]
+          },
           "blockingDependencies": {
             "type": "array",
             "description": "Only the direct dependencies (from 'dependencies') whose status is not 'done'; dependencies that are already 'done' are omitted.",
             "items": {
               "type": "object",
               "properties": {
-                "id": { "type": "string" },
-                "title": { "type": "string" },
-                "status": { "type": "string", "enum": ["todo", "in-progress"] }
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "todo",
+                    "in-progress"
+                  ]
+                }
               },
-              "required": ["id", "title", "status"]
+              "required": [
+                "id",
+                "title",
+                "status"
+              ]
             }
           }
         },
-        "required": ["error", "blockingDependencies"]
+        "required": [
+          "error",
+          "blockingDependencies"
+        ]
       },
       "Comment": {
         "type": "object",
         "properties": {
-          "id": { "type": "string" },
-          "taskId": { "type": "string" },
-          "content": { "type": "string", "description": "Trimmed before storage; at most 1000 characters." },
-          "authorId": { "type": "string", "description": "The field itself is omitted (not present, and never null) once the authoring user has been deleted (see DELETE /api/users/{id}); 'authorName' still identifies them." },
-          "authorName": { "type": "string", "description": "Snapshot of the author's name at the time the comment was created. Kept even after the author is deleted." },
-          "createdAt": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "string"
+          },
+          "taskId": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string",
+            "description": "Trimmed before storage; at most 1000 characters."
+          },
+          "authorId": {
+            "type": "string",
+            "description": "The field itself is omitted (not present, and never null) once the authoring user has been deleted (see DELETE /api/users/{id}); 'authorName' still identifies them."
+          },
+          "authorName": {
+            "type": "string",
+            "description": "Snapshot of the author's name at the time the comment was created. Kept even after the author is deleted."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         },
-        "required": ["id", "taskId", "content", "authorName", "createdAt"],
+        "required": [
+          "id",
+          "taskId",
+          "content",
+          "authorName",
+          "createdAt"
+        ],
         "description": "There is no login in this app: a comment is recorded on behalf of the explicitly chosen 'authorId', never as a verified identity."
       },
       "CommentCreateInput": {
         "type": "object",
         "properties": {
-          "authorId": { "type": "string", "description": "Must reference an existing user (see GET /api/users)." },
-          "content": { "type": "string", "maxLength": 1000, "description": "Trimmed before storage; empty or whitespace-only after trim is rejected." }
+          "authorId": {
+            "type": "string",
+            "description": "Must reference an existing user (see GET /api/users)."
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "Trimmed before storage; empty or whitespace-only after trim is rejected."
+          }
         },
-        "required": ["authorId", "content"],
+        "required": [
+          "authorId",
+          "content"
+        ],
         "additionalProperties": false,
         "description": "id, taskId, authorName and createdAt are always server-controlled and rejected with 400 if sent, the same as any other unknown field."
       },
       "User": {
         "type": "object",
         "properties": {
-          "id": { "type": "string" },
-          "name": { "type": "string" },
-          "email": { "type": "string" },
-          "role": { "type": "string", "enum": ["admin", "editor", "viewer"] },
-          "avatar": { "type": "string", "nullable": true },
-          "avatarUrl": { "type": "string", "nullable": true }
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "editor",
+              "viewer"
+            ]
+          },
+          "avatar": {
+            "type": "string",
+            "nullable": true
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true
+          }
         },
-        "required": ["id", "name", "email", "role"]
+        "required": [
+          "id",
+          "name",
+          "email",
+          "role"
+        ]
       },
       "UserDeleteBlockedResponse": {
         "type": "object",
         "properties": {
-          "error": { "type": "string", "enum": ["Cannot delete user with active tasks"] },
+          "error": {
+            "type": "string",
+            "enum": [
+              "Cannot delete user with active tasks"
+            ]
+          },
           "conflictingTasks": {
             "type": "array",
             "description": "Only the tasks assigned to this user whose status is 'todo' or 'in-progress'; tasks with status 'done' are omitted.",
             "items": {
               "type": "object",
               "properties": {
-                "id": { "type": "string" },
-                "title": { "type": "string" },
-                "status": { "type": "string", "enum": ["todo", "in-progress"] }
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "todo",
+                    "in-progress"
+                  ]
+                }
               },
-              "required": ["id", "title", "status"]
+              "required": [
+                "id",
+                "title",
+                "status"
+              ]
             }
           }
         },
-        "required": ["error", "conflictingTasks"]
+        "required": [
+          "error",
+          "conflictingTasks"
+        ]
       },
       "UserInput": {
         "type": "object",
         "properties": {
-          "name": { "type": "string" },
-          "email": { "type": "string", "format": "email" },
-          "role": { "type": "string", "enum": ["admin", "editor", "viewer"] },
-          "avatar": { "type": "string" }
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "editor",
+              "viewer"
+            ]
+          },
+          "avatar": {
+            "type": "string"
+          }
         },
-        "required": ["name", "email"],
+        "required": [
+          "name",
+          "email"
+        ],
         "description": "email must be unique and a valid email address; role must be one of the listed values (an invalid role is rejected, never silently downgraded)."
+      },
+      "ActivityType": {
+        "type": "string",
+        "enum": [
+          "task_created",
+          "task_updated",
+          "approval_decided"
+        ]
+      },
+      "TaskActivityChange": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "before": {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "array",
+              "null"
+            ]
+          },
+          "after": {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "field",
+          "before",
+          "after"
+        ]
+      },
+      "TaskActivity": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "taskId": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ActivityType"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskActivityChange"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "taskId",
+          "type",
+          "changes",
+          "createdAt"
+        ]
       }
     }
   }

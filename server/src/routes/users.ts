@@ -3,6 +3,8 @@ import { Router } from "express";
 import { users, User, tasks, comments } from "../data.js";
 import { buildUserCreateCandidate, validateUserFields } from "../validation.js";
 import { clearCommentAuthor } from "../commentLifecycle.js";
+import { activities } from "../data.js";
+import { recordTaskUpdated } from "../taskActivityLifecycle.js";
 
 export const usersRouter = Router();
 
@@ -65,7 +67,10 @@ usersRouter.delete("/:id", (req, res) => {
   // Clear assigneeId in remaining tasks (completed ones, as active ones block deletion)
   for (const t of tasks) {
     if (t.assigneeId === userId) {
+      const existing = { ...t };
       t.assigneeId = undefined;
+      const activity = recordTaskUpdated(t.id, existing as unknown as Record<string, unknown>, t as unknown as Record<string, unknown>);
+      if (activity) activities.push(activity);
     }
   }
 

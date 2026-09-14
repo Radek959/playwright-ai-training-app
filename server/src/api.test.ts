@@ -1,16 +1,18 @@
 import { describe, expect, it, beforeEach, beforeAll } from "vitest";
 import request from "supertest";
 import { app } from "./app.js";
-import { tasks, users, comments, Task, User, Comment } from "./data.js";
+import { tasks, users, comments, Task, User, Comment, activities, TaskActivity, TaskActivityChange } from "./data.js";
 
 let initialTasks: Task[];
 let initialUsers: User[];
 let initialComments: Comment[];
+let initialActivities: TaskActivity[];
 
 beforeAll(() => {
   initialTasks = JSON.parse(JSON.stringify(tasks));
   initialUsers = JSON.parse(JSON.stringify(users));
   initialComments = JSON.parse(JSON.stringify(comments));
+  initialActivities = JSON.parse(JSON.stringify(activities));
 });
 
 beforeEach(() => {
@@ -20,6 +22,8 @@ beforeEach(() => {
   users.push(...JSON.parse(JSON.stringify(initialUsers)));
   comments.length = 0;
   comments.push(...JSON.parse(JSON.stringify(initialComments)));
+  activities.length = 0;
+  activities.push(...JSON.parse(JSON.stringify(initialActivities)));
 });
 
 describe("API Integration Tests", () => {
@@ -1210,6 +1214,225 @@ describe("API Integration Tests", () => {
         const after = await request(app).get("/api/tasks/t3/comments");
         expect(after.body).toEqual([]);
       });
+    });
+  });
+
+  describe("Task Activity API", () => {
+    it("returns 404 for a non-existent task", async () => {
+      const response = await request(app).get("/api/tasks/not-a-real-task/activity");
+      expect(response.status).toBe(404);
+      expect(response.body.error).toBe("not found");
+    });
+
+    it("returns an empty history if there are no events", async () => {
+      // Clear all activities in memory first
+      const { activities } = await import("./data.js");
+      activities.length = 0;
+      
+      const response = await request(app).get("/api/tasks/t1/activity");
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([]);
+    });
+
+    it("returns sorted history (createdAt desc, then id desc)", async () => {
+      const { activities } = await import("./data.js");
+      activities.length = 0;
+      activities.push({
+        id: "a1", taskId: "t1", type: "task_created", changes: [], createdAt: "2023-01-01T10:00:00Z"
+      });
+      activities.push({
+        id: "a3", taskId: "t1", type: "task_updated", changes: [], createdAt: "2023-01-01T12:00:00Z"
+      });
+      activities.push({
+        id: "a2", taskId: "t1", type: "task_updated", changes: [], createdAt: "2023-01-01T12:00:00Z"
+      });
+
+      const response = await request(app).get("/api/tasks/t1/activity");
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveLength(3);
+      expect(response.body.map((a: TaskActivity) => a.id)).toEqual(["a3", "a2", "a1"]);
+    });
+
+    it("creates task_created when a task is created", async () => {
+      const payload = { title: "Activity Test Task" };
+      const createRes = await request(app).post("/api/tasks").send(payload);
+      expect(createRes.status).toBe(201);
+      
+      const response = await request(app).get(`/api/tasks/${createRes.body.id}/activity`);
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveLength(1);
+      expect(response.body[0].type).toBe("task_created");
+      expect(response.body[0].changes).toEqual([]);
+    });
+
+    it("does not create an event on rejected creation", async () => {
+      const payload = { priority: "medium" }; // Missing title -> 400
+      const createRes = await request(app).post("/api/tasks").send(payload);
+      expect(createRes.status).toBe(400);
+
+      // Cannot fetch activity since task doesn't exist, but we can verify store
+      const { activities } = await import("./data.js");
+      const recent = activities[activities.length - 1];
+      expect(recent?.type).not.toBe("task_created"); // Or just check length
+    });
+
+    it("creates task_updated for multiple fields update", async () => {
+      const created = await request(app).post("/api/tasks").send({ title: "Task 1" });
+      const taskId = created.body.id;
+      
+      const updateRes = await request(app).put(`/api/tasks/${taskId}`).send({
+        status: "in-progress",
+        priority: "high"
+      });
+      expect(updateRes.status).toBe(200);
+
+      const response = await request(app).get(`/api/tasks/${taskId}/activity`);
+      const events = response.body;
+      expect(events).toHaveLength(2);
+      expect(events[0].type).toBe("task_updated");
+      // Check multiple fields
+      const changes = events[0].changes;
+      expect(changes).toEqual(expect.arrayContaining([
+        { field: "status", before: "todo", after: "in-progress" },
+        { field: "priority", before: "medium", after: "high" }
+      ]));
+    });
+
+    it("handles before and after values correctly including null", async () => {
+      const created = await request(app).post("/api/tasks").send({ title: "Task 2", description: "desc" });
+      const taskId = created.body.id;
+
+      await request(app).put(`/api/tasks/${taskId}`).send({ description: null });
+
+      const response = await request(app).get(`/api/tasks/${taskId}/activity`);
+      const updatedEvent = response.body[0];
+      expect(updatedEvent.changes).toContainEqual({ field: "description", before: "desc", after: null });
+    });
+
+    it("compares arrays by content", async () => {
+      const created = await request(app).post("/api/tasks").send({ title: "Task 3" });
+      const taskId = created.body.id;
+
+      await request(app).put(`/api/tasks/${taskId}`).send({ tags: ["tag1"] });
+      await request(app).put(`/api/tasks/${taskId}`).send({ tags: ["tag1"] }); // No-op
+
+      const response = await request(app).get(`/api/tasks/${taskId}/activity`);
+      // Only 1 task_updated event because the second was a no-op
+      const updates = response.body.filter((a: TaskActivity) => a.type === "task_updated");
+      expect(updates).toHaveLength(1);
+    });
+
+    it("does not create an event for no-op PUT", async () => {
+      const created = await request(app).post("/api/tasks").send({ title: "Task 4" });
+      const taskId = created.body.id;
+
+      await request(app).put(`/api/tasks/${taskId}`).send({ title: "Task 4" }); // No-op
+
+      const response = await request(app).get(`/api/tasks/${taskId}/activity`);
+      expect(response.body).toHaveLength(1); // Only created event
+    });
+
+    it("does not create an event on 400 or 409", async () => {
+      const created = await request(app).post("/api/tasks").send({ title: "Task 5" });
+      const taskId = created.body.id;
+
+      await request(app).put(`/api/tasks/${taskId}`).send({ id: "hacked" }); // 400
+
+      const response = await request(app).get(`/api/tasks/${taskId}/activity`);
+      expect(response.body).toHaveLength(1); // Only created event
+    });
+
+    it("creates a single task_updated for complex operations like automatic completedAt", async () => {
+      const created = await request(app).post("/api/tasks").send({ title: "Task 6", status: "in-progress" });
+      const taskId = created.body.id;
+
+      await request(app).put(`/api/tasks/${taskId}`).send({ status: "done" });
+      
+      const response = await request(app).get(`/api/tasks/${taskId}/activity`);
+      const events = response.body.filter((a: TaskActivity) => a.type === "task_updated");
+      expect(events).toHaveLength(1);
+      const changes = events[0].changes;
+      expect(changes).toContainEqual({ field: "status", before: "in-progress", after: "done" });
+      expect(changes).toContainEqual(expect.objectContaining({ field: "completedAt", before: null }));
+      expect(changes.find((c: TaskActivityChange) => c.field === "completedAt")?.after).not.toBeNull();
+    });
+
+    it("creates approval_decided event", async () => {
+      const created = await request(app).post("/api/tasks").send({ title: "Task 7", requiresApproval: true, approver: "m1" });
+      const taskId = created.body.id;
+
+      await request(app).put(`/api/tasks/${taskId}/approval`).send({ decision: "approved" });
+
+      const response = await request(app).get(`/api/tasks/${taskId}/activity`);
+      const events = response.body.filter((a: TaskActivity) => a.type === "approval_decided");
+      expect(events).toHaveLength(1);
+      expect(events[0].changes).toContainEqual({ field: "approvalStatus", before: "pending", after: "approved" });
+    });
+
+    it("does not create duplicate approval event on identical decision", async () => {
+      const created = await request(app).post("/api/tasks").send({ title: "Task 8", requiresApproval: true, approver: "m1" });
+      const taskId = created.body.id;
+
+      await request(app).put(`/api/tasks/${taskId}/approval`).send({ decision: "approved" });
+      await request(app).put(`/api/tasks/${taskId}/approval`).send({ decision: "approved" });
+
+      const response = await request(app).get(`/api/tasks/${taskId}/activity`);
+      const events = response.body.filter((a: TaskActivity) => a.type === "approval_decided");
+      expect(events).toHaveLength(1);
+    });
+    
+    it("does not create an event on conflict", async () => {
+      const created = await request(app).post("/api/tasks").send({ title: "Task 8b", requiresApproval: true, approver: "m1" });
+      const taskId = created.body.id;
+
+      await request(app).put(`/api/tasks/${taskId}/approval`).send({ decision: "approved" });
+      await request(app).put(`/api/tasks/${taskId}/approval`).send({ decision: "rejected" }); // Conflict
+
+      const response = await request(app).get(`/api/tasks/${taskId}/activity`);
+      const events = response.body.filter((a: TaskActivity) => a.type === "approval_decided");
+      expect(events).toHaveLength(1); // Only the first
+    });
+
+    it("updates assigneeId on user deletion with task_updated", async () => {
+      const createdUser = await request(app).post("/api/users").send({ name: "U", email: "u@u.com", role: "viewer" });
+      const userId = createdUser.body.id;
+      const createdTask = await request(app).post("/api/tasks").send({ title: "Task 9", assigneeId: userId, status: "done" });
+      const taskId = createdTask.body.id;
+
+      await request(app).delete(`/api/users/${userId}`);
+
+      const response = await request(app).get(`/api/tasks/${taskId}/activity`);
+      const updates = response.body.filter((a: TaskActivity) => a.type === "task_updated");
+      expect(updates).toHaveLength(1);
+      expect(updates[0].changes).toContainEqual({ field: "assigneeId", before: userId, after: null });
+    });
+
+    it("updates dependencies and creates task_updated when a task is deleted", async () => {
+      const t1 = await request(app).post("/api/tasks").send({ title: "Task T1" });
+      const t2 = await request(app).post("/api/tasks").send({ title: "Task T2", dependencies: [t1.body.id] });
+      
+      await request(app).delete(`/api/tasks/${t1.body.id}`);
+
+      const response = await request(app).get(`/api/tasks/${t2.body.id}/activity`);
+      const updates = response.body.filter((a: TaskActivity) => a.type === "task_updated");
+      expect(updates).toHaveLength(1);
+      expect(updates[0].changes).toContainEqual({ field: "dependencies", before: [t1.body.id], after: [] });
+    });
+    
+    it("deletes history with the task", async () => {
+      const t = await request(app).post("/api/tasks").send({ title: "Task T3" });
+      await request(app).delete(`/api/tasks/${t.body.id}`);
+      
+      const { activities } = await import("./data.js");
+      expect(activities.some(a => a.taskId === t.body.id)).toBe(false);
+    });
+
+    it("does not create history on comment", async () => {
+      const t = await request(app).post("/api/tasks").send({ title: "Task T4" });
+      await request(app).post(`/api/tasks/${t.body.id}/comments`).send({ authorId: "u1", content: "hi" });
+      
+      const response = await request(app).get(`/api/tasks/${t.body.id}/activity`);
+      expect(response.body).toHaveLength(1); // Only created
     });
   });
 });

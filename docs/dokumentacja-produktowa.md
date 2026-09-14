@@ -514,3 +514,19 @@ Podobnie jak pozostałe filtry Active, `due` obowiązuje wyłącznie w tej zakł
 Dashboard (`/dashboard`) pokazuje dodatkową statystykę **Overdue** obok istniejących kafelków (Total Tasks, In Progress, High Priority, Completion) — licznik zadań w stanie `overdue` (sekcja 11.1), liczony na podstawie tej samej reguły klasyfikacji co lista i oznaczenia, na **wszystkich** zadaniach pobranych z API (bez uwzględniania filtrów innych widoków, analogicznie do pozostałych statystyk dashboardu).
 
 Kafelek „Overdue” jest dostępnym linkiem (`<a>` z czytelną nazwą) prowadzącym do `/tasks?due=overdue` — po przejściu użytkownik trafia do zakładki Active z filtrem Filter by due date ustawionym na „Overdue”, pokazującym dokładnie ten sam zestaw zadań, który wliczono do licznika.
+
+## Historia Aktywności Zadania (Task Activity History)
+
+Zadania posiadają historię aktywności, która rejestruje wyłącznie pomyślnie zapisany finalny efekt operacji biznesowych:
+- **Tworzenie zadania** (`task_created`)
+- **Aktualizacja zadania** (`task_updated`) - rejestruje zmiany wynikające z `PUT /api/tasks/:id`, a także zmiany pochodne (np. zmiana `assigneeId` na null po usunięciu użytkownika lub modyfikacja `dependencies` po usunięciu innego zadania). No-op aktualizacje nie są zapisywane.
+- **Decyzja zatwierdzająca** (`approval_decided`) - rejestruje pomyślne i prowadzące do zmiany stanu operacje na `PUT /api/tasks/:id/approval`.
+
+**Ważne założenia:**
+- Historia jest przechowywana in-memory i resetuje się po restarcie serwera (z kilkoma predefiniowanymi zdarzeniami w danych startowych, aby zaprezentować funkcję).
+- Zdarzenia są dostępne tylko do odczytu w widoku `/tasks/:id`.
+- Aplikacja nie posiada kont i logowania, więc historia **nie identyfikuje uwierzytelnionego wykonawcy** danej akcji – pokazuje jedynie, że operacja miała miejsce w lokalnej aplikacji.
+- Historia **nie obejmuje komentarzy** – dodawanie komentarzy nie generuje wpisów w historii zadania i mają one osobną oś czasu.
+- Zdarzenia odrzucone (np. `400`, `409`) nie generują wpisów.
+- Przy usuwaniu zadania (`DELETE /api/tasks/:id`), cała powiązana z nim historia aktywności zostaje usunięta, natomiast powiązane z nim zadania (których było zależnością) otrzymują `task_updated`.
+- Przy usuwaniu użytkownika (`DELETE /api/users/:id`), ukończone zadania przypisane do niego otrzymują `task_updated` ze zmianą `assigneeId` na `null`.
