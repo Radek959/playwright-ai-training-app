@@ -24,7 +24,7 @@
       },
       "post": {
         "summary": "Create task",
-        "description": "Creating a task with status 'done' requires every id in 'dependencies' to already reference a task whose status is 'done'; otherwise the request is rejected with 409 (see TaskCompletionBlockedResponse) and no task is created.",
+        "description": "Creating a task with status 'done' requires every id in 'dependencies' to already reference a task whose status is 'done'; otherwise the request is rejected with 409 (see TaskCompletionBlockedResponse) and no task is created. If 'requiresApproval' is true, the created task starts an approval process at 'approvalStatus: pending' (see the Approval workflow section on Task). A task with 'requiresApproval: true' cannot be created with status 'done' unless approved first (impossible on creation, since a new process always starts pending) — see TaskApprovalBlockedResponse.",
         "requestBody": {
           "required": true,
           "content": {
@@ -47,9 +47,58 @@
             }
           },
           "409": {
-            "description": "status is 'done' but at least one direct dependency is not yet 'done'",
+            "description": "Either status is 'done' but at least one direct dependency is not yet 'done' (TaskCompletionBlockedResponse), or status is 'done' but requiresApproval is true and not yet approved (TaskApprovalBlockedResponse)",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/TaskCompletionBlockedResponse" } }
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "#/components/schemas/TaskCompletionBlockedResponse" },
+                    { "$ref": "#/components/schemas/TaskApprovalBlockedResponse" }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{id}/approval": {
+      "put": {
+        "summary": "Record an approval decision for a task",
+        "description": "Moves a task's approval process from 'pending' to 'approved' or 'rejected'. There is no login in this app: this endpoint does not authenticate anyone as the approver — it only records that a decision was made on behalf of the task's `approver` value. Requires the task to have `requiresApproval: true` (409 otherwise). Idempotent: repeating the identical decision (same decision, same comment after trimming, empty treated as no comment) returns 200 without moving `approvalDecidedAt`. A *different* decision or comment against an already-decided (approved/rejected) task is rejected with 409 and reports the current decision; to change a decision, first edit the task with a significant field change (see TaskUpdateInput), which resets the process back to 'pending'.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ApprovalDecisionInput" } }
+          }
+        },
+        "responses": {
+          "200": { "description": "Updated task", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Task" } } } },
+          "400": {
+            "description": "Validation error (invalid decision, or comment not a string / over 500 characters)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ValidationErrorResponse" } }
+            }
+          },
+          "404": { "description": "Not found" },
+          "409": {
+            "description": "Either the task does not require approval, or a different decision/comment was sent against an already-decided (approved/rejected) task",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": { "error": { "type": "string", "enum": ["Task does not require approval"] } },
+                      "required": ["error"]
+                    },
+                    { "$ref": "#/components/schemas/ApprovalDecisionConflictResponse" }
+                  ]
+                }
+              }
             }
           }
         }
@@ -92,7 +141,7 @@
       },
       "put": {
         "summary": "Update task",
-        "description": "id is not an updatable field and any attempt to set it (or any other field outside TaskUpdateInput) returns 400. Whenever the resulting task (existing fields merged with the patch) has status 'done' — whether status is changing to 'done' now or the task was already 'done' and only 'dependencies' changed — every id in the resulting 'dependencies' must reference a task whose status is 'done'; otherwise the request is rejected with 409 (see TaskCompletionBlockedResponse) and the task is left completely unchanged.",
+        "description": "id is not an updatable field and any attempt to set it (or any other field outside TaskUpdateInput — including approvalStatus, approvalComment or approvalDecidedAt, which are never settable through this endpoint) returns 400. Whenever the resulting task (existing fields merged with the patch) has status 'done' — whether status is changing to 'done' now or the task was already 'done' and only 'dependencies' changed — every id in the resulting 'dependencies' must reference a task whose status is 'done', AND if the resulting task has 'requiresApproval: true' its approval process must be 'approved'; otherwise the request is rejected with 409 (see TaskCompletionBlockedResponse / TaskApprovalBlockedResponse) and the task is left completely unchanged. Approval workflow: if 'requiresApproval' flips from false to true, a new process starts at 'pending'; if it flips from true to false, all approval-process fields are cleared; if it stays true and the resulting task's approval process is currently 'approved' or 'rejected', a *significant* field actually changing value (title, description, priority, dueDate, assigneeId, taskType, severity, estimatedHours, tags, dependencies, or approver — status changes alone do not count) resets the process back to 'pending', clearing any comment/decidedAt. Use PUT /api/tasks/{id}/approval to move a pending process to approved/rejected.",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
@@ -112,9 +161,16 @@
           },
           "404": { "description": "Not found" },
           "409": {
-            "description": "Resulting status is 'done' but at least one direct dependency is not yet 'done'",
+            "description": "Either the resulting status is 'done' but at least one direct dependency is not yet 'done' (TaskCompletionBlockedResponse), or the resulting status is 'done' but requiresApproval is true and not yet approved (TaskApprovalBlockedResponse)",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/TaskCompletionBlockedResponse" } }
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "#/components/schemas/TaskCompletionBlockedResponse" },
+                    { "$ref": "#/components/schemas/TaskApprovalBlockedResponse" }
+                  ]
+                }
+              }
             }
           }
         }
@@ -258,9 +314,18 @@
           "dependencies": { "type": "array", "items": { "type": "string" }, "description": "IDs of other tasks this task depends on. A task cannot have status 'done' while any of these directly referenced tasks is not itself 'done'." },
           "severity": { "type": "string", "enum": ["critical", "major", "minor"], "nullable": true, "description": "Required when taskType is bug." },
           "requiresApproval": { "type": "boolean" },
-          "approver": { "type": "string", "nullable": true, "description": "Required when requiresApproval is true." }
+          "approver": { "type": "string", "nullable": true, "description": "Required when requiresApproval is true. This app has no login: `approver` only names who a decision is recorded on behalf of, never an authenticated identity." },
+          "approvalStatus": {
+            "type": "string",
+            "enum": ["pending", "approved", "rejected"],
+            "nullable": true,
+            "description": "Present only while requiresApproval is/was true. See the Approval workflow section below."
+          },
+          "approvalComment": { "type": "string", "nullable": true, "description": "Optional, max 500 chars after trim. Only ever present alongside a terminal (approved/rejected) approvalStatus." },
+          "approvalDecidedAt": { "type": "string", "format": "date-time", "nullable": true, "description": "Only ever present alongside a terminal (approved/rejected) approvalStatus." }
         },
-        "required": ["id", "title", "status", "priority"]
+        "required": ["id", "title", "status", "priority"],
+        "description": "Approval workflow: requiresApproval/approver are given real meaning by an approvalStatus state machine (pending -> approved/rejected), set by POST /api/tasks, PUT /api/tasks/:id (start/reset/clear only) and PUT /api/tasks/:id/approval (the only way to move pending -> approved/rejected). There is still no login in this app: nothing here authenticates the named approver, it only records who a decision is made on behalf of. A task with requiresApproval: true cannot have status 'done' unless approvalStatus is 'approved' (see TaskApprovalBlockedResponse)."
       },
       "TaskCreateInput": {
         "type": "object",
@@ -281,7 +346,7 @@
           "approver": { "type": "string" }
         },
         "required": ["title"],
-        "description": "Business rules: estimatedHours, when sent, must be a positive number; bug requires severity; research requires estimatedHours >= 1; high priority tasks with estimatedHours cannot exceed 24; requiresApproval=true requires approver; dependencies must reference existing tasks (never the task itself); status 'done' requires every direct dependency to already be 'done'."
+        "description": "Business rules: estimatedHours, when sent, must be a positive number; bug requires severity; research requires estimatedHours >= 1; high priority tasks with estimatedHours cannot exceed 24; requiresApproval=true requires approver; dependencies must reference existing tasks (never the task itself); status 'done' requires every direct dependency to already be 'done', and if requiresApproval is true, requires approvalStatus to be 'approved' — impossible on creation, since a brand-new approval process always starts 'pending' (see Task's Approval workflow description). approvalStatus/approvalComment/approvalDecidedAt are not accepted here; requiresApproval=true always starts the new task at approvalStatus 'pending'."
       },
       "TaskUpdateInput": {
         "type": "object",
@@ -302,7 +367,7 @@
           "approver": { "type": "string", "nullable": true, "description": "Pass null to clear." }
         },
         "additionalProperties": false,
-        "description": "Partial update. Only these fields may be sent; any other field (including id) is rejected with 400. Fields marked nullable accept null to clear the stored value (required fields such as title/status/priority do not accept null); the array fields (tags, dependencies) are cleared by sending [] instead, since they do not accept null. Fields are merged with the existing task before the same business rules as TaskCreateInput are re-validated. Note what that does and does not require: the API never rejects a leftover conditional value, so a task may keep a severity while taskType is not 'bug', and keep an approver while requiresApproval is false — only the reverse is enforced (taskType 'bug' without a severity, or requiresApproval true without an approver, is rejected with 400). Clearing such leftovers is therefore a client choice, not part of the contract: the task edit form sends severity: null together with a taskType that moves away from 'bug', and approver: null together with requiresApproval: false, so the stored task matches what its form shows. Finally, if the resulting status is 'done', every direct dependency must already be 'done'."
+        "description": "Partial update. Only these fields may be sent; any other field (including id, and including approvalStatus/approvalComment/approvalDecidedAt) is rejected with 400 — approval-process fields can only be moved by PUT /api/tasks/:id/approval, or implicitly by this endpoint's start/reset/clear rules below. Fields marked nullable accept null to clear the stored value (required fields such as title/status/priority do not accept null); the array fields (tags, dependencies) are cleared by sending [] instead, since they do not accept null. Fields are merged with the existing task before the same business rules as TaskCreateInput are re-validated. Note what that does and does not require: the API never rejects a leftover conditional value, so a task may keep a severity while taskType is not 'bug', and keep an approver while requiresApproval is false — only the reverse is enforced (taskType 'bug' without a severity, or requiresApproval true without an approver, is rejected with 400). Clearing such leftovers is therefore a client choice, not part of the contract: the task edit form sends severity: null together with a taskType that moves away from 'bug', and approver: null together with requiresApproval: false, so the stored task matches what its form shows. If the resulting status is 'done', every direct dependency must already be 'done', and (if requiresApproval is true) approvalStatus must be 'approved'. See Task's Approval workflow description for how requiresApproval/approver changes start, reset or clear the approval process."
       },
       "ValidationErrorResponse": {
         "type": "object",
@@ -319,6 +384,47 @@
             }
           }
         }
+      },
+      "ApprovalDecisionInput": {
+        "type": "object",
+        "properties": {
+          "decision": { "type": "string", "enum": ["approved", "rejected"] },
+          "comment": { "type": "string", "maxLength": 500, "description": "Optional. Trimmed before storage/comparison; empty or whitespace-only is treated as no comment." }
+        },
+        "required": ["decision"],
+        "description": "Body for PUT /api/tasks/{id}/approval. There is no login in this app: the caller is never authenticated as the task's `approver` — this only records that a decision was made on their behalf."
+      },
+      "TaskApprovalBlockedResponse": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string", "enum": ["Cannot complete task without approval"] },
+          "approvalBlocker": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+              "approver": { "type": "string", "description": "Who the still-needed decision is recorded on behalf of, not an authenticated identity." }
+            },
+            "required": ["status"]
+          }
+        },
+        "required": ["error", "approvalBlocker"]
+      },
+      "ApprovalDecisionConflictResponse": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string", "enum": ["Approval decision conflict"] },
+          "currentApproval": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string", "enum": ["approved", "rejected"] },
+              "comment": { "type": "string" },
+              "decidedAt": { "type": "string", "format": "date-time" }
+            },
+            "required": ["status"]
+          }
+        },
+        "required": ["error", "currentApproval"],
+        "description": "Returned with 409 when PUT /api/tasks/{id}/approval would overwrite an already-decided (approved/rejected) task with a different decision or a different comment. Repeating the identical decision + comment instead returns 200 with no change."
       },
       "TaskCompletionBlockedResponse": {
         "type": "object",

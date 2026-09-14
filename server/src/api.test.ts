@@ -438,6 +438,335 @@ describe("API Integration Tests", () => {
     });
   });
 
+  describe("Approval workflow", () => {
+    it("creating a task with requiresApproval starts it pending", async () => {
+      const response = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Needs approval", requiresApproval: true, approver: "manager-a" });
+      expect(response.status).toBe(201);
+      expect(response.body.approvalStatus).toBe("pending");
+      expect(response.body.approvalComment).toBeUndefined();
+      expect(response.body.approvalDecidedAt).toBeUndefined();
+    });
+
+    it("a task with requiresApproval false has no approval-process fields", async () => {
+      const response = await request(app).post("/api/tasks").send({ title: "No approval needed" });
+      expect(response.status).toBe(201);
+      expect(response.body.approvalStatus).toBeUndefined();
+    });
+
+    it("enabling requiresApproval via PUT starts a pending process", async () => {
+      const created = await request(app).post("/api/tasks").send({ title: "Not yet gated" });
+      const response = await request(app)
+        .put(`/api/tasks/${created.body.id}`)
+        .send({ requiresApproval: true, approver: "manager-b" });
+      expect(response.status).toBe(200);
+      expect(response.body.approvalStatus).toBe("pending");
+    });
+
+    it("disabling requiresApproval via PUT clears the approval-process fields", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Gated task", requiresApproval: true, approver: "manager-a" });
+      expect(created.body.approvalStatus).toBe("pending");
+
+      const approve = await request(app)
+        .put(`/api/tasks/${created.body.id}/approval`)
+        .send({ decision: "approved", comment: "fine" });
+      expect(approve.status).toBe(200);
+
+      const response = await request(app).put(`/api/tasks/${created.body.id}`).send({ requiresApproval: false });
+      expect(response.status).toBe(200);
+      expect(response.body.approvalStatus).toBeUndefined();
+      expect(response.body.approvalComment).toBeUndefined();
+      expect(response.body.approvalDecidedAt).toBeUndefined();
+    });
+
+    it("plain PUT cannot set approval-process fields directly", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Gated task", requiresApproval: true, approver: "manager-a" });
+
+      const response = await request(app)
+        .put(`/api/tasks/${created.body.id}`)
+        .send({ approvalStatus: "approved" });
+      expect(response.status).toBe(400);
+      expect(response.body.details).toContainEqual({
+        field: "approvalStatus",
+        message: "approvalStatus is not an updatable field"
+      });
+
+      const fetched = await request(app).get(`/api/tasks/${created.body.id}`);
+      expect(fetched.body.approvalStatus).toBe("pending");
+    });
+
+    it("approves a pending task", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Approve me", requiresApproval: true, approver: "manager-a" });
+
+      const response = await request(app)
+        .put(`/api/tasks/${created.body.id}/approval`)
+        .send({ decision: "approved", comment: "Looks good." });
+
+      expect(response.status).toBe(200);
+      expect(response.body.approvalStatus).toBe("approved");
+      expect(response.body.approvalComment).toBe("Looks good.");
+      expect(response.body.approvalDecidedAt).toBeDefined();
+    });
+
+    it("rejects a pending task without a comment", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Reject me", requiresApproval: true, approver: "manager-a" });
+
+      const response = await request(app).put(`/api/tasks/${created.body.id}/approval`).send({ decision: "rejected" });
+
+      expect(response.status).toBe(200);
+      expect(response.body.approvalStatus).toBe("rejected");
+      expect(response.body.approvalComment).toBeUndefined();
+    });
+
+    it("treats a whitespace-only comment as no comment", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Whitespace comment", requiresApproval: true, approver: "manager-a" });
+
+      const response = await request(app)
+        .put(`/api/tasks/${created.body.id}/approval`)
+        .send({ decision: "approved", comment: "   " });
+
+      expect(response.status).toBe(200);
+      expect(response.body.approvalComment).toBeUndefined();
+    });
+
+    it("rejects a comment longer than 500 characters", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Too long comment", requiresApproval: true, approver: "manager-a" });
+
+      const response = await request(app)
+        .put(`/api/tasks/${created.body.id}/approval`)
+        .send({ decision: "approved", comment: "x".repeat(501) });
+
+      expect(response.status).toBe(400);
+      expect(response.body.details).toContainEqual({
+        field: "comment",
+        message: "comment must be at most 500 characters"
+      });
+    });
+
+    it("returns 400 for an unknown decision value", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Bad decision", requiresApproval: true, approver: "manager-a" });
+
+      const response = await request(app)
+        .put(`/api/tasks/${created.body.id}/approval`)
+        .send({ decision: "maybe" });
+
+      expect(response.status).toBe(400);
+      expect(response.body.details).toContainEqual({
+        field: "decision",
+        message: "decision must be 'approved' or 'rejected'"
+      });
+    });
+
+    it("returns 404 for a non-existent task", async () => {
+      const response = await request(app).put("/api/tasks/non-existent-id/approval").send({ decision: "approved" });
+      expect(response.status).toBe(404);
+    });
+
+    it("returns 409 when the task does not require approval", async () => {
+      const created = await request(app).post("/api/tasks").send({ title: "No approval needed" });
+      const response = await request(app).put(`/api/tasks/${created.body.id}/approval`).send({ decision: "approved" });
+      expect(response.status).toBe(409);
+      expect(response.body.error).toBe("Task does not require approval");
+    });
+
+    it("repeating the identical decision is idempotent: 200, no decidedAt change", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Repeat decision", requiresApproval: true, approver: "manager-a" });
+
+      const first = await request(app)
+        .put(`/api/tasks/${created.body.id}/approval`)
+        .send({ decision: "approved", comment: "Great." });
+      expect(first.status).toBe(200);
+      const firstDecidedAt = first.body.approvalDecidedAt;
+
+      const second = await request(app)
+        .put(`/api/tasks/${created.body.id}/approval`)
+        .send({ decision: "approved", comment: "Great." });
+      expect(second.status).toBe(200);
+      expect(second.body.approvalDecidedAt).toBe(firstDecidedAt);
+    });
+
+    it("overwriting a terminal decision with a different decision returns 409 with current approval state", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Locked decision", requiresApproval: true, approver: "manager-a" });
+
+      const first = await request(app)
+        .put(`/api/tasks/${created.body.id}/approval`)
+        .send({ decision: "approved", comment: "Looks good." });
+      expect(first.status).toBe(200);
+
+      const second = await request(app)
+        .put(`/api/tasks/${created.body.id}/approval`)
+        .send({ decision: "rejected" });
+
+      expect(second.status).toBe(409);
+      expect(second.body.error).toBe("Approval decision conflict");
+      expect(second.body.currentApproval.status).toBe("approved");
+      expect(second.body.currentApproval.comment).toBe("Looks good.");
+      expect(second.body.currentApproval.decidedAt).toBeDefined();
+
+      // Nothing was mutated by the rejected overwrite attempt.
+      const fetched = await request(app).get(`/api/tasks/${created.body.id}`);
+      expect(fetched.body.approvalStatus).toBe("approved");
+      expect(fetched.body.approvalComment).toBe("Looks good.");
+    });
+
+    it("overwriting a terminal decision with a different comment (same decision) also returns 409", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Locked comment", requiresApproval: true, approver: "manager-a" });
+
+      await request(app).put(`/api/tasks/${created.body.id}/approval`).send({ decision: "approved", comment: "First." });
+      const response = await request(app)
+        .put(`/api/tasks/${created.body.id}/approval`)
+        .send({ decision: "approved", comment: "Second." });
+
+      expect(response.status).toBe(409);
+      expect(response.body.error).toBe("Approval decision conflict");
+    });
+
+    it("resets an approved task back to pending after a significant edit", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Reset me", requiresApproval: true, approver: "manager-a" });
+      await request(app).put(`/api/tasks/${created.body.id}/approval`).send({ decision: "approved", comment: "ok" });
+
+      const edited = await request(app).put(`/api/tasks/${created.body.id}`).send({ title: "Reset me, renamed" });
+
+      expect(edited.status).toBe(200);
+      expect(edited.body.approvalStatus).toBe("pending");
+      expect(edited.body.approvalComment).toBeUndefined();
+      expect(edited.body.approvalDecidedAt).toBeUndefined();
+    });
+
+    it("does not reset approval on a no-op payload (same values resent)", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Stay approved", requiresApproval: true, approver: "manager-a" });
+      await request(app).put(`/api/tasks/${created.body.id}/approval`).send({ decision: "approved" });
+
+      const noop = await request(app).put(`/api/tasks/${created.body.id}`).send({ title: "Stay approved" });
+
+      expect(noop.status).toBe(200);
+      expect(noop.body.approvalStatus).toBe("approved");
+    });
+
+    it("does not reset approval on a plain status change alone", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Status only", requiresApproval: true, approver: "manager-a" });
+      await request(app).put(`/api/tasks/${created.body.id}/approval`).send({ decision: "approved" });
+
+      const response = await request(app).put(`/api/tasks/${created.body.id}`).send({ status: "in-progress" });
+
+      expect(response.status).toBe(200);
+      expect(response.body.approvalStatus).toBe("approved");
+    });
+
+    it("blocks completing a task while approval is pending", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Pending completion", requiresApproval: true, approver: "manager-a" });
+
+      const response = await request(app).put(`/api/tasks/${created.body.id}`).send({ status: "done" });
+
+      expect(response.status).toBe(409);
+      expect(response.body.error).toBe("Cannot complete task without approval");
+      expect(response.body.approvalBlocker).toEqual({ status: "pending", approver: "manager-a" });
+
+      const fetched = await request(app).get(`/api/tasks/${created.body.id}`);
+      expect(fetched.body.status).not.toBe("done");
+    });
+
+    it("blocks completing a rejected task", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Rejected completion", requiresApproval: true, approver: "manager-a" });
+      await request(app).put(`/api/tasks/${created.body.id}/approval`).send({ decision: "rejected" });
+
+      const response = await request(app).put(`/api/tasks/${created.body.id}`).send({ status: "done" });
+
+      expect(response.status).toBe(409);
+      expect(response.body.approvalBlocker).toEqual({ status: "rejected", approver: "manager-a" });
+    });
+
+    it("allows completing an approved task", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Approved completion", requiresApproval: true, approver: "manager-a" });
+      await request(app).put(`/api/tasks/${created.body.id}/approval`).send({ decision: "approved" });
+
+      const response = await request(app).put(`/api/tasks/${created.body.id}`).send({ status: "done" });
+
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe("done");
+      expect(response.body.completedAt).toBeDefined();
+    });
+
+    it("cannot bypass approval by creating a task directly with status done", async () => {
+      const response = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Bypass attempt", status: "done", requiresApproval: true, approver: "manager-a" });
+
+      expect(response.status).toBe(409);
+      expect(response.body.error).toBe("Cannot complete task without approval");
+      expect(response.body.approvalBlocker).toEqual({ status: "pending", approver: "manager-a" });
+    });
+
+    it("dependency-conflict behavior stays compatible alongside approval (dependency check still applies)", async () => {
+      const dep = await request(app).post("/api/tasks").send({ title: "Active dependency", status: "todo" });
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({
+          title: "Gated with dependency",
+          requiresApproval: true,
+          approver: "manager-a",
+          dependencies: [dep.body.id]
+        });
+      await request(app).put(`/api/tasks/${created.body.id}/approval`).send({ decision: "approved" });
+
+      const response = await request(app).put(`/api/tasks/${created.body.id}`).send({ status: "done" });
+
+      expect(response.status).toBe(409);
+      expect(response.body.error).toBe("Cannot complete task with incomplete dependencies");
+      expect(response.body.blockingDependencies).toEqual([{ id: dep.body.id, title: "Active dependency", status: "todo" }]);
+    });
+
+    it("atomicity: a rejected approval PUT leaves the task completely unchanged", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Atomic check", requiresApproval: true, approver: "manager-a" });
+      await request(app).put(`/api/tasks/${created.body.id}/approval`).send({ decision: "approved", comment: "ok" });
+
+      const before = await request(app).get(`/api/tasks/${created.body.id}`);
+
+      const rejected = await request(app)
+        .put(`/api/tasks/${created.body.id}/approval`)
+        .send({ decision: "rejected", comment: "different" });
+      expect(rejected.status).toBe(409);
+
+      const after = await request(app).get(`/api/tasks/${created.body.id}`);
+      expect(after.body).toEqual(before.body);
+    });
+  });
+
   describe("Users API", () => {
     it("fetches list of users", async () => {
       const response = await request(app).get("/api/users");

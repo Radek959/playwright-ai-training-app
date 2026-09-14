@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { useAppError } from "../context/AppErrorContext";
 import { getApproverLabel } from "../utils/approvers";
 import { DueDateLabel } from "../components/DueDateLabel";
+import { TaskApprovalSection } from "../components/TaskApprovalSection";
 import { TaskEditModal } from "../components/TaskEditModal";
 import type { DependencyOptionsState } from "../components/TaskDependencyPicker";
 import { formatDueDateUtc } from "../utils/taskDueDate";
@@ -147,6 +148,33 @@ export function TaskDetails() {
     setDependencies(await fetchDependencyTasks(updated.dependencies));
     setIsEditing(false);
     clearError();
+  };
+
+  /**
+   * Records an approve/reject decision via the dedicated endpoint. The view
+   * is refreshed from the API's response only — never optimistically — so a
+   * rejected (409 conflict) decision never shows as saved, and the URL never
+   * changes either way.
+   */
+  const handleApprovalDecision = async (decision: "approved" | "rejected", comment?: string) => {
+    if (!task) return;
+    let res: Response;
+    try {
+      res = await fetch(`/api/tasks/${task.id}/approval`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, comment })
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Approval request error";
+      throw err instanceof Error ? err : new Error(message);
+    }
+    if (!res.ok) {
+      throw await toApiError(res, `Approval decision failed: ${res.status}`);
+    }
+    const updated = (await res.json()) as Task;
+    setTask(updated);
+    setAllTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
   };
 
   if (loading) {
@@ -387,6 +415,8 @@ export function TaskDetails() {
           <p className="text-gray-900">Not set</p>
         )}
       </section>
+
+      <TaskApprovalSection task={task} onDecide={handleApprovalDecision} />
 
       {/* The very same modal the task list uses — the details view adds an
           entry point to it rather than a second, parallel edit form. */}

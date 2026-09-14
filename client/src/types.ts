@@ -13,6 +13,8 @@ export type User = {
   avatarUrl?: string;
 };
 
+export type ApprovalStatus = "pending" | "approved" | "rejected";
+
 export type Task = {
   id: string;
   title: string;
@@ -30,6 +32,16 @@ export type Task = {
   severity?: TaskSeverity;
   requiresApproval?: boolean;
   approver?: string;
+  /**
+   * Set only while requiresApproval is/was true. There is no login in this
+   * app: a decision is recorded on behalf of `approver`, not made by an
+   * authenticated person. Only PUT /api/tasks/:id/approval can change these
+   * fields (or the significant-edit reset back to "pending"); a plain
+   * PUT /api/tasks/:id cannot set them.
+   */
+  approvalStatus?: ApprovalStatus;
+  approvalComment?: string;
+  approvalDecidedAt?: string;
 };
 
 export type TaskWithAssignee = Task & {
@@ -37,7 +49,19 @@ export type TaskWithAssignee = Task & {
   assigneeAvatarUrl?: string;
 };
 
-export type TaskCreateInput = Omit<Task, "id" | "coverImage">;
+// Approval-process fields are server-controlled: they can never be sent on
+// POST /api/tasks or plain PUT /api/tasks/:id (see PUT /api/tasks/:id/approval
+// and the ApprovalDecisionInput type below).
+type ApprovalProcessFields = "approvalStatus" | "approvalComment" | "approvalDecidedAt";
+
+export type TaskCreateInput = Omit<Task, "id" | "coverImage" | ApprovalProcessFields>;
+
+/** Body for PUT /api/tasks/:id/approval. */
+export type ApprovalDecisionInput = {
+  decision: "approved" | "rejected";
+  /** Optional, max 500 chars after trim; a whitespace-only comment is treated as no comment. */
+  comment?: string;
+};
 
 // Fields the backend accepts `null` for, meaning "clear this value".
 // Required fields (title/status/priority) and array fields (send [] to

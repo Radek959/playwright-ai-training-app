@@ -25,7 +25,10 @@ Pole | Typ / dozwolone wartości | Uwagi
 `dependencies` | `string[]` (`id` innych zadań) | Domyślnie `[]`. Każdy identyfikator musi istnieć wśród zadań i nie może wskazywać na samo siebie.
 `severity` | `"critical" \| "major" \| "minor"` | Wymagane warunkowo dla zadań typu `bug` — patrz sekcja 3.
 `requiresApproval` | `boolean` | Domyślnie `false` przy tworzeniu przez API.
-`approver` | `string` | Wymagany, jeśli `requiresApproval` jest `true`. **Uwaga:** to pole jest tylko przechowywaną wartością tekstową — nie ma w aplikacji żadnego mechanizmu zatwierdzania, kolejki ani ekranu, który by z niego korzystał.
+`approver` | `string` | Wymagany, jeśli `requiresApproval` jest `true`. **Uwaga:** aplikacja nadal nie ma logowania ani sesji użytkownika — `approver` jedynie *nazywa*, w czyim imieniu zapisywana jest decyzja zatwierdzenia/odrzucenia; nie jest to identyfikator uwierzytelnionej osoby ani mechanizm kontroli dostępu.
+`approvalStatus` | `"pending" \| "approved" \| "rejected"` | Obecne wyłącznie, gdy `requiresApproval` jest (lub było) `true`. Patrz sekcja 2.7 — pełny opis procesu zatwierdzania.
+`approvalComment` | `string` | Opcjonalny, maks. 500 znaków po `trim`. Obecny tylko przy decyzji końcowej (`approved`/`rejected`).
+`approvalDecidedAt` | `string` (data-czas ISO) | Obecny tylko przy decyzji końcowej (`approved`/`rejected`).
 
 ### 1.2 Użytkownik (User)
 
@@ -89,12 +92,43 @@ Sposób, w jaki `null` na tych polach jest obsługiwany, różni się jednak mi�
   - Sprawdzane są wyłącznie **bezpośrednie** zależności — zależności zależności nie są brane pod uwagę.
   - Jeśli wszystkie bezpośrednie zależności mają status `"done"`, operacja się powodzi tak jak dotychczas.
   - Jeśli przynajmniej jedna bezpośrednia zależność ma status inny niż `"done"`, żądanie jest odrzucane z kodem `409 Conflict` i ciałem postaci `{ "error": "Cannot complete task with incomplete dependencies", "blockingDependencies": [{ "id", "title", "status" }, ...] }`, gdzie `blockingDependencies` zawiera wyłącznie te bezpośrednie zależności, których status nie jest `"done"` (zależności już ukończone są pomijane). Zadanie w takim wypadku **nie** zostaje utworzone (przy `POST`) ani zmienione w żaden sposób — łącznie ze statusem i `completedAt` — (przy `PUT`).
+  - Ta reguła i reguła zatwierdzania (sekcja 2.7) są od siebie niezależne i obie muszą być spełnione, żeby zadanie mogło mieć status `"done"`; jeśli obie są naruszone, zwracany jest błąd zależności (sprawdzany jako pierwszy).
 
-### 2.7 `requiresApproval` / `approver` — czym są, a czym nie są
+### 2.7 Proces zatwierdzania (`requiresApproval` / `approver` / `approvalStatus`)
 
-- Jedyna reguła biznesowa: jeśli `requiresApproval` jest `true`, pole `approver` musi być niepustym stringiem (przy tworzeniu i przy aktualizacji, licząc scalony obiekt).
-- **Nie istnieje żaden proces zatwierdzania** — ustawienie `requiresApproval: true` i wybranie zatwierdzającego nie blokuje statusu zadania, nie wysyła powiadomień i nie tworzy żadnego zadania do wykonania dla „zatwierdzającego”. To zwykłe pola danych.
-- Lista zatwierdzających dostępna w kreatorze zadań w UI to zamknięta lista trzech wartości: `manager-a`, `manager-b`, `manager-c`. API nie waliduje `approver` względem tej listy — akceptuje dowolny niepusty string.
+**Aplikacja nadal nie ma logowania ani sesji użytkownika.** `approver` to zamknięta lista trzech wartości tekstowych w UI (`manager-a`, `manager-b`, `manager-c`; API akceptuje dowolny niepusty string) — **nazywa**, w czyim imieniu zapisywana jest decyzja, ale nikogo nie uwierzytelnia ani nie ogranicza dostępu do wywołania endpointu decyzji. Każdy, kto ma dostęp do aplikacji lub API, może zapisać decyzję „w imieniu” dowolnego `approver`.
+
+- Jedyna reguła walidacji pól: jeśli `requiresApproval` jest `true`, pole `approver` musi być niepustym stringiem (przy tworzeniu i przy aktualizacji, licząc scalony obiekt) — bez zmian względem wcześniejszej wersji.
+- **Stan procesu** (`approvalStatus`) porusza się według reguł:
+  - Utworzenie zadania (`POST /api/tasks`) z `requiresApproval: true` zawsze ustawia `approvalStatus: "pending"`. Nie da się utworzyć zadania od razu zatwierdzonego/odrzuconego.
+  - Włączenie `requiresApproval` (z `false` na `true`) przez `PUT /api/tasks/:id` uruchamia nowy proces od `"pending"`.
+  - Wyłączenie `requiresApproval` (z `true` na `false`) przez `PUT /api/tasks/:id` **czyści** `approvalStatus`, `approvalComment` i `approvalDecidedAt` — nie ma już aktywnego procesu.
+  - `approvalStatus`, `approvalComment` i `approvalDecidedAt` **nie da się ustawić bezpośrednio** przez zwykłe `PUT /api/tasks/:id` — próba przesłania któregokolwiek z nich zwraca `400` (`"<pole> is not an updatable field"`), tak jak każde inne nieznane pole.
+  - Jedyny sposób przejścia `"pending"` → `"approved"`/`"rejected"` to nowy endpoint `PUT /api/tasks/:id/approval` (patrz niżej).
+  - **Reset przy istotnej edycji**: jeśli zadanie ma decyzję końcową (`"approved"` lub `"rejected"`) i `PUT /api/tasks/:id` faktycznie zmienia wartość jednego z pól: `title`, `description`, `priority`, `dueDate`, `assigneeId`, `taskType`, `severity`, `estimatedHours`, `tags`, `dependencies`, `approver` — proces wraca do `"pending"`, a `approvalComment`/`approvalDecidedAt` są czyszczone. Samo przesłanie tej samej wartości (żądanie bez realnej zmiany) **nie** resetuje procesu; sama zmiana `status` — bez zmiany żadnego z powyższych pól — również nie resetuje procesu.
+- **Reguła ukończenia zadania**: jeśli wynikowe zadanie ma `requiresApproval: true`, nie można ustawić mu statusu `"done"`, dopóki `approvalStatus` nie jest `"approved"`. Dla `"pending"`, `"rejected"` lub braku `approvalStatus`, żądanie (zarówno `POST`, jak i `PUT`) jest odrzucane z `409 Conflict`:
+  ```json
+  { "error": "Cannot complete task without approval", "approvalBlocker": { "status": "pending", "approver": "manager-a" } }
+  ```
+  Zadanie w takim wypadku pozostaje bez zmian (analogicznie do reguły zależności w sekcji 2.6).
+
+#### `PUT /api/tasks/:id/approval` — zapisanie decyzji
+
+- Ciało żądania: `{ "decision": "approved" | "rejected", "comment"?: string }`.
+- `404`, jeśli zadanie o podanym `id` nie istnieje.
+- `400`, jeśli ciało jest niepoprawne: `decision` inna niż `"approved"`/`"rejected"`, `comment` nie jest stringiem, albo `comment` po `trim` przekracza 500 znaków.
+- `409` z `{ "error": "Task does not require approval" }`, jeśli zadanie ma `requiresApproval: false`.
+- Komentarz jest zawsze przycinany (`trim`); pusty lub złożony wyłącznie z białych znaków jest traktowany jak brak komentarza.
+- **Idempotencja**: powtórzenie *identycznej* decyzji (ta sama `decision`, ten sam skomentowany/pusty `comment` po `trim`) na zadaniu, które już ma tę samą decyzję końcową, zwraca `200` bez zmiany zapisanego zadania — w szczególności `approvalDecidedAt` **nie** przesuwa się do bieżącego czasu.
+- **Konflikt**: próba nadpisania istniejącej decyzji końcowej (`"approved"`/`"rejected"`) inną decyzją lub innym komentarzem zwraca `409` bez żadnej zmiany zapisanego zadania:
+  ```json
+  {
+    "error": "Approval decision conflict",
+    "currentApproval": { "status": "approved", "comment": "Looks good.", "decidedAt": "2026-09-14T08:00:00.000Z" }
+  }
+  ```
+  Żeby zmienić wcześniejszą decyzję, trzeba najpierw zresetować proces przez istotną edycję zadania (patrz wyżej) — nie ma osobnego endpointu „cofnij decyzję” niezwiązanego z edycją zadania.
+- Powodzenie (pierwsza decyzja lub identyczne powtórzenie) zwraca `200` z pełnym, zaktualizowanym obiektem zadania.
 
 ### 2.8 Role użytkowników — czym są, a czym nie są
 
@@ -198,7 +232,7 @@ Cały odtwarzalny stan tego widoku (aktywna zakładka, filtry, strona, sortowani
 ### 6.3 Table
 
 - Tabela z sortowaniem po kolumnach: Title, Status, Priority, Due date, Assignee (kliknięcie nagłówka przełącza kierunek sortowania; pole i kierunek sortowania są odtwarzalne z adresu URL — patrz 6.9).
-- Edycja „inline” bezpośrednio w komórkach — ale tylko dla pól: `title`, `status`, `priority`, `dueDate`, `assigneeId`. Pozostałe pola zadania (typ, `severity`, `estimatedHours`, `tags`, `dependencies`, `requiresApproval`, `approver`) nie są tu ani widoczne, ani edytowalne. Jeśli zmiana statusu na `"done"` zostanie odrzucona przez API (`409`, patrz sekcja 2.6), komórka statusu pokazuje treść błędu pod polem, a status w tabeli pozostaje bez zmian — operację można ponowić od razu.
+- Edycja „inline” bezpośrednio w komórkach — ale tylko dla pól: `title`, `status`, `priority`, `dueDate`, `assigneeId`. Pozostałe pola zadania (typ, `severity`, `estimatedHours`, `tags`, `dependencies`, `requiresApproval`, `approver`) nie są tu ani widoczne, ani edytowalne. Jeśli zmiana statusu na `"done"` zostanie odrzucona przez API (`409`, patrz sekcja 2.6 albo — dla zadań wymagających zatwierdzenia bez decyzji `"approved"` — sekcja 2.7), komórka statusu pokazuje treść błędu pod polem, a status w tabeli pozostaje bez zmian — operację można ponowić od razu.
 - Zaznaczanie wielu wierszy (checkboxy) i masowe usuwanie zaznaczonych zadań; po operacji pokazywany jest komunikat z liczbą usuniętych zadań (a przy częściowym niepowodzeniu — ile się nie udało usunąć). Zaznaczenie dotyczy wyłącznie zadań aktualnie widocznych w tabeli: opcja „Select all” zaznacza tylko widoczne wiersze, licznik zaznaczonych rekordów i stan pośredni checkboxa „Select all” liczone są tylko względem widocznych zadań, a masowe usuwanie działa wyłącznie na identyfikatorach zadań nadal widocznych w tabeli w chwili wykonania operacji. Jeśli w wyniku zmiany filtrów lub innego zestawu zadań któreś z zaznaczonych wcześniej zadań przestaje być widoczne, jest automatycznie usuwane z zaznaczenia. Zaznaczenie wierszy, edycja komórek i sam fakt otwarcia modala/formularza nie są zapisywane w URL.
 - Pokazuje wszystkie zadania (bez filtrowania po statusie, priorytecie ani przypisaniu — patrz 6.1), w tym zadania zakończone — w przeciwieństwie do zakładki Active, Table nie wyklucza statusu `"done"`.
 
@@ -222,6 +256,15 @@ Cały odtwarzalny stan tego widoku (aktywna zakładka, filtry, strona, sortowani
 - Prezentuje adres URL miniatury `coverImage` (w formie klikalnego linku), oprócz wyświetlenia samego obrazu.
 - Zawiera przycisk „Edit task”, który otwiera **ten sam modal edycji**, co lista zadań (sekcja 7.2a) — nie jest to osobny formularz. Modal pozwala zmienić pełny zestaw pól zadania, w tym `taskType`, `severity`, `estimatedHours`, `tags`, `dependencies`, `requiresApproval` i `approver`.
 - Po udanym zapisie: modal się zamyka, widok pokazuje dane **zwrócone przez API** (a nie zgadywany lokalnie stan), sekcja zależności jest odświeżana, a adres pozostaje ten sam (`/tasks/:id`) — nie następuje żadne przekierowanie ani powrót na listę. Przy błędzie zapisu modal pozostaje otwarty z komunikatem, a widok szczegółów nadal pokazuje ostatnią poprawnie zapisaną wersję zadania.
+
+#### Sekcja „Approval”
+
+Osobna sekcja widoku szczegółów, poniżej „Dependencies”, nadaje `requiresApproval`/`approver` realne znaczenie opisane w sekcji 2.7. **Nigdzie w tej sekcji nie sugeruje się, że `approver` się uwierzytelnił** — tekst zawsze mówi o decyzji zapisywanej „w jego imieniu”.
+
+- Gdy `requiresApproval` jest `false`: sekcja pokazuje wyłącznie tekst „Approval not required” — brak jakichkolwiek przycisków decyzji.
+- Gdy `approvalStatus` to `"pending"`: widoczna jest odznaka „Pending approval”, nazwa/etykieta `approver`, opcjonalne pole komentarza oraz przyciski „Approve” / „Reject”, które wywołują `PUT /api/tasks/:id/approval`. W trakcie zapisu oba przyciski są zablokowane (ochrona przed podwójnym kliknięciem) i pokazują stan pośredni („Approving…” / „Rejecting…”); wpisany komentarz **nie** jest czyszczony, dopóki żądanie się nie powiedzie, a decyzja nie jest pokazywana jako zapisana, zanim API faktycznie nie odpowie sukcesem.
+- Gdy `approvalStatus` to `"approved"` lub `"rejected"`: widoczna jest odznaka statusu odróżnialna nie tylko kolorem (inny tekst, atrybut `role="status"`), nazwa/etykieta `approver`, czas decyzji (`approvalDecidedAt`) oraz komentarz, jeśli został podany. Brak jakichkolwiek aktywnych przycisków do zmiany decyzji końcowej — jedyny sposób jej zmiany to reset przez istotną edycję zadania (sekcja 2.7).
+- Jeśli istotna edycja (przez modal edycji) zresetuje decyzję z powrotem do `"pending"`, sekcja odzwierciedla to natychmiast na podstawie odpowiedzi API z zapisu — bez zmiany adresu URL i bez dodatkowego przeładowania.
 - Dostęp do widoku realizowany jest za pomocą dedykowanego linku "View details" dodanego obok głównej akcji "Edit" / "Delete" na elementach listy (np. Table, TaskCard).
 - Bezpiecznie obsługuje brak istnienia zadania – gdy API zwróci błąd `404`, aplikacja (SPA) wyświetli odpowiedni stan widoku „Task not found” informujący jasno o problemie, przy zachowaniu spójności nawigacji i możliwości powrotu do listy. Błędy sieciowe (np. 500) prezentują stosowny komunikat z opcją ponowienia.
 
@@ -311,6 +354,7 @@ Modal edycji jest **jednym, wspólnym komponentem** używanym zarówno z listy z
 - Zapis wykonuje `PUT /api/tasks/:id` i wysyła **wyłącznie pola, które faktycznie się zmieniły** — pozostałe wartości zadania zostają nietknięte, bo backend scala patch tylko z przesłanymi kluczami. Wyczyszczone pole jest wysyłane jawną wartością czyszczącą zgodną z kontraktem API: `null` dla `description`, `dueDate`, `assigneeId`, `taskType`, `estimatedHours`, `severity` i `approver`, oraz `[]` dla `tags` i `dependencies` (pola tablicowe nie przyjmują `null`).
 - Formularz nigdy nie modyfikuje pól, których użytkownik nie zmienił. W szczególności: opis złożony wyłącznie z białych znaków zostaje zachowany w dokładnie takiej postaci, dopóki nie zostanie zmieniony; `severity` zapisane przy zadaniu o typie innym niż `"bug"` oraz `approver` zapisany przy `requiresApproval: false` (oba dozwolone przez API — patrz sekcja 3) **nie** są kasowane przy edycji innego pola.
 - Dwie pary pól warunkowych są wysyłane razem, ale **wyłącznie wtedy, gdy użytkownik faktycznie wykonał odpowiednią zmianę** — jest to decyzja formularza (żeby zapisane zadanie odpowiadało temu, co pokazuje UI), a nie wymóg API: zmiana `taskType` z `"bug"` na inny wysyła dodatkowo `severity: null`, a odznaczenie wcześniej włączonego „Requires manager approval” wysyła `{"requiresApproval": false, "approver": null}`. API nie odrzuca żądań, które tych par nie wysyłają (patrz sekcja 3).
+- Próba zapisania statusu `"done"` na zadaniu, które wymaga zatwierdzenia i nie ma decyzji `"approved"`, jest odrzucana przez API (`409`, sekcja 2.7). W takim wypadku: zapisane dane pozostają bez zmian, pole statusu w formularzu wraca do rzeczywistego statusu zadania (tego sprzed próby zapisu), komunikat błędu pokazuje stan zatwierdzenia i kogo dotyczy oczekująca decyzja, a modal **nie** zostaje zamknięty — analogicznie do istniejącego zachowania przy konflikcie zależności (sekcja 2.6).
 - `dueDate` zapisany w dowolnym formacie akceptowanym przez API (np. `"May 1, 2026"`, a nie tylko ISO 8601) jest pokazywany w polu daty jako właściwy dzień kalendarzowy **w UTC** — tą samą konwencją, co klasyfikacja terminu z sekcji 11. Dzięki temu edycja innego pola nigdy nie wysyła zmiany ani wyczyszczenia nietkniętego terminu. Wartość, której nie da się sparsować jako daty, pokazuje puste pole i również nie jest przy zapisie czyszczona.
 - Pole `dependencies` wymaga poprawnie pobranej listy zadań (`GET /api/tasks`). Dopóki lista się ładuje albo jej pobranie **nie powiodło się**, wybór zależności jest zablokowany, a modal pokazuje odpowiedni komunikat (przy błędzie — z możliwością ponowienia pobrania). Zapisane zależności zadania są wtedy nadal widoczne, nie są uznawane za nieistniejące i nie są wysyłane w `PUT` — zmianę innego pola (np. tytułu) można zapisać normalnie.
 - Ustawienie `status` na `"done"` uruchamia tę samą automatyczną logikę `completedAt`, co przy każdej innej ścieżce aktualizacji (sekcja 2.3) — formularz sam nie wysyła `completedAt`.
@@ -343,6 +387,8 @@ Aplikacja nie używa bazy danych — dane (`tasks`, `users`) są trzymane w pami
 ## 10. Dane startowe (seed data)
 
 Zadania i użytkownicy, z którymi aplikacja startuje, to przykładowe dane demonstracyjne. Tytuły i opisy zadań w danych startowych są fikcyjne i służą wyłącznie do zilustrowania różnych kombinacji statusu, priorytetu, typu i przypisania — **nie są listą funkcji dostępnych w aplikacji**. Zestaw ten obejmuje zadania w każdym statusie i priorytecie, zadania nieprzypisane oraz zadania zakończone zarówno przed, jak i po progu 30 dni opisanym w sekcji 5, tak aby można było zaobserwować pełne zachowanie list, filtrów, wyszukiwania, dashboardu i archiwum opisane w tym dokumencie.
+
+Zestaw startowy obejmuje też pełen zakres stanów procesu zatwierdzania (sekcja 2.7): zadania z `requiresApproval: false` (bez żadnych pól procesu), zadania z `requiresApproval: true` w stanie `"pending"`, oraz po jednym zadaniu demonstracyjnym w stanie `"approved"` i `"rejected"` (z ustawionymi `approvalComment` i `approvalDecidedAt`) — tak, aby wszystkie warianty sekcji „Approval” w widoku szczegółów (patrz 6.6) były widoczne od razu po starcie aplikacji, bez konieczności ręcznego wykonywania decyzji.
 
 ---
 

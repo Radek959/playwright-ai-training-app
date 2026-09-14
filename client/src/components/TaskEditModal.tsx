@@ -159,7 +159,7 @@ export function TaskEditModal({
         // dependencies, so the task's real status is still whatever it was
         // before this submit. Revert just the status field to match —
         // leaving it on "done" would show a value that was never saved.
-        if (err.blockingDependencies.length > 0) {
+        if (err.blockingDependencies.length > 0 || err.approvalBlocker) {
           setValues((prev) => ({ ...prev, status: task.status }));
         }
       }
