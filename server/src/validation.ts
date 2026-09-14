@@ -1,5 +1,6 @@
 import { Task, TaskPriority, TaskSeverity, TaskStatus, TaskType, User, UserRole } from "./data.js";
 import { defaultIfUndefined } from "./requestUtils.js";
+import { COMMENT_CONTENT_MAX_LENGTH } from "./commentLifecycle.js";
 
 export type ValidationError = { field: string; message: string };
 
@@ -256,6 +257,54 @@ export function validateUserFields(
 
   if (candidate.avatar !== undefined && candidate.avatar !== null && !isString(candidate.avatar)) {
     errors.push({ field: "avatar", message: "avatar must be a string" });
+  }
+
+  return errors;
+}
+
+// The only fields a client may send on POST /api/tasks/:id/comments. "id",
+// "taskId", "authorName" and "createdAt" are always server-controlled and
+// are rejected the same as any other unknown field.
+export const COMMENT_CREATE_FIELDS: readonly string[] = ["authorId", "content"];
+
+/**
+ * Validates a comment-creation body coming straight from request JSON.
+ * Unknown/server-controlled fields are checked first and, if any are
+ * present, reported on their own without evaluating authorId/content — the
+ * request is invalid regardless of whether the fields it was allowed to
+ * send happen to be valid too.
+ */
+export function validateCommentCreateFields(
+  body: Record<string, unknown>,
+  context: { users: User[] }
+): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  for (const key of Object.keys(body)) {
+    if (!COMMENT_CREATE_FIELDS.includes(key)) {
+      errors.push({ field: key, message: `${key} is not a creatable field` });
+    }
+  }
+  if (errors.length > 0) return errors;
+
+  const authorId = body.authorId;
+  if (authorId === undefined || authorId === null) {
+    errors.push({ field: "authorId", message: "authorId is required" });
+  } else if (!isString(authorId) || authorId.trim().length === 0) {
+    errors.push({ field: "authorId", message: "authorId is required" });
+  } else if (!context.users.some((u) => u.id === authorId)) {
+    errors.push({ field: "authorId", message: "authorId does not reference an existing user" });
+  }
+
+  const content = body.content;
+  if (content === undefined || content === null) {
+    errors.push({ field: "content", message: "content is required" });
+  } else if (!isString(content)) {
+    errors.push({ field: "content", message: "content must be a string" });
+  } else if (content.trim().length === 0) {
+    errors.push({ field: "content", message: "content is required" });
+  } else if (content.trim().length > COMMENT_CONTENT_MAX_LENGTH) {
+    errors.push({ field: "content", message: `content must be at most ${COMMENT_CONTENT_MAX_LENGTH} characters` });
   }
 
   return errors;

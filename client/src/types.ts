@@ -71,3 +71,26 @@ type ClearableTaskFields = "description" | "dueDate" | "completedAt" | "assignee
 export type TaskUpdateInput = Partial<Omit<TaskCreateInput, ClearableTaskFields>> & {
   [K in ClearableTaskFields]?: TaskCreateInput[K] | null;
 };
+
+/**
+ * A comment on a task. There is no login in this app: `authorId` is picked
+ * explicitly from the existing user list by whoever adds the comment, and
+ * the comment is recorded on that user's behalf rather than as a verified
+ * identity. `authorName` is a snapshot taken at creation time, so it still
+ * identifies the author after their user record is deleted — at which point
+ * `authorId` is absent (see DELETE /api/users/:id).
+ */
+export type Comment = {
+  id: string;
+  taskId: string;
+  content: string;
+  authorId?: string;
+  authorName: string;
+  createdAt: string;
+};
+
+/** Body for POST /api/tasks/:id/comments. id, taskId, authorName and createdAt are always server-controlled. */
+export type CommentCreateInput = {
+  authorId: string;
+  content: string;
+};

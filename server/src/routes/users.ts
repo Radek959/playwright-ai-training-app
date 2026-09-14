@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
-import { users, User, tasks } from "../data.js";
+import { users, User, tasks, comments } from "../data.js";
 import { buildUserCreateCandidate, validateUserFields } from "../validation.js";
+import { clearCommentAuthor } from "../commentLifecycle.js";
 
 export const usersRouter = Router();
 
@@ -67,6 +68,10 @@ usersRouter.delete("/:id", (req, res) => {
       t.assigneeId = undefined;
     }
   }
+
+  // Comments this user authored are kept (authorName stays as the snapshot
+  // taken at creation time); only the now-dangling authorId is cleared.
+  clearCommentAuthor(comments, userId);
 
   res.status(204).end();
 });

@@ -4,6 +4,7 @@ import { useAppError } from "../context/AppErrorContext";
 import { getApproverLabel } from "../utils/approvers";
 import { DueDateLabel } from "../components/DueDateLabel";
 import { TaskApprovalSection } from "../components/TaskApprovalSection";
+import { CommentsSection } from "../components/CommentsSection";
 import { TaskEditModal } from "../components/TaskEditModal";
 import type { DependencyOptionsState } from "../components/TaskDependencyPicker";
 import { formatDueDateUtc } from "../utils/taskDueDate";
@@ -417,6 +418,8 @@ export function TaskDetails() {
       </section>
 
       <TaskApprovalSection task={task} onDecide={handleApprovalDecision} />
+
+      <CommentsSection taskId={task.id} />
 
       {/* The very same modal the task list uses — the details view adds an
           entry point to it rather than a second, parallel edit form. */}

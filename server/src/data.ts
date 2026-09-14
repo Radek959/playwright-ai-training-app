@@ -38,6 +38,24 @@ export type Task = {
   approvalDecidedAt?: string;
 };
 
+/**
+ * A comment on a task. Stored in-memory only and reset whenever the server
+ * restarts. There is no login in this app: `authorId` is picked explicitly
+ * from the existing user list by whoever is adding the comment, and the
+ * comment is recorded on that user's behalf rather than as a verified
+ * identity. `authorName` is a snapshot taken at creation time so a comment
+ * still reads correctly after its author is deleted (see DELETE
+ * /api/users/:id, which clears `authorId` but leaves `authorName` in place).
+ */
+export type Comment = {
+  id: string;
+  taskId: string;
+  content: string;
+  authorId?: string;
+  authorName: string;
+  createdAt: string;
+};
+
 export type UserRole = "admin" | "editor" | "viewer";
 
 export type User = {
@@ -325,6 +343,40 @@ export const tasks: Task[] = [
     approvalStatus: "rejected",
     approvalComment: "Needs abuse-prevention measures first.",
     approvalDecidedAt: daysAgo(1)
+  }
+];
+
+export const comments: Comment[] = [
+  {
+    id: "c1",
+    taskId: "t1",
+    content: "Started investigating the OAuth provider setup; Google side is straightforward, GitHub needs extra scopes.",
+    authorId: "u1",
+    authorName: "Alice Johnson",
+    createdAt: daysAgo(2)
+  },
+  {
+    id: "c2",
+    taskId: "t1",
+    content: "Let's make sure we also cover token refresh before marking this done.",
+    authorId: "u2",
+    authorName: "Bob Smith",
+    createdAt: daysAgo(1)
+  },
+  {
+    id: "c3",
+    taskId: "t2",
+    content: "Draft mockups are in the shared folder, please review before Friday.",
+    authorId: "u2",
+    authorName: "Bob Smith",
+    createdAt: daysAgo(3)
+  },
+  {
+    id: "c4",
+    taskId: "t2",
+    content: "Looks good overall, left a couple of notes on the hero section spacing.",
+    authorName: "Former Team Member",
+    createdAt: daysAgo(1)
   }
 ];
 
