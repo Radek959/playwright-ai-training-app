@@ -2076,13 +2076,52 @@ describe("API Integration Tests", () => {
       const response = await request(app)
         .get("/api/health")
         .set("Origin", "http://evil.com");
-      expect(response.status).toBe(500); // cors library throws error which express translates to 500
+      expect(response.status).toBe(403);
+      expect(response.headers["content-type"]).toMatch(/json/);
+      expect(response.body).toEqual({ error: "Origin not allowed" });
+      expect(response.headers["access-control-allow-origin"]).toBeUndefined();
+    });
+
+    it("disallows a preflight OPTIONS request from a disallowed origin", async () => {
+      const response = await request(app)
+        .options("/api/health")
+        .set("Origin", "http://evil.com")
+        .set("Access-Control-Request-Method", "GET");
+      expect(response.status).toBe(403);
+      expect(response.body).toEqual({ error: "Origin not allowed" });
+    });
+
+    it("allows a preflight OPTIONS request from an allowed origin", async () => {
+      const response = await request(app)
+        .options("/api/health")
+        .set("Origin", "http://localhost:5173")
+        .set("Access-Control-Request-Method", "GET");
+      expect(response.status).toBe(204);
+      expect(response.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
     });
 
     it("allows requests without origin", async () => {
       const response = await request(app).get("/api/health");
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ status: "ok" });
+    });
+
+    it("allows an additional origin configured via ALLOWED_ORIGINS", async () => {
+      const previous = process.env.ALLOWED_ORIGINS;
+      process.env.ALLOWED_ORIGINS = "http://example.test, , http://example.test";
+      try {
+        const response = await request(app)
+          .get("/api/health")
+          .set("Origin", "http://example.test");
+        expect(response.status).toBe(200);
+        expect(response.headers["access-control-allow-origin"]).toBe("http://example.test");
+      } finally {
+        if (previous === undefined) {
+          delete process.env.ALLOWED_ORIGINS;
+        } else {
+          process.env.ALLOWED_ORIGINS = previous;
+        }
+      }
     });
   });
 });

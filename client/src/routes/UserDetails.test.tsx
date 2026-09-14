@@ -10,6 +10,14 @@ const mockUser = {
   role: "admin"
 };
 
+// Mirrors formatDueDateUtc's own formatting call, so the expectation tracks
+// the runtime's locale (e.g. CI) instead of hardcoding an en-US string.
+function utcDisplay(dateStr: string): string {
+  return new Intl.DateTimeFormat(undefined, { year: "numeric", month: "numeric", day: "numeric", timeZone: "UTC" }).format(
+    new Date(dateStr)
+  );
+}
+
 const mockTasks = [
   { id: "task-1", title: "Active todo task", status: "todo", priority: "high", assigneeId: "user-1", dueDate: "2024-12-31T00:00:00Z" },
   { id: "task-2", title: "Active in-progress task", status: "in-progress", priority: "medium", assigneeId: "user-1" },
@@ -90,7 +98,7 @@ describe("UserDetails", () => {
     const taskItem = screen.getByText("Active todo task").closest("li");
     expect(taskItem).not.toBeNull();
     const dueLabel = within(taskItem as HTMLElement).getByTestId("due-date-label");
-    expect(dueLabel).toHaveTextContent("Overdue · Due: 12/31/2024");
+    expect(dueLabel).toHaveTextContent(`Overdue · Due: ${utcDisplay("2024-12-31T00:00:00Z")}`);
   });
 
   it("shows a sensible empty state when the user has no assigned tasks, with genuine zero stats", async () => {

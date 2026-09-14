@@ -13,6 +13,14 @@ function isoDaysFromNow(days: number, hour = 0): string {
   return new Date(NOW + days * DAY_MS).toISOString().slice(0, 10) + `T${String(hour).padStart(2, "0")}:00:00.000Z`;
 }
 
+// Mirrors formatDueDateUtc's own formatting call, so the expectation tracks
+// the runtime's locale (e.g. CI) instead of hardcoding an en-US string.
+function expectedUtcDisplay(dateStr: string): string {
+  return new Intl.DateTimeFormat(undefined, { year: "numeric", month: "numeric", day: "numeric", timeZone: "UTC" }).format(
+    new Date(dateStr)
+  );
+}
+
 describe("getTaskDueStatus", () => {
   it("classifies a due date from yesterday as overdue", () => {
     expect(getTaskDueStatus({ dueDate: isoDaysFromNow(-1), status: "todo" }, NOW)).toBe("overdue");
@@ -97,7 +105,7 @@ describe("formatDueDateUtc", () => {
     const dueDate = "2026-06-15T00:00:00.000Z";
     // Classified relative to a `now` that is also June 15 UTC -> "soon".
     expect(getTaskDueStatus({ dueDate, status: "todo" }, Date.UTC(2026, 5, 15))).toBe("soon");
-    expect(formatDueDateUtc(dueDate)?.display).toBe("6/15/2026");
+    expect(formatDueDateUtc(dueDate)?.display).toBe(expectedUtcDisplay(dueDate));
   });
 
   it("formats the same UTC calendar day regardless of the local timezone (west or east of UTC)", () => {
@@ -113,6 +121,6 @@ describe("formatDueDateUtc", () => {
     // shift this date by a day in one of these two zones; the UTC-forced
     // formatter must not.
     expect(eastResult).toEqual(westResult);
-    expect(westResult?.display).toBe("6/15/2026");
+    expect(westResult?.display).toBe(expectedUtcDisplay(dueDate));
   });
 });
