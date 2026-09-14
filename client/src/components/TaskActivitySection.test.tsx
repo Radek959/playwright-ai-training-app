@@ -89,7 +89,7 @@ describe("TaskActivitySection", () => {
     // Check formatting
     expect(screen.getByText("Alice")).toBeInTheDocument(); // u1 resolved
     expect(screen.getByText("→ Not set")).toBeInTheDocument(); // null -> Not set
-    expect(screen.getByText(/No/)).toBeInTheDocument(); // boolean false
+    expect(screen.getByText("No")).toBeInTheDocument(); // boolean false
     expect(screen.getByText(/→ Yes/)).toBeInTheDocument(); // boolean true
     expect(screen.getByText("a")).toBeInTheDocument(); // array -> string
     expect(screen.getByText("→ Empty")).toBeInTheDocument(); // empty array
