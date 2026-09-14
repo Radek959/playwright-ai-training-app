@@ -21,6 +21,13 @@ import {
   significantFieldsChanged
 } from "../taskLifecycle.js";
 import { buildComment, removeCommentsForTask, sortComments } from "../commentLifecycle.js";
+import { activities } from "../data.js";
+import {
+  recordTaskCreated,
+  recordTaskUpdated,
+  recordApprovalDecided,
+  removeActivitiesForTask
+} from "../taskActivityLifecycle.js";
 
 export const tasksRouter = Router();
 
@@ -54,6 +61,23 @@ tasksRouter.get("/:id", (req, res) => {
   const task = tasks.find((t) => t.id === req.params.id);
   if (!task) return res.status(404).json({ error: "not found" });
   res.json(task);
+});
+
+tasksRouter.get("/:id/activity", (req, res) => {
+  const task = tasks.find((t) => t.id === req.params.id);
+  if (!task) return res.status(404).json({ error: "not found" });
+
+  const taskActivities = activities.filter((a) => a.taskId === task.id);
+  
+  // Sort from newest to oldest. If same createdAt, apply deterministic sort by id desc.
+  taskActivities.sort((a, b) => {
+    if (a.createdAt !== b.createdAt) {
+      return a.createdAt > b.createdAt ? -1 : 1;
+    }
+    return a.id > b.id ? -1 : 1;
+  });
+
+  res.json(taskActivities);
 });
 
 tasksRouter.post("/", (req, res) => {
@@ -109,6 +133,7 @@ tasksRouter.post("/", (req, res) => {
   }
 
   tasks.push(task);
+  activities.push(recordTaskCreated(task));
   res.status(201).json(task);
 });
 
@@ -184,6 +209,12 @@ tasksRouter.put("/:id", (req, res) => {
     completedAt
   };
   tasks[idx] = updated;
+
+  const activity = recordTaskUpdated(existing.id, existing as unknown as Record<string, unknown>, updated as unknown as Record<string, unknown>);
+  if (activity) {
+    activities.push(activity);
+  }
+
   res.json(updated);
 });
 
@@ -226,6 +257,12 @@ tasksRouter.put("/:id/approval", (req, res) => {
   }
 
   tasks[idx] = outcome.task;
+
+  const activity = recordApprovalDecided(existing.id, existing as unknown as Record<string, unknown>, outcome.task as unknown as Record<string, unknown>);
+  if (activity) {
+    activities.push(activity);
+  }
+
   res.json(outcome.task);
 });
 
@@ -235,11 +272,17 @@ tasksRouter.delete("/:id", (req, res) => {
   if (idx === -1) return res.status(404).json({ error: "not found" });
 
   tasks.splice(idx, 1);
+  removeActivitiesForTask(activities, taskId);
 
   // Remove deleted task ID from dependencies of all other tasks
   for (const t of tasks) {
-    if (t.dependencies) {
+    if (t.dependencies && t.dependencies.includes(taskId)) {
+      const existing = { ...t };
       t.dependencies = t.dependencies.filter((depId) => depId !== taskId);
+      const activity = recordTaskUpdated(t.id, existing as unknown as Record<string, unknown>, t as unknown as Record<string, unknown>);
+      if (activity) {
+        activities.push(activity);
+      }
     }
   }
 

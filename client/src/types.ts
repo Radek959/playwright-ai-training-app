@@ -44,6 +44,23 @@ export type Task = {
   approvalDecidedAt?: string;
 };
 
+export type ActivityType = "task_created" | "task_updated" | "approval_decided";
+export type ActivityValue = string | number | boolean | string[] | null;
+
+export type TaskActivityChange = {
+  field: string;
+  before: ActivityValue;
+  after: ActivityValue;
+};
+
+export type TaskActivity = {
+  id: string;
+  taskId: string;
+  type: ActivityType;
+  changes: TaskActivityChange[];
+  createdAt: string;
+};
+
 export type TaskWithAssignee = Task & {
   assigneeName?: string;
   assigneeAvatarUrl?: string;

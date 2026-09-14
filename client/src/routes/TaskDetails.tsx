@@ -6,6 +6,7 @@ import { DueDateLabel } from "../components/DueDateLabel";
 import { TaskApprovalSection } from "../components/TaskApprovalSection";
 import { CommentsSection } from "../components/CommentsSection";
 import { TaskEditModal } from "../components/TaskEditModal";
+import { TaskActivitySection } from "../components/TaskActivitySection";
 import type { DependencyOptionsState } from "../components/TaskDependencyPicker";
 import { formatDueDateUtc } from "../utils/taskDueDate";
 import { toApiError } from "../utils/apiError";
@@ -43,6 +44,7 @@ export function TaskDetails() {
   const [notFound, setNotFound] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [activityRefreshKey, setActivityRefreshKey] = useState(0);
   const { setError, clearError } = useAppError();
 
   /**
@@ -149,6 +151,7 @@ export function TaskDetails() {
     setDependencies(await fetchDependencyTasks(updated.dependencies));
     setIsEditing(false);
     clearError();
+    setActivityRefreshKey(k => k + 1);
   };
 
   /**
@@ -176,6 +179,7 @@ export function TaskDetails() {
     const updated = (await res.json()) as Task;
     setTask(updated);
     setAllTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    setActivityRefreshKey(k => k + 1);
   };
 
   if (loading) {
@@ -420,6 +424,13 @@ export function TaskDetails() {
       <TaskApprovalSection task={task} onDecide={handleApprovalDecision} />
 
       <CommentsSection taskId={task.id} />
+
+      <TaskActivitySection 
+        taskId={task.id} 
+        refreshKey={activityRefreshKey}
+        users={users}
+        allTasks={allTasks}
+      />
 
       {/* The very same modal the task list uses — the details view adds an
           entry point to it rather than a second, parallel edit form. */}

@@ -67,6 +67,23 @@ export type User = {
   avatarUrl?: string;
 };
 
+export type ActivityType = "task_created" | "task_updated" | "approval_decided";
+export type ActivityValue = string | number | boolean | string[] | null;
+
+export type TaskActivityChange = {
+  field: string;
+  before: ActivityValue;
+  after: ActivityValue;
+};
+
+export type TaskActivity = {
+  id: string;
+  taskId: string;
+  type: ActivityType;
+  changes: TaskActivityChange[];
+  createdAt: string;
+};
+
 const BASE_URL = process.env.BASE_URL || "http://localhost:3001";
 
 const coverImages = [
@@ -407,5 +424,25 @@ export const users: User[] = [
     email: "diana@example.com",
     role: "viewer",
     avatarUrl: `${BASE_URL}/images/avatar-4.jpg`
+  }
+];
+
+export const activities: TaskActivity[] = [
+  {
+    id: "a1",
+    taskId: "t1",
+    type: "task_created",
+    changes: [],
+    createdAt: daysAgo(5)
+  },
+  {
+    id: "a2",
+    taskId: "t1",
+    type: "task_updated",
+    changes: [
+      { field: "status", before: "todo", after: "in-progress" },
+      { field: "estimatedHours", before: null, after: 16 }
+    ],
+    createdAt: daysAgo(3)
   }
 ];
