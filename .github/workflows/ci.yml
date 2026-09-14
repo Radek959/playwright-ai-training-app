@@ -22,7 +22,7 @@ jobs:
           node-version-file: ".nvmrc"
 
       - name: Install dependencies (root, client, server)
-        run: npm install
+        run: npm ci
 
       - name: Verify lockfiles were not modified by install
         run: git diff --exit-code -- package-lock.json client/package-lock.json server/package-lock.json
