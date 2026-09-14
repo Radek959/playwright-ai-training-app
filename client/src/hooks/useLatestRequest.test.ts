@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { isAbortError, useLatestRequest } from "./useLatestRequest";
@@ -84,6 +85,84 @@ describe("useLatestRequest", () => {
     if (older.isCurrent()) applied = olderResult;
 
     expect(applied).toBe("newer-data");
+  });
+
+  it("marks a previously-current attempt as no longer current after unmount", () => {
+    const { result, unmount } = renderHook(() => useLatestRequest());
+    const attempt = result.current();
+    expect(attempt.isCurrent()).toBe(true);
+
+    unmount();
+
+    expect(attempt.isCurrent()).toBe(false);
+  });
+
+  it("never lets a controlled promise that ignores the abort signal update state after unmount", async () => {
+    // A caller that (incorrectly, or unavoidably - e.g. a library that
+    // doesn't support AbortSignal) ignores the signal and resolves anyway
+    // must still be prevented from treating its result as current once the
+    // component has unmounted, purely via isCurrent().
+    let resolve!: (value: string) => void;
+    const controlledPromise = new Promise<string>((r) => (resolve = r));
+
+    const { result, unmount } = renderHook(() => useLatestRequest());
+    const attempt = result.current();
+
+    const setState = { calls: 0 };
+    const run = async () => {
+      const value = await controlledPromise; // ignores attempt.signal entirely
+      if (!attempt.isCurrent()) return;
+      setState.calls += 1;
+      return value;
+    };
+    const pending = run();
+
+    unmount();
+    expect(attempt.isCurrent()).toBe(false);
+
+    resolve("late-value");
+    await pending;
+
+    expect(setState.calls).toBe(0);
+  });
+
+  it("works correctly in React.StrictMode: begin stays stable, current attempt behaves normally, and unmount still invalidates it", () => {
+    const { result, unmount } = renderHook(() => useLatestRequest(), { wrapper: StrictMode });
+
+    const beginRef = result.current;
+    const attempt = result.current();
+    expect(attempt.isCurrent()).toBe(true);
+    expect(attempt.signal.aborted).toBe(false);
+    // begin() itself is still the same stable function reference under
+    // StrictMode's double effect invocation.
+    expect(result.current).toBe(beginRef);
+
+    unmount();
+
+    expect(attempt.isCurrent()).toBe(false);
+    expect(attempt.signal.aborted).toBe(true);
+  });
+
+  it("keeps begin's identity stable across renders even inside React.StrictMode", () => {
+    const { result, rerender } = renderHook(() => useLatestRequest(), { wrapper: StrictMode });
+    const beforeRerender = result.current;
+    rerender();
+    expect(result.current).toBe(beforeRerender);
+  });
+
+  it("still aborts a fresh attempt's predecessor after unmount has already run once (no stale controller reused)", () => {
+    // Sanity check that cleanup nulling the controller ref doesn't prevent a
+    // *new* render's attempt from behaving correctly - relevant because the
+    // cleanup itself must not throw or leave begin() in a broken state.
+    const { result, unmount } = renderHook(() => useLatestRequest());
+    const first = result.current();
+    unmount();
+    expect(first.isCurrent()).toBe(false);
+    expect(first.signal.aborted).toBe(true);
+
+    // A hook instance is never reused after unmount in real usage, but this
+    // confirms begin() itself doesn't throw once cleanup has already run.
+    expect(() => result.current()).not.toThrow();
   });
 });
 

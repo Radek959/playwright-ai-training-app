@@ -45,7 +45,10 @@ export type LatestRequestAttempt = {
  *
  * The in-flight attempt (if any) is also aborted automatically on unmount,
  * so an aborted request never surfaces as an error and never calls a state
- * setter after unmount.
+ * setter after unmount. Unmount also invalidates the current attempt itself
+ * (not just its signal): any `isCurrent()` captured before unmount reports
+ * false afterwards, even if the async work driving it ignores the abort
+ * signal and settles anyway.
  */
 export function useLatestRequest(): () => LatestRequestAttempt {
   const controllerRef = useRef<AbortController | null>(null);
@@ -65,6 +68,12 @@ export function useLatestRequest(): () => LatestRequestAttempt {
   useEffect(() => {
     return () => {
       controllerRef.current?.abort();
+      controllerRef.current = null;
+      // Bump past any sequence number already handed out so a previously
+      // returned isCurrent() can never report true again once unmounted -
+      // otherwise an attempt that ignores the abort signal and resolves
+      // anyway could still be mistaken for current after unmount.
+      seqRef.current += 1;
     };
   }, []);
 
