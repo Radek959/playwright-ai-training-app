@@ -4,6 +4,14 @@ import { TaskDetails } from "./TaskDetails";
 import { AppErrorProvider } from "../context/AppErrorContext";
 import { vi, describe, it, expect, beforeEach, MockInstance } from "vitest";
 
+// Mirrors formatDueDateUtc's own formatting call, so the expectation tracks
+// the runtime's locale (e.g. CI) instead of hardcoding an en-US string.
+function utcDisplay(dateStr: string): string {
+  return new Intl.DateTimeFormat(undefined, { year: "numeric", month: "numeric", day: "numeric", timeZone: "UTC" }).format(
+    new Date(dateStr)
+  );
+}
+
 const mockTask = {
   id: "task-1",
   title: "Test Task",
@@ -327,8 +335,9 @@ describe("TaskDetails", () => {
 
     // The Due Date field shows the date exactly once (via the plain date
     // field), and the Overdue label next to it carries no second date.
-    expect(screen.getByText("1/1/2020")).toBeInTheDocument();
-    expect(screen.queryByText(/Due: 1\/1\/2020/)).not.toBeInTheDocument();
+    const overdueDisplay = utcDisplay("2020-01-01T00:00:00Z");
+    expect(screen.getByText(overdueDisplay)).toBeInTheDocument();
+    expect(screen.queryByText(`Due: ${overdueDisplay}`)).not.toBeInTheDocument();
     const overdueLabel = screen.getByTestId("due-date-label");
     expect(overdueLabel).toHaveTextContent("Overdue");
     expect(overdueLabel.textContent).not.toMatch(/\d/);

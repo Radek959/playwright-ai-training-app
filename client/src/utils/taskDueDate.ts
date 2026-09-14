@@ -63,7 +63,7 @@ export function toUtcDayInputValue(dateStr: string | undefined | null): string {
 }
 
 export type FormattedDueDate = {
-  /** Calendar date formatted in UTC, independent of the local timezone (e.g. "6/15/2026"). */
+  /** Calendar date formatted in UTC, independent of the local timezone, using the runtime's locale. */
   display: string;
   /** Full ISO timestamp, suitable for a <time dateTime="..."> attribute. */
   iso: string;
@@ -82,7 +82,7 @@ export function formatDueDateUtc(dateStr: string | undefined): FormattedDueDate 
   if (Number.isNaN(ms)) return null;
 
   return {
-    display: new Intl.DateTimeFormat("en-US", { year: "numeric", month: "numeric", day: "numeric", timeZone: "UTC" }).format(
+    display: new Intl.DateTimeFormat(undefined, { year: "numeric", month: "numeric", day: "numeric", timeZone: "UTC" }).format(
       ms
     ),
     iso: new Date(ms).toISOString()

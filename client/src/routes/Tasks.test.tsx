@@ -22,6 +22,14 @@ function daysAgo(n: number): string {
   return daysFromNow(-n);
 }
 
+// Mirrors formatDueDateUtc's own formatting call, so the expectation tracks
+// the runtime's locale (e.g. CI) instead of hardcoding an en-US string.
+function utcDisplay(dateStr: string): string {
+  return new Intl.DateTimeFormat(undefined, { year: "numeric", month: "numeric", day: "numeric", timeZone: "UTC" }).format(
+    new Date(dateStr)
+  );
+}
+
 // Titles are deliberately alphabetical so the Table tab's default
 // sort-by-title order doubles as an easy sanity check. All tab panels stay
 // mounted in the DOM at once (only `hidden`), so assertions below target a
@@ -531,7 +539,7 @@ describe("Tasks view due-date filter", () => {
     // its UTC calendar day is 2026-06-14.
     const card = activePanel().getByTestId("task-card-t1");
     const label = within(card).getByTestId("due-date-label");
-    expect(label).toHaveTextContent("Overdue · Due: 6/14/2026");
+    expect(label).toHaveTextContent(`Overdue · Due: ${utcDisplay(daysAgo(1))}`);
   });
 
   it("shows the Due soon label with the exact due date in Grid View", async () => {
@@ -542,7 +550,7 @@ describe("Tasks view due-date filter", () => {
     // calendar day is 2026-06-17.
     const gridItem = screen.getByTestId("task-grid-item-t6");
     const label = within(gridItem).getByTestId("due-date-label");
-    expect(label).toHaveTextContent("Due soon · Due: 6/17/2026");
+    expect(label).toHaveTextContent(`Due soon · Due: ${utcDisplay(daysFromNow(2))}`);
   });
 });
 

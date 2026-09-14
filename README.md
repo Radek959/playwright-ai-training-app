@@ -19,8 +19,15 @@ npm run dev
 
 > [!WARNING]
 > The application has no authentication or authorization layer. It is designed to be run locally for training purposes only.
-> By default, the backend listens only on `127.0.0.1` and restricts CORS to local frontend origins.
-> If you need to access the application from other devices on your local network, you can run it with `HOST=0.0.0.0 npm run dev`. Note that doing so exposes the application to your network. If you need to allow other origins in CORS, use the `ALLOWED_ORIGINS` environment variable (e.g. `ALLOWED_ORIGINS=http://192.168.1.10:5173`).
+> By default, the backend listens only on `127.0.0.1` and the Vite dev server also only accepts connections from the local machine, so nothing is reachable from other devices unless you deliberately open both up.
+>
+> To expose the app to other devices on your local network:
+>
+> 1. Start the backend bound to all interfaces: `HOST=0.0.0.0 npm run dev:server`. This only opens the API — it does **not** expose the frontend.
+> 2. In a separate terminal, start Vite with `--host` so it also accepts LAN connections: `npm run dev:client -- --host`.
+> 3. Allow the frontend's LAN origin in CORS with the `ALLOWED_ORIGINS` environment variable when starting the backend, e.g. `HOST=0.0.0.0 ALLOWED_ORIGINS=http://192.168.1.10:5173 npm run dev:server`.
+>
+> Doing this exposes the application (with no login and no access control) to everyone on your network — only do it on a network you trust, and only for as long as you need it. Do not widen the default `npm run dev` setup, which stays local-only.
 
 📄 **Product documentation:** [`docs/dokumentacja-produktowa.md`](./docs/dokumentacja-produktowa.md) (Polish) describes the application's expected behavior — tasks, users, search, archiving and validation rules.
 
