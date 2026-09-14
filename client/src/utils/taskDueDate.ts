@@ -82,7 +82,7 @@ export function formatDueDateUtc(dateStr: string | undefined): FormattedDueDate 
   if (Number.isNaN(ms)) return null;
 
   return {
-    display: new Intl.DateTimeFormat(undefined, { year: "numeric", month: "numeric", day: "numeric", timeZone: "UTC" }).format(
+    display: new Intl.DateTimeFormat("en-US", { year: "numeric", month: "numeric", day: "numeric", timeZone: "UTC" }).format(
       ms
     ),
     iso: new Date(ms).toISOString()

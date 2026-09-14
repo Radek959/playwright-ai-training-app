@@ -2062,4 +2062,27 @@ describe("API Integration Tests", () => {
       expect(response.body).toHaveLength(1); // Only created
     });
   });
+
+  describe("CORS configuration", () => {
+    it("allows local origins", async () => {
+      const response = await request(app)
+        .get("/api/health")
+        .set("Origin", "http://localhost:5173");
+      expect(response.status).toBe(200);
+      expect(response.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
+    });
+
+    it("disallows other origins", async () => {
+      const response = await request(app)
+        .get("/api/health")
+        .set("Origin", "http://evil.com");
+      expect(response.status).toBe(500); // cors library throws error which express translates to 500
+    });
+
+    it("allows requests without origin", async () => {
+      const response = await request(app).get("/api/health");
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ status: "ok" });
+    });
+  });
 });
