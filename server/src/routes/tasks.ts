@@ -16,7 +16,8 @@ import {
   findApprovalBlocker,
   findBlockingDependencies,
   normalizeApprovalComment,
-  resolveCompletedAt
+  resolveCompletedAt,
+  significantFieldsChanged
 } from "../taskLifecycle.js";
 
 export const tasksRouter = Router();
@@ -130,7 +131,27 @@ tasksRouter.put("/:id", (req, res) => {
     return res.status(400).json({ error: "Validation failed", details: errors });
   }
 
-  const resultStatus = merged.status as Task["status"];
+  let resultStatus = merged.status as Task["status"];
+
+  // A significant edit to a completed, approved task is about to reset its
+  // approval back to "pending" (see applyApprovalTransition below), which
+  // would otherwise conflict with the task remaining "done" — a done task
+  // must always be either approved or approval-exempt. Rather than reject
+  // the whole update, reopen the task atomically as part of the same PUT:
+  // move it back to "in-progress" and clear completedAt. This only fires on
+  // a genuine value change (see significantFieldsChanged) — a no-op resend
+  // or a status-only change never reopens the task.
+  const wasDoneApproved =
+    existing.status === "done" && existing.requiresApproval === true && existing.approvalStatus === "approved";
+  if (
+    wasDoneApproved &&
+    resultStatus === "done" &&
+    significantFieldsChanged(existing as unknown as Record<string, unknown>, merged)
+  ) {
+    merged.status = "in-progress" satisfies Task["status"];
+    delete merged.completedAt;
+    resultStatus = "in-progress";
+  }
 
   if (resultStatus === "done") {
     const blockingDependencies = findBlockingDependencies(merged.dependencies as string[] | undefined, tasks);
@@ -179,7 +200,10 @@ tasksRouter.put("/:id/approval", (req, res) => {
   if (decision !== "approved" && decision !== "rejected") {
     errors.push({ field: "decision", message: "decision must be 'approved' or 'rejected'" });
   }
-  if (body.comment !== undefined && body.comment !== null && typeof body.comment !== "string") {
+  // `comment` is optional per the contract, but an explicit `null` is not
+  // part of it (unlike the nullable fields on plain task PUTs) — it is
+  // rejected here just like any other wrong-typed value.
+  if (body.comment !== undefined && typeof body.comment !== "string") {
     errors.push({ field: "comment", message: "comment must be a string" });
   }
   if (typeof body.comment === "string" && body.comment.trim().length > APPROVAL_COMMENT_MAX_LENGTH) {

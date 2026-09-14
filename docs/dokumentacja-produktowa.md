@@ -106,17 +106,18 @@ Sposób, w jaki `null` na tych polach jest obsługiwany, różni się jednak mi�
   - `approvalStatus`, `approvalComment` i `approvalDecidedAt` **nie da się ustawić bezpośrednio** przez zwykłe `PUT /api/tasks/:id` — próba przesłania któregokolwiek z nich zwraca `400` (`"<pole> is not an updatable field"`), tak jak każde inne nieznane pole.
   - Jedyny sposób przejścia `"pending"` → `"approved"`/`"rejected"` to nowy endpoint `PUT /api/tasks/:id/approval` (patrz niżej).
   - **Reset przy istotnej edycji**: jeśli zadanie ma decyzję końcową (`"approved"` lub `"rejected"`) i `PUT /api/tasks/:id` faktycznie zmienia wartość jednego z pól: `title`, `description`, `priority`, `dueDate`, `assigneeId`, `taskType`, `severity`, `estimatedHours`, `tags`, `dependencies`, `approver` — proces wraca do `"pending"`, a `approvalComment`/`approvalDecidedAt` są czyszczone. Samo przesłanie tej samej wartości (żądanie bez realnej zmiany) **nie** resetuje procesu; sama zmiana `status` — bez zmiany żadnego z powyższych pól — również nie resetuje procesu.
+  - **Automatyczne ponowne otwarcie ukończonego zadania**: jeśli zadanie jest już `status: "done"` i `approvalStatus: "approved"`, a `PUT /api/tasks/:id` w tym samym żądaniu wykonuje istotną edycję opisaną wyżej (czyli resetuje proces do `"pending"`), zadanie jest **atomowo ponownie otwierane w ramach tego samego żądania**: `status` wraca na `"in-progress"`, a `completedAt` jest czyszczone. Żądanie kończy się `200` z pełnym, zapisanym zadaniem — nie ma osobnego kroku ani drugiego wywołania. Ponowne otwarcie **nie** następuje, gdy żądanie jest no-opem (te same wartości przesłane ponownie), gdy zmienia się wyłącznie `status`, albo gdy reset zatwierdzenia i tak by nie nastąpił (np. zadanie nie było jeszcze zatwierdzone). Cała operacja jest atomowa: błąd walidacji lub konflikt zależności nie zapisuje żadnej częściowej zmiany.
 - **Reguła ukończenia zadania**: jeśli wynikowe zadanie ma `requiresApproval: true`, nie można ustawić mu statusu `"done"`, dopóki `approvalStatus` nie jest `"approved"`. Dla `"pending"`, `"rejected"` lub braku `approvalStatus`, żądanie (zarówno `POST`, jak i `PUT`) jest odrzucane z `409 Conflict`:
   ```json
   { "error": "Cannot complete task without approval", "approvalBlocker": { "status": "pending", "approver": "manager-a" } }
   ```
-  Zadanie w takim wypadku pozostaje bez zmian (analogicznie do reguły zależności w sekcji 2.6).
+  Zadanie w takim wypadku pozostaje bez zmian (analogicznie do reguły zależności w sekcji 2.6). Wyjątkiem jest opisane wyżej automatyczne ponowne otwarcie: tam zadanie samo przechodzi na `"in-progress"` w ramach edycji, więc ta reguła po prostu nie ma się do czego zastosować.
 
 #### `PUT /api/tasks/:id/approval` — zapisanie decyzji
 
 - Ciało żądania: `{ "decision": "approved" | "rejected", "comment"?: string }`.
 - `404`, jeśli zadanie o podanym `id` nie istnieje.
-- `400`, jeśli ciało jest niepoprawne: `decision` inna niż `"approved"`/`"rejected"`, `comment` nie jest stringiem, albo `comment` po `trim` przekracza 500 znaków.
+- `400`, jeśli ciało jest niepoprawne: `decision` inna niż `"approved"`/`"rejected"`, `comment` jest obecny, ale nie jest stringiem (w tym jawne `null` — kontrakt dopuszcza tylko brak pola albo string, więc `null` jest odrzucane tak samo jak liczba, obiekt, tablica czy `boolean`), albo `comment` po `trim` przekracza 500 znaków.
 - `409` z `{ "error": "Task does not require approval" }`, jeśli zadanie ma `requiresApproval: false`.
 - Komentarz jest zawsze przycinany (`trim`); pusty lub złożony wyłącznie z białych znaków jest traktowany jak brak komentarza.
 - **Idempotencja**: powtórzenie *identycznej* decyzji (ta sama `decision`, ten sam skomentowany/pusty `comment` po `trim`) na zadaniu, które już ma tę samą decyzję końcową, zwraca `200` bez zmiany zapisanego zadania — w szczególności `approvalDecidedAt` **nie** przesuwa się do bieżącego czasu.

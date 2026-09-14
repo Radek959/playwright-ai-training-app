@@ -78,7 +78,7 @@
         "responses": {
           "200": { "description": "Updated task", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Task" } } } },
           "400": {
-            "description": "Validation error (invalid decision, or comment not a string / over 500 characters)",
+            "description": "Validation error (invalid decision, or comment present but not a string — including an explicit null, which is not part of the contract and is rejected the same as any other non-string value — or comment over 500 characters after trim)",
             "content": {
               "application/json": { "schema": { "$ref": "#/components/schemas/ValidationErrorResponse" } }
             }
@@ -141,7 +141,7 @@
       },
       "put": {
         "summary": "Update task",
-        "description": "id is not an updatable field and any attempt to set it (or any other field outside TaskUpdateInput — including approvalStatus, approvalComment or approvalDecidedAt, which are never settable through this endpoint) returns 400. Whenever the resulting task (existing fields merged with the patch) has status 'done' — whether status is changing to 'done' now or the task was already 'done' and only 'dependencies' changed — every id in the resulting 'dependencies' must reference a task whose status is 'done', AND if the resulting task has 'requiresApproval: true' its approval process must be 'approved'; otherwise the request is rejected with 409 (see TaskCompletionBlockedResponse / TaskApprovalBlockedResponse) and the task is left completely unchanged. Approval workflow: if 'requiresApproval' flips from false to true, a new process starts at 'pending'; if it flips from true to false, all approval-process fields are cleared; if it stays true and the resulting task's approval process is currently 'approved' or 'rejected', a *significant* field actually changing value (title, description, priority, dueDate, assigneeId, taskType, severity, estimatedHours, tags, dependencies, or approver — status changes alone do not count) resets the process back to 'pending', clearing any comment/decidedAt. Use PUT /api/tasks/{id}/approval to move a pending process to approved/rejected.",
+        "description": "id is not an updatable field and any attempt to set it (or any other field outside TaskUpdateInput — including approvalStatus, approvalComment or approvalDecidedAt, which are never settable through this endpoint) returns 400. Whenever the resulting task (existing fields merged with the patch) has status 'done' — whether status is changing to 'done' now or the task was already 'done' and only 'dependencies' changed — every id in the resulting 'dependencies' must reference a task whose status is 'done', AND if the resulting task has 'requiresApproval: true' its approval process must be 'approved'; otherwise the request is rejected with 409 (see TaskCompletionBlockedResponse / TaskApprovalBlockedResponse) and the task is left completely unchanged. Approval workflow: if 'requiresApproval' flips from false to true, a new process starts at 'pending'; if it flips from true to false, all approval-process fields are cleared; if it stays true and the resulting task's approval process is currently 'approved' or 'rejected', a *significant* field actually changing value (title, description, priority, dueDate, assigneeId, taskType, severity, estimatedHours, tags, dependencies, or approver — status changes alone do not count) resets the process back to 'pending', clearing any comment/decidedAt. Automatic reopening: if the task being edited is already status 'done' with an 'approved' approval process, and this same request triggers that significant-field reset described above, the task is reopened atomically as part of this request — status is set to 'in-progress' and completedAt is cleared — instead of returning 409; the response is 200 with the full saved task (status 'in-progress', approvalStatus 'pending', completedAt absent). This reopening only happens on a genuine change to a significant field; a no-op resend or a status-only change never reopens the task, and any validation or dependency-conflict error still leaves the task completely unchanged. Use PUT /api/tasks/{id}/approval to move a pending process to approved/rejected.",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
@@ -389,7 +389,7 @@
         "type": "object",
         "properties": {
           "decision": { "type": "string", "enum": ["approved", "rejected"] },
-          "comment": { "type": "string", "maxLength": 500, "description": "Optional. Trimmed before storage/comparison; empty or whitespace-only is treated as no comment." }
+          "comment": { "type": "string", "maxLength": 500, "description": "Optional. Trimmed before storage/comparison; empty or whitespace-only is treated as no comment. Not nullable: unlike the nullable fields on plain task updates, an explicit null here is not part of the contract and is rejected with 400, the same as any other non-string value." }
         },
         "required": ["decision"],
         "description": "Body for PUT /api/tasks/{id}/approval. There is no login in this app: the caller is never authenticated as the task's `approver` — this only records that a decision was made on their behalf."

@@ -556,6 +556,28 @@ describe("API Integration Tests", () => {
       });
     });
 
+    it("returns 400 for comment: null, and leaves the approval state unchanged", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Null comment", requiresApproval: true, approver: "manager-a" });
+
+      const response = await request(app)
+        .put(`/api/tasks/${created.body.id}/approval`)
+        .send({ decision: "approved", comment: null });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe("Validation failed");
+      expect(response.body.details).toContainEqual({
+        field: "comment",
+        message: "comment must be a string"
+      });
+
+      const fetched = await request(app).get(`/api/tasks/${created.body.id}`);
+      expect(fetched.body.approvalStatus).toBe("pending");
+      expect(fetched.body.approvalComment).toBeUndefined();
+      expect(fetched.body.approvalDecidedAt).toBeUndefined();
+    });
+
     it("returns 400 for an unknown decision value", async () => {
       const created = await request(app)
         .post("/api/tasks")
@@ -654,6 +676,50 @@ describe("API Integration Tests", () => {
       expect(edited.body.approvalStatus).toBe("pending");
       expect(edited.body.approvalComment).toBeUndefined();
       expect(edited.body.approvalDecidedAt).toBeUndefined();
+    });
+
+    it("a significant edit of a completed, approved task atomically reopens it", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Ship the feature", requiresApproval: true, approver: "manager-a" });
+      await request(app).put(`/api/tasks/${created.body.id}/approval`).send({ decision: "approved", comment: "ok" });
+      const done = await request(app).put(`/api/tasks/${created.body.id}`).send({ status: "done" });
+      expect(done.status).toBe(200);
+      expect(done.body.status).toBe("done");
+
+      const edited = await request(app)
+        .put(`/api/tasks/${created.body.id}`)
+        .send({ title: "Ship the redesigned feature" });
+
+      expect(edited.status).toBe(200);
+      expect(edited.body.title).toBe("Ship the redesigned feature");
+      expect(edited.body.status).toBe("in-progress");
+      expect(edited.body.approvalStatus).toBe("pending");
+      expect(edited.body.approvalComment).toBeUndefined();
+      expect(edited.body.approvalDecidedAt).toBeUndefined();
+      expect(edited.body.completedAt).toBeUndefined();
+
+      const fetched = await request(app).get(`/api/tasks/${created.body.id}`);
+      expect(fetched.body.status).toBe("in-progress");
+      expect(fetched.body.approvalStatus).toBe("pending");
+    });
+
+    it("a no-op PUT on a completed, approved task leaves it completed and approved", async () => {
+      const created = await request(app)
+        .post("/api/tasks")
+        .send({ title: "Stay completed", requiresApproval: true, approver: "manager-a" });
+      await request(app).put(`/api/tasks/${created.body.id}/approval`).send({ decision: "approved", comment: "ok" });
+      const done = await request(app).put(`/api/tasks/${created.body.id}`).send({ status: "done" });
+      expect(done.status).toBe(200);
+      const completedAt = done.body.completedAt;
+      expect(completedAt).toBeDefined();
+
+      const noop = await request(app).put(`/api/tasks/${created.body.id}`).send({ title: "Stay completed" });
+
+      expect(noop.status).toBe(200);
+      expect(noop.body.status).toBe("done");
+      expect(noop.body.approvalStatus).toBe("approved");
+      expect(noop.body.completedAt).toBe(completedAt);
     });
 
     it("does not reset approval on a no-op payload (same values resent)", async () => {
