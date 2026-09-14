@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { useAppError } from "../context/AppErrorContext";
+import { useAppError } from "../context/useAppError";
 import { StatCard } from "../components/StatCard";
 import { UserAvatar } from "../components/UserAvatar";
 import { isTaskOverdue } from "../utils/taskDueDate";

@@ -422,6 +422,13 @@ describe("TaskDetails", () => {
   });
 
   it("still saves an unrelated field when the task list could not be fetched, without touching dependencies", async () => {
+    // TaskDetails logs a failed dependency-picker task list fetch via
+    // console.warn; this test deliberately triggers that failure, so the
+    // expected warning is suppressed here and restored immediately after -
+    // this file's beforeEach uses vi.resetAllMocks() (not restoreAllMocks()),
+    // which would otherwise leave console.warn silently mocked for every
+    // later test in this file.
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const puts: unknown[] = [];
     let listRequests = 0;
     fetchSpy.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
@@ -468,6 +475,7 @@ describe("TaskDetails", () => {
     expect(puts[0]).toEqual({ title: "Renamed task" });
     expect(screen.queryByText(/Unknown dependency ids/)).not.toBeInTheDocument();
     await waitFor(() => expect(screen.queryByTestId("task-edit-modal")).not.toBeInTheDocument());
+    warnSpy.mockRestore();
   });
 
   it("does not send a change or a clear for a dueDate stored in a non-ISO format the API accepts", async () => {
@@ -708,6 +716,12 @@ describe("TaskDetails", () => {
     });
 
     it("a comments-fetch failure does not break the rest of the task details view", async () => {
+      // Deliberately triggers CommentsSection's own "Failed to fetch
+      // comments" console.warn (and, since /api/tasks isn't mocked here,
+      // TaskDetails' "Failed to fetch tasks" one too) - see the note on the
+      // "still saves an unrelated field..." test above for why this is
+      // manually restored rather than left to beforeEach.
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       fetchSpy.mockImplementation((input: RequestInfo | URL) => {
         const url = input.toString();
         if (url === "/api/tasks/task-1") return Promise.resolve(new Response(JSON.stringify(mockTask)));
@@ -723,6 +737,7 @@ describe("TaskDetails", () => {
       // The rest of the details view (and Approval) is unaffected.
       expect(screen.getByTestId("approval-section")).toBeInTheDocument();
       expect(screen.queryByText("Failed to load task")).not.toBeInTheDocument();
+      warnSpy.mockRestore();
     });
   });
 });

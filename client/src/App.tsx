@@ -5,8 +5,9 @@ import Users from "./routes/Users";
 import Dashboard from "./routes/Dashboard";
 import { TaskDetails } from "./routes/TaskDetails";
 import { UserDetails } from "./routes/UserDetails";
+import NotFound from "./routes/NotFound";
 import { Dialog } from "./components/Dialog";
-import { useAppError } from "./context/AppErrorContext";
+import { useAppError } from "./context/useAppError";
 
 const navLinkClass = (isActive: boolean) =>
   `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 min-h-[44px] ${
@@ -244,6 +245,7 @@ export default function App() {
               <Route path="/tasks/:id" element={<TaskDetails />} />
               <Route path="/users" element={<Users />} />
               <Route path="/users/:id" element={<UserDetails />} />
+              <Route path="*" element={<NotFound />} />
             </Routes>
           </div>
         </main>

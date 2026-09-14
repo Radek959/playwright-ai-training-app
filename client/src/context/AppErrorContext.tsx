@@ -1,12 +1,5 @@
-import { createContext, useContext, useMemo, useCallback, useState, ReactNode } from "react";
-
-type AppErrorState = {
-  error?: string;
-  setError: (message?: string) => void;
-  clearError: () => void;
-};
-
-const AppErrorContext = createContext<AppErrorState | null>(null);
+import { useMemo, useCallback, useState, ReactNode } from "react";
+import { AppErrorContext, AppErrorState } from "./appErrorContext";
 
 export const AppErrorProvider = ({ children }: { children: ReactNode }) => {
   const [error, setError] = useState<string>();
@@ -25,10 +18,4 @@ export const AppErrorProvider = ({ children }: { children: ReactNode }) => {
   );
 
   return <AppErrorContext.Provider value={value}>{children}</AppErrorContext.Provider>;
-};
-
-export const useAppError = () => {
-  const ctx = useContext(AppErrorContext);
-  if (!ctx) throw new Error("useAppError must be used inside AppErrorProvider");
-  return ctx;
 };

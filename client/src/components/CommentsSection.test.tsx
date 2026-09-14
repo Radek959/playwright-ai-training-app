@@ -31,6 +31,15 @@ function mockDefault(overrides: { commentsResponse?: () => Response; usersRespon
   });
 }
 
+// CommentsSection logs failed comment/user fetches via console.warn. Tests
+// that deliberately simulate such a failure call this first so the expected
+// warning doesn't pollute test output - restored automatically by the next
+// test's vi.restoreAllMocks() below, so unexpected warnings elsewhere still
+// surface normally.
+function suppressExpectedFetchWarning() {
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+}
+
 describe("CommentsSection", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -188,6 +197,7 @@ describe("CommentsSection", () => {
   });
 
   it("fetching comments independently: shows a Retry button on failure, keeps the form blocked, and recovers on retry", async () => {
+    suppressExpectedFetchWarning();
     let failComments = true;
     fetchSpy.mockImplementation((input: RequestInfo | URL) => {
       const url = input.toString();
@@ -245,6 +255,7 @@ describe("CommentsSection", () => {
     });
 
     it("blocks a submit attempt while the comments GET has failed, even via a direct form submit", async () => {
+    suppressExpectedFetchWarning();
       fetchSpy.mockImplementation((input: RequestInfo | URL) => {
         const url = input.toString();
         if (url === "/api/tasks/task-1/comments") return Promise.resolve(new Response(null, { status: 500 }));
@@ -260,6 +271,7 @@ describe("CommentsSection", () => {
     });
 
     it("unblocks the form after a successful Retry, and a comment can then be created", async () => {
+    suppressExpectedFetchWarning();
       let failComments = true;
       fetchSpy.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
         const url = input.toString();
@@ -297,6 +309,7 @@ describe("CommentsSection", () => {
   });
 
   it("disables the add-comment form and shows a message when fetching users fails, without hiding existing comments", async () => {
+    suppressExpectedFetchWarning();
     mockDefault({ usersResponse: () => new Response(null, { status: 500 }) });
     render(<CommentsSection taskId="task-1" />);
     await waitFor(() => expect(screen.getByTestId("comments-authors-error")).toBeInTheDocument());
@@ -370,6 +383,7 @@ describe("CommentsSection", () => {
   });
 
   it("recovers the add-comment form after retrying a failed users fetch, without a full reload", async () => {
+    suppressExpectedFetchWarning();
     let failUsers = true;
     fetchSpy.mockImplementation((input: RequestInfo | URL) => {
       const url = input.toString();

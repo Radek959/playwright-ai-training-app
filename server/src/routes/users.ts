@@ -8,10 +8,10 @@ import {
   validateUserFields
 } from "../validation.js";
 // applyAllowedUpdate is a generic "merge a PUT patch onto a record, restricted
-// to an allow-list" helper that happens to live alongside the task lifecycle
-// rules; it carries no task-specific behaviour, so the user update below
-// reuses it rather than re-implementing the same allow-list/null semantics.
-import { applyAllowedUpdate } from "../taskLifecycle.js";
+// to an allow-list" helper with no task-specific behaviour, so the user
+// update below reuses it rather than re-implementing the same allow-list/null
+// semantics.
+import { applyAllowedUpdate } from "../updateUtils.js";
 import { clearCommentAuthor } from "../commentLifecycle.js";
 import { activities } from "../data.js";
 import { recordTaskUpdated } from "../taskActivityLifecycle.js";

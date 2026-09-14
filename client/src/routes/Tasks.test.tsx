@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { MemoryRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach, afterEach, MockInstance } from "vitest";
 import Tasks from "./Tasks";
-import { AppErrorProvider, useAppError } from "../context/AppErrorContext";
+import { AppErrorProvider } from "../context/AppErrorContext";
+import { useAppError } from "../context/useAppError";
 import type { Task, User } from "../types";
 
 const users: User[] = [

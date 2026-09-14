@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { UserForm } from "../components/UserForm";
 import { UserAvatar } from "../components/UserAvatar";
-import { useAppError } from "../context/AppErrorContext";
+import { useAppError } from "../context/useAppError";
 import { effectiveAvatar } from "../utils/avatar";
 import type { User } from "../types";
 
