@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach, afterEach, MockInstance } from "vitest";
 import Tasks from "./Tasks";
@@ -543,5 +543,105 @@ describe("Tasks view due-date filter", () => {
     const gridItem = screen.getByTestId("task-grid-item-t6");
     const label = within(gridItem).getByTestId("due-date-label");
     expect(label).toHaveTextContent("Due soon · Due: 6/17/2026");
+  });
+});
+
+describe("Tasks view search widget", () => {
+  function renderTasksWithDetailsRoute(initialEntries: string[] = ["/tasks"]) {
+    return render(
+      <AppErrorProvider>
+        <MemoryRouter initialEntries={initialEntries}>
+          <LocationProbe />
+          <Routes>
+            <Route path="/tasks" element={<Tasks />} />
+            <Route path="/tasks/:id" element={<div>Task details page</div>} />
+          </Routes>
+        </MemoryRouter>
+      </AppErrorProvider>
+    );
+  }
+
+  function mockFetchWithSearch(results: Task[]) {
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/tasks/search")) return jsonResponse(results);
+      if (url.includes("/api/users")) return jsonResponse(users);
+      if (url.includes("/api/tasks")) return jsonResponse(tasks);
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+  }
+
+  async function searchFor(query: string) {
+    const input = screen.getByTestId("task-search-input");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: query } });
+    // Advanced inside act() so the debounced request's state updates are
+    // flushed the way the component would flush them in the browser.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+  }
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.setSystemTime(NOW);
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("navigates to the task details page instead of opening the edit modal", async () => {
+    mockFetchWithSearch([tasks[0]]);
+    renderTasksWithDetailsRoute();
+    await waitForActiveTabLoaded();
+
+    await searchFor("alpha");
+    fireEvent.mouseDown(await screen.findByTestId("search-result-t1"));
+
+    await waitFor(() => expect(screen.getByText("Task details page")).toBeInTheDocument());
+    expect(screen.queryByTestId("task-edit-modal")).not.toBeInTheDocument();
+  });
+
+  it("closes the search dropdown when a result is selected", async () => {
+    mockFetchWithSearch([tasks[0]]);
+    renderTasksWithDetailsRoute();
+    await waitForActiveTabLoaded();
+
+    await searchFor("alpha");
+    expect(await screen.findByTestId("search-results-dropdown")).toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByTestId("search-result-t1"));
+
+    await waitFor(() => expect(screen.queryByTestId("search-results-dropdown")).not.toBeInTheDocument());
+  });
+
+  it("does not write the search text into the /tasks URL", async () => {
+    mockFetchWithSearch([tasks[0]]);
+    renderTasksWithDetailsRoute(["/tasks?tab=grid"]);
+    await waitFor(() => expect(screen.getByTestId("tab-grid")).toHaveAttribute("aria-selected", "true"));
+
+    await searchFor("alpha");
+    await screen.findByTestId("search-result-t1");
+
+    // The widget is transient navigation, not list state: the URL still
+    // describes only the tab/filters the list itself owns.
+    expect(locationSearch()).toBe("?tab=grid");
+  });
+
+  it("leaves the list's own filtering untouched while searching", async () => {
+    mockFetchWithSearch([tasks[0]]);
+    renderTasksWithDetailsRoute(["/tasks?status=todo"]);
+    await waitForActiveTabLoaded();
+
+    const visibleBefore = activePanel().getAllByTestId(/^task-card-/).map((el) => el.dataset.testid);
+
+    await searchFor("alpha");
+    await screen.findByTestId("search-result-t1");
+
+    expect(activePanel().getAllByTestId(/^task-card-/).map((el) => el.dataset.testid)).toEqual(visibleBefore);
+    expect((screen.getByLabelText("Filter by status") as HTMLSelectElement).value).toBe("todo");
   });
 });

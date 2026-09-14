@@ -1,22 +1,57 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import type { Task } from "../types";
 
 type Props = {
-  onSelect: (task: Task) => void;
   placeholder?: string;
 };
 
 const LISTBOX_ID = "task-search-listbox";
 const INPUT_LABEL_ID = "task-search-label";
 
-export function TaskSearch({ onSelect, placeholder = "Search tasks..." }: Props) {
+/** Matches the server's own minimum (see TASK_SEARCH_MIN_QUERY_LENGTH). */
+const MIN_QUERY_LENGTH = 2;
+const DEBOUNCE_MS = 300;
+
+/**
+ * What the widget currently knows about the typed query. Modelling it as one
+ * value (rather than separate `results`/`loading`/`error` flags that can
+ * disagree) is what guarantees the dropdown never shows a previous query's
+ * results as if they belonged to the current one: moving to a new query
+ * replaces the whole state instead of leaving stale results behind.
+ */
+type SearchState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "success"; results: Task[] };
+
+/**
+ * A transient navigation widget: typing looks tasks up through
+ * GET /api/tasks/search and picking a result goes to that task's detail page.
+ *
+ * It deliberately does not filter the task list behind it and does not write
+ * the typed text into the /tasks URL — the list's own filters own that state,
+ * and a half-typed search term is not something anyone wants to share or
+ * restore from a bookmark.
+ */
+export function TaskSearch({ placeholder = "Search tasks..." }: Props) {
+  const navigate = useNavigate();
+
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [state, setState] = useState<SearchState>({ status: "idle" });
   const [focused, setFocused] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  // Bumped by "Try again" to re-run the effect for the same query.
+  const [retryToken, setRetryToken] = useState(0);
+
   const inputRef = useRef<HTMLInputElement>(null);
   const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Every request gets a number; only the most recently started one is allowed
+  // to write state. Responses that arrive out of order (a slow request for an
+  // older query resolving after a fast one for a newer query) are dropped
+  // rather than overwriting newer results.
+  const latestRequestRef = useRef(0);
 
   useEffect(() => {
     return () => {
@@ -24,14 +59,22 @@ export function TaskSearch({ onSelect, placeholder = "Search tasks..." }: Props)
     };
   }, []);
 
+  // Whitespace around the query is meaningless (the API trims it too), so the
+  // effect keys off the trimmed value: padding an existing query with spaces
+  // does not fire another request, and a query that is only whitespace never
+  // fires one at all.
+  const trimmedQuery = query.trim();
+
   useEffect(() => {
-    if (query.length < 2) {
-      setResults([]);
-      setLoading(false);
+    if (trimmedQuery.length < MIN_QUERY_LENGTH) {
+      // Nothing worth asking for — and any older results stop being shown.
+      latestRequestRef.current += 1;
+      setState({ status: "idle" });
       return;
     }
 
-    setLoading(true);
+    setState({ status: "loading" });
+    const requestId = (latestRequestRef.current += 1);
     // Created synchronously so the effect cleanup below can abort it the
     // instant the query changes again, rather than waiting for the next
     // debounce window to elapse before cancelling the stale request.
@@ -39,32 +82,40 @@ export function TaskSearch({ onSelect, placeholder = "Search tasks..." }: Props)
 
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/tasks/search?q=${encodeURIComponent(query)}`, {
+        const res = await fetch(`/api/tasks/search?q=${encodeURIComponent(trimmedQuery)}`, {
           signal: controller.signal
         });
-        if (!res.ok) throw new Error("Search failed");
+        if (!res.ok) throw new Error(`Search failed: ${res.status}`);
         const data = await res.json();
-        if (controller.signal.aborted) return;
-        setResults(data);
+        if (requestId !== latestRequestRef.current) return;
+        setState({ status: "success", results: Array.isArray(data) ? (data as Task[]) : [] });
         setSelectedIndex(0);
       } catch (error) {
         if (controller.signal.aborted) return;
-        console.error("Search error:", error);
-        setResults([]);
-      } finally {
-        // A stale/aborted request must never flip off the loading state
-        // that belongs to a newer, still-pending query.
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
+        if (requestId !== latestRequestRef.current) return;
+        setState({
+          status: "error",
+          message: error instanceof Error ? error.message : "Search failed"
+        });
       }
-    }, 300);
+    }, DEBOUNCE_MS);
 
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query]);
+  }, [trimmedQuery, retryToken]);
+
+  const results = state.status === "success" ? state.results : [];
+
+  const handleSelect = (task: Task) => {
+    setQuery("");
+    latestRequestRef.current += 1;
+    setState({ status: "idle" });
+    setFocused(false);
+    inputRef.current?.blur();
+    navigate(`/tasks/${task.id}`);
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Escape must close the dropdown regardless of whether results have
@@ -91,16 +142,23 @@ export function TaskSearch({ onSelect, placeholder = "Search tasks..." }: Props)
     }
   };
 
-  const handleSelect = (task: Task) => {
-    onSelect(task);
-    setQuery("");
-    setResults([]);
-    setFocused(false);
-    inputRef.current?.blur();
+  const retry = () => {
+    setRetryToken((token) => token + 1);
+    inputRef.current?.focus();
   };
 
-  const showDropdown = focused && (results.length > 0 || (query.length >= 2 && !loading));
-  const activeOptionId = showDropdown && results[selectedIndex] ? `search-result-${results[selectedIndex].id}` : undefined;
+  const showDropdown = focused && state.status !== "idle";
+  const activeOptionId =
+    showDropdown && results[selectedIndex] ? `search-result-${results[selectedIndex].id}` : undefined;
+
+  const liveMessage =
+    state.status === "loading"
+      ? "Searching…"
+      : state.status === "error"
+        ? "Search failed"
+        : state.status === "success"
+          ? `${state.results.length} ${state.results.length === 1 ? "result" : "results"} found`
+          : "";
 
   return (
     <div className="relative w-full" data-testid="task-search-container">
@@ -143,7 +201,7 @@ export function TaskSearch({ onSelect, placeholder = "Search tasks..." }: Props)
         />
 
         {/* Loading Spinner */}
-        {loading && (
+        {state.status === "loading" && (
           <div className="absolute right-3 top-1/2 -translate-y-1/2" data-testid="search-spinner" aria-hidden="true">
             <svg className="animate-spin h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -153,7 +211,7 @@ export function TaskSearch({ onSelect, placeholder = "Search tasks..." }: Props)
         )}
 
         {/* Search Icon */}
-        {!loading && query.length === 0 && (
+        {state.status !== "loading" && query.length === 0 && (
           <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -162,12 +220,11 @@ export function TaskSearch({ onSelect, placeholder = "Search tasks..." }: Props)
         )}
 
         {/* Clear Button */}
-        {!loading && query.length > 0 && (
+        {state.status !== "loading" && query.length > 0 && (
           <button
             type="button"
             onClick={() => {
               setQuery("");
-              setResults([]);
               inputRef.current?.focus();
             }}
             aria-label="Clear search"
@@ -181,11 +238,9 @@ export function TaskSearch({ onSelect, placeholder = "Search tasks..." }: Props)
         )}
       </div>
 
-      {/* Result count, announced to assistive tech without visually duplicating the header below */}
+      {/* State of the search, announced to assistive tech without visually duplicating the dropdown below */}
       <div className="sr-only" role="status" aria-live="polite">
-        {showDropdown && !loading
-          ? `${results.length} ${results.length === 1 ? "result" : "results"} found`
-          : ""}
+        {showDropdown ? liveMessage : ""}
       </div>
 
       {/* Results Dropdown */}
@@ -197,17 +252,67 @@ export function TaskSearch({ onSelect, placeholder = "Search tasks..." }: Props)
           className="absolute top-full left-0 right-0 mt-2 bg-white border rounded-lg shadow-lg max-h-80 overflow-y-auto z-50"
           data-testid="search-results-dropdown"
         >
-          {results.length > 0 ? (
+          {state.status === "loading" && (
+            <div className="px-4 py-6 text-center text-gray-500 text-sm" data-testid="search-loading">
+              Searching…
+            </div>
+          )}
+
+          {state.status === "error" && (
+            // Kept inside the dropdown so the failure is reported where the
+            // results would have been, instead of silently looking like a
+            // search that simply found nothing.
+            <div className="px-4 py-5 text-center text-sm" data-testid="search-error">
+              <p role="alert" className="text-red-700">
+                Could not load search results: {state.message}
+              </p>
+              <button
+                type="button"
+                // mousedown, like the result rows below, so the click lands
+                // before the input's blur handler closes the dropdown.
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  retry();
+                }}
+                data-testid="search-retry"
+                className="mt-2 underline font-medium text-red-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 rounded"
+              >
+                Try again
+              </button>
+            </div>
+          )}
+
+          {state.status === "success" && state.results.length === 0 && (
+            <div className="px-4 py-6 text-center text-gray-500 text-sm" data-testid="search-no-results">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-12 w-12 mx-auto mb-2 text-gray-300"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p>No results for &ldquo;{trimmedQuery}&rdquo;</p>
+              <p className="text-xs mt-1">Try a different search term</p>
+            </div>
+          )}
+
+          {state.status === "success" && state.results.length > 0 && (
             <>
               <div className="px-3 py-2 text-xs text-gray-500 border-b bg-gray-50" aria-hidden="true">
-                Found {results.length} {results.length === 1 ? "result" : "results"}
+                Found {state.results.length} {state.results.length === 1 ? "result" : "results"}
               </div>
-              {results.map((task, index) => (
+              {state.results.map((task, index) => (
                 <div
                   key={task.id}
                   id={`search-result-${task.id}`}
                   role="option"
                   aria-selected={index === selectedIndex}
+                  // An explicit name, so the option is announced as the task it
+                  // is rather than as the run-together text of its badges.
+                  aria-label={`${task.title}, status ${task.status}, priority ${task.priority}`}
                   // Not part of the tab order: this combobox keeps real DOM focus on
                   // the input and drives selection via aria-activedescendant instead.
                   tabIndex={-1}
@@ -252,29 +357,14 @@ export function TaskSearch({ onSelect, placeholder = "Search tasks..." }: Props)
                 </div>
               ))}
             </>
-          ) : (
-            <div className="px-4 py-6 text-center text-gray-500 text-sm" data-testid="search-no-results">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-12 w-12 mx-auto mb-2 text-gray-300"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                aria-hidden="true"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <p>No results for &ldquo;{query}&rdquo;</p>
-              <p className="text-xs mt-1">Try a different search term</p>
-            </div>
           )}
         </div>
       )}
 
       {/* Helper Text */}
-      {query.length === 1 && (
+      {trimmedQuery.length > 0 && trimmedQuery.length < MIN_QUERY_LENGTH && (
         <div className="absolute top-full left-0 right-0 mt-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
-          Type at least 2 characters to start searching
+          Type at least {MIN_QUERY_LENGTH} characters to start searching
         </div>
       )}
     </div>

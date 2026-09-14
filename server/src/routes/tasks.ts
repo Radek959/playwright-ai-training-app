@@ -21,6 +21,7 @@ import {
   significantFieldsChanged
 } from "../taskLifecycle.js";
 import { findDependencyCycle } from "../taskDependencyGraph.js";
+import { searchTasks } from "../taskSearch.js";
 import { buildComment, removeCommentsForTask, sortComments } from "../commentLifecycle.js";
 import { activities } from "../data.js";
 import {
@@ -44,18 +45,13 @@ tasksRouter.get("/", (_req, res) => {
   res.json(tasks);
 });
 
+// Matching, ranking and the result cap all live in searchTasks (see
+// taskSearch.ts); this route only turns the request into its arguments. A
+// repeated ?q= yields an array rather than a string, which is treated as no
+// query at all instead of being coerced into a surprising one.
 tasksRouter.get("/search", (req, res) => {
-  const query = ((req.query.q as string) || "").toLowerCase();
-
-  if (query.length < 2) {
-    return res.json([]);
-  }
-
-  const results = tasks.filter(
-    (t) => t.title.toLowerCase().includes(query) || t.description?.toLowerCase().includes(query)
-  );
-
-  res.json(results.slice(0, 10));
+  const rawQuery = typeof req.query.q === "string" ? req.query.q : "";
+  res.json(searchTasks(tasks, rawQuery, users));
 });
 
 tasksRouter.get("/:id", (req, res) => {

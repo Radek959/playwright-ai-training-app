@@ -164,13 +164,13 @@
     },
     "/api/tasks/search": {
       "get": {
-        "summary": "Search tasks by title or description",
+        "summary": "Search tasks by title, description, tags or assignee name",
         "parameters": [
           {
             "name": "q",
             "in": "query",
             "required": false,
-            "description": "Search query. Fewer than 2 characters returns an empty array.",
+            "description": "Search query. Leading/trailing whitespace is ignored; fewer than 2 characters after trimming returns an empty array.",
             "schema": {
               "type": "string"
             }
@@ -178,7 +178,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Matching tasks (max 10)",
+            "description": "Matching tasks, best match first (max 10, deduplicated)",
             "content": {
               "application/json": {
                 "schema": {
@@ -190,7 +190,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Case-insensitive substring search. The query is trimmed first, so '  bug  ' and 'bug' are the same search; a query shorter than 2 characters after trimming (including an empty, whitespace-only or missing q) returns an empty array rather than an error, and a repeated ?q= is treated as no query at all. A task matches on its 'title', its 'description', any one of its 'tags', or the name of the user in 'assigneeId'. Tasks of every status are searched, including 'done' ones. Results are deduplicated: a task matching several fields at once is returned once, under its best match. Ordering is deterministic - the same request always returns the same list, in this order: (1) the title is exactly the query, (2) the title starts with the query, (3) the title contains the query anywhere else, (4) only the description, a tag or the assignee's name matches; ties are broken by the task's stored position, which is stable. Ranking is applied before the cap, so the best matches are the ones that survive it. At most 10 tasks are returned, with no total-match count and no pagination."
       }
     },
     "/api/tasks/{id}": {

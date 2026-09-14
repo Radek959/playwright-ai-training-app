@@ -443,6 +443,126 @@ describe("API Integration Tests", () => {
     });
   });
 
+  describe("Task search (GET /api/tasks/search)", () => {
+    const search = async (q: string) => {
+      const response = await request(app).get(`/api/tasks/search?q=${encodeURIComponent(q)}`);
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body)).toBe(true);
+      return response.body as Task[];
+    };
+
+    const titlesOf = (results: Task[]) => results.map((t) => t.title);
+
+    it("finds a task by its title, case-insensitively", async () => {
+      await request(app).post("/api/tasks").send({ title: "ZzSearchable login screen" });
+
+      expect(titlesOf(await search("ZZSEARCHABLE LOGIN"))).toEqual(["ZzSearchable login screen"]);
+    });
+
+    it("finds a task by its description", async () => {
+      await request(app)
+        .post("/api/tasks")
+        .send({ title: "ZzOpaque title", description: "Caused by a ZzStaleCache entry" });
+
+      expect(titlesOf(await search("zzstalecache"))).toEqual(["ZzOpaque title"]);
+    });
+
+    it("finds a task by one of its tags", async () => {
+      await request(app).post("/api/tasks").send({ title: "ZzTagged task", tags: ["ZzInfra", "urgent"] });
+
+      expect(titlesOf(await search("zzinfra"))).toEqual(["ZzTagged task"]);
+    });
+
+    it("finds a task by the name of the user it is assigned to", async () => {
+      const user = await request(app)
+        .post("/api/users")
+        .send({ name: "ZzSearchable Assignee", email: "zz-searchable@example.com" });
+      await request(app).post("/api/tasks").send({ title: "ZzNothing in the title", assigneeId: user.body.id });
+
+      expect(titlesOf(await search("zzsearchable assignee"))).toEqual(["ZzNothing in the title"]);
+    });
+
+    it("ignores leading and trailing whitespace in the query", async () => {
+      await request(app).post("/api/tasks").send({ title: "ZzTrimmable match" });
+
+      expect(await search("   zztrimmable   ")).toEqual(await search("zztrimmable"));
+      expect(titlesOf(await search("   zztrimmable   "))).toEqual(["ZzTrimmable match"]);
+    });
+
+    it("returns an empty array for an empty, whitespace-only, or too-short query", async () => {
+      expect(await search("")).toEqual([]);
+      expect(await search("   ")).toEqual([]);
+      expect(await search("a")).toEqual([]);
+      expect(await search("  a  ")).toEqual([]);
+    });
+
+    it("returns an empty array when the q parameter is missing entirely", async () => {
+      const response = await request(app).get("/api/tasks/search");
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([]);
+    });
+
+    it("returns an empty array for a repeated q parameter rather than coercing it", async () => {
+      const response = await request(app).get("/api/tasks/search?q=login&q=bug");
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([]);
+    });
+
+    it("returns a task matching several fields at once only once", async () => {
+      const user = await request(app)
+        .post("/api/users")
+        .send({ name: "ZzOverlap Person", email: "zz-overlap@example.com" });
+      await request(app).post("/api/tasks").send({
+        title: "ZzOverlap in the title",
+        description: "ZzOverlap in the description",
+        tags: ["ZzOverlap"],
+        assigneeId: user.body.id
+      });
+
+      const results = await search("zzoverlap");
+      expect(results).toHaveLength(1);
+      expect(new Set(results.map((t) => t.id)).size).toBe(results.length);
+    });
+
+    it("orders results by exact title, title prefix, other title match, then other fields", async () => {
+      await request(app).post("/api/tasks").send({ title: "Nothing relevant here", description: "zzrank" });
+      await request(app).post("/api/tasks").send({ title: "Contains zzrank inside" });
+      await request(app).post("/api/tasks").send({ title: "zzrank starts the title" });
+      await request(app).post("/api/tasks").send({ title: "zzrank" });
+
+      expect(titlesOf(await search("zzrank"))).toEqual([
+        "zzrank",
+        "zzrank starts the title",
+        "Contains zzrank inside",
+        "Nothing relevant here"
+      ]);
+    });
+
+    it("returns the same order for the same query every time", async () => {
+      await request(app).post("/api/tasks").send({ title: "zzstable one" });
+      await request(app).post("/api/tasks").send({ title: "zzstable two" });
+      await request(app).post("/api/tasks").send({ title: "zzstable" });
+
+      const first = titlesOf(await search("zzstable"));
+      expect(titlesOf(await search("zzstable"))).toEqual(first);
+      expect(first).toEqual(["zzstable", "zzstable one", "zzstable two"]);
+    });
+
+    it("caps the result list at 10", async () => {
+      for (let i = 0; i < 14; i += 1) {
+        await request(app).post("/api/tasks").send({ title: `ZzCapped task ${i}` });
+      }
+
+      expect(await search("zzcapped")).toHaveLength(10);
+    });
+
+    it("keeps searching tasks of every status, including done ones", async () => {
+      await request(app).post("/api/tasks").send({ title: "ZzFinished work", status: "done" });
+
+      expect(titlesOf(await search("zzfinished"))).toEqual(["ZzFinished work"]);
+    });
+  });
+
   describe("Cyclic task dependency rule", () => {
     const createTask = async (title: string, dependencies: string[] = []) => {
       const response = await request(app).post("/api/tasks").send({ title, dependencies });

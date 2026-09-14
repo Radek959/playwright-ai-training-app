@@ -240,17 +240,28 @@ Dodatkowe reguły pól (niezależne od kontekstu innych pól):
 
 ## 4. Wyszukiwanie zadań (`GET /api/tasks/search?q=...`)
 
-- Parametr `q` krótszy niż 2 znaki (licząc surową długość stringu, bez przycinania spacji) zwraca pustą tablicę `[]`, **bez błędu**.
-- Dopasowanie: podciąg `q` (bez rozróżniania wielkości liter) w polu `title` **lub** w polu `description` zadania. Brak dopasowania po innych polach (np. `tags`, `assigneeId`, `status`).
-- Wynik jest ograniczony do maksymalnie **10** zadań, bez informacji o łącznej liczbie dopasowań powyżej tego limitu.
+- Parametr `q` jest najpierw **przycinany** (`trim`), więc `"  bug  "` i `"bug"` to dokładnie to samo zapytanie. Zapytanie krótsze niż 2 znaki **po przycięciu** — w tym puste, złożone wyłącznie ze spacji albo całkowicie pominięte — zwraca pustą tablicę `[]`, **bez błędu**. Powtórzony parametr (`?q=a&q=b`) jest traktowany jak brak zapytania, a nie sklejany w jeden ciąg.
+- Dopasowanie: podciąg `q` **bez rozróżniania wielkości liter** w polu `title`, `description`, w dowolnym elemencie `tags` **albo** w nazwie (`name`) użytkownika wskazanego przez `assigneeId`. Spacje **wewnątrz** zapytania są znaczące — przycinane są wyłącznie skrajne.
+- Wyniki są **bez duplikatów**: zadanie pasujące jednocześnie po kilku polach pojawia się dokładnie raz, zaklasyfikowane według swojego najlepszego dopasowania.
+- **Kolejność jest deterministyczna** — to samo żądanie zawsze zwraca tę samą listę w tej samej kolejności:
+  1. `title` jest dokładnie równy zapytaniu,
+  2. `title` zaczyna się od zapytania,
+  3. `title` zawiera zapytanie w innym miejscu,
+  4. dopasowanie wyłącznie po `description`, `tags` albo nazwie osoby przypisanej.
+
+  Remisy rozstrzygane są kolejnością zapisu zadania (stabilną), więc wynik nigdy nie zmienia się „sam z siebie”.
+- Wynik jest ograniczony do maksymalnie **10** zadań, bez informacji o łącznej liczbie dopasowań powyżej tego limitu. Limit jest nakładany **po** uszeregowaniu, więc do wyniku trafiają najlepsze dopasowania, a nie przypadkowe pierwsze dziesięć. Endpoint nie ma paginacji.
 - Endpoint przeszukuje **wszystkie** zadania niezależnie od statusu — wynik może zawierać zadania zarchiwizowane, aktywne czy zakończone.
 
 ### Zachowanie widgetu wyszukiwania w UI (górna część widoku Tasks)
 
-- Pole wyszukiwania w UI **nie filtruje** listy/tabeli/kart na stronie — to osobny, niezależny mechanizm. Wpisanie tekstu wywołuje zapytanie do `GET /api/tasks/search`, a wynik pokazywany jest w rozwijanej liście (dropdown) pod polem.
-- Zapytanie do API jest wysyłane dopiero po 300 ms od ostatniego naciśnięcia klawisza (debounce) i tylko gdy zapytanie ma co najmniej 2 znaki; przy krótszym zapytaniu w UI pojawia się podpowiedź „Type at least 2 characters to start searching” zamiast wywołania API.
-- Wybranie wyniku z listy (kliknięcie albo klawisz Enter po nawigacji strzałkami) **otwiera modal edycji tego zadania** — nie przenosi do żadnej konkretnej zakładki ani nie podświetla zadania na liście.
-- Klawisz Escape zamyka rozwijaną listę wyników bez czyszczenia wpisanego tekstu.
+- Pole wyszukiwania w UI **nie filtruje** listy/tabeli/kart na stronie — to osobny, niezależny mechanizm nawigacyjny. Wpisanie tekstu wywołuje zapytanie do `GET /api/tasks/search`, a wynik pokazywany jest w rozwijanej liście (dropdown) pod polem. Filtry listy (zakładka, status, priorytet, osoba, termin, sortowanie, strona) pozostają przy tym nietknięte.
+- Zapytanie do API jest wysyłane dopiero po 300 ms od ostatniego naciśnięcia klawisza (debounce) i tylko gdy zapytanie ma co najmniej 2 znaki **po przycięciu**; dla pustego zapytania albo złożonego wyłącznie ze spacji **nie powstaje żadne żądanie**. Przy zapytaniu krótszym niż 2 znaki pojawia się podpowiedź „Type at least 2 characters to start searching” zamiast wywołania API. Samo dodanie skrajnych spacji do już wpisanego zapytania nie wysyła kolejnego żądania.
+- Widget rozróżnia cztery stany i zawsze pokazuje dokładnie jeden z nich: **ładowanie** („Searching…” w dropdownie plus spinner w polu), **pusty wynik** („No results for …”), **błąd** (komunikat „Could not load search results: …” oznaczony `role="alert"`, więc niezależny od koloru, wraz z przyciskiem „Try again” ponawiającym to samo zapytanie) oraz **wyniki**. Nieudane wyszukiwanie nigdy nie wygląda jak wyszukiwanie bez wyników.
+- Wyniki poprzedniego zapytania **nigdy** nie są pokazywane jako wyniki bieżącego: zmiana zapytania od razu zastępuje cały stan widgetu (ładowaniem albo stanem pustym), a odpowiedzi przychodzące nie po kolei są odrzucane — starsza, wolniejsza odpowiedź nie może nadpisać nowszej.
+- Wybranie wyniku z listy (kliknięcie albo klawisz Enter po nawigacji strzałkami) **przenosi do widoku szczegółów zadania** (`/tasks/:id`) i zamyka widget, czyszcząc wpisany tekst. Nie otwiera modalu edycji.
+- Obsługa klawiaturą: pole jest `combobox`, lista wyników `listbox`, a aktywny wynik wskazywany jest przez `aria-activedescendant`. Strzałki w górę/dół przechodzą po wynikach (z zawijaniem), Enter otwiera wskazany wynik, Escape zamyka rozwijaną listę bez czyszczenia wpisanego tekstu. Każdy wynik ma własną nazwę dostępną złożoną z tytułu, statusu i priorytetu.
+- Wpisany tekst **nie jest zapisywany w adresie** `/tasks` (sekcja 6.9) — to stan przejściowy widgetu nawigacyjnego, a nie stan widoku listy, więc nie da się go udostępnić linkiem ani odtworzyć z zakładki.
 
 ---
 
@@ -444,7 +455,7 @@ Formularz Quick Add operuje na węższym zestawie pól: `title`, `description`, 
 
 ### 7.2a Modal edycji zadania
 
-Modal edycji jest **jednym, wspólnym komponentem** używanym zarówno z listy zadań (karty, Grid View, wynik wyszukiwania), jak i z widoku szczegółów `/tasks/:id` (przycisk „Edit task”, patrz sekcja 6.6). Obejmuje **pełny zestaw edytowalnych pól**: `title`, `description`, `status`, `priority`, `dueDate`, `assigneeId`, `taskType`, `severity`, `estimatedHours`, `tags`, `dependencies`, `requiresApproval`, `approver`. Poza zasięgiem edycji pozostaje jedynie `coverImage` (patrz sekcja 1.1) oraz `completedAt` (wyliczane z `status`, sekcja 2.3).
+Modal edycji jest **jednym, wspólnym komponentem** używanym zarówno z listy zadań (karty, Grid View), jak i z widoku szczegółów `/tasks/:id` (przycisk „Edit task”, patrz sekcja 6.6). Obejmuje **pełny zestaw edytowalnych pól**: `title`, `description`, `status`, `priority`, `dueDate`, `assigneeId`, `taskType`, `severity`, `estimatedHours`, `tags`, `dependencies`, `requiresApproval`, `approver`. Poza zasięgiem edycji pozostaje jedynie `coverImage` (patrz sekcja 1.1) oraz `completedAt` (wyliczane z `status`, sekcja 2.3).
 
 - Wszystkie pola są wypełniane wartościami aktualnie zapisanego zadania w momencie otwarcia modalu. Pola warunkowe działają tak samo jak w kreatorze: `severity` pokazuje się tylko dla `taskType === "bug"`, a `approver` tylko przy zaznaczonym „Requires manager approval”.
 - Walidacja po stronie klienta pochodzi z **tego samego, współdzielonego modułu co kreator** (reguły: min. 3 znaki tytułu po przycięciu, dodatnia liczba godzin, `research` wymaga co najmniej 1 godziny, `bug` wymaga `severity`, `high` nie przekracza 24 godzin, `requiresApproval` wymaga `approver`, `dependencies` muszą wskazywać istniejące zadania). Dzięki temu reguły klienta nie mogą rozjechać się z regułami API (sekcja 3).
