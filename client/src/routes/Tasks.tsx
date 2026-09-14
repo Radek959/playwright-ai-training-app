@@ -8,7 +8,7 @@ import type { TaskCreatePayload } from "../utils/taskFormModel";
 import { TaskTable } from "../components/TaskTable";
 import { TaskSearch } from "../components/TaskSearch";
 import { TaskGridItem } from "../components/TaskGridItem";
-import { useAppError } from "../context/AppErrorContext";
+import { useAppError } from "../context/useAppError";
 import { isArchived } from "../utils/taskArchive";
 import { toApiError } from "../utils/apiError";
 import { getTaskDueStatus } from "../utils/taskDueDate";

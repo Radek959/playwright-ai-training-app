@@ -40,9 +40,14 @@ Check out the free [Playwright Starter Pack](https://starter.rwasik.pl/) with us
 
 ## Features
 
-* 📋 **Task Management** — Create, edit and organize tasks with priority levels
-* 👥 **User Management** — Add and remove team members and view their roles (roles are set when a user is created; there is no UI to edit an existing user's role)
-* 📊 **Dashboard** — View statistics and analytics
+* 📋 **Task Management** — Create, edit and organize tasks with priority levels, due dates, tags and dependencies
+* 👥 **User Management** — Add, edit and remove team members, including their role
+* 🔍 **Search** — Find tasks by title and jump straight to their details
+* ✅ **Approval Workflow** — Mark a task as requiring approval and record an approve/reject decision with an optional comment
+* 💬 **Comments** — Discuss a task with threaded, author-attributed comments
+* 🕒 **Activity History** — See a per-task audit trail of what changed and when
+* 🔗 **Dependencies** — Link tasks together and block completion until their dependencies are done
+* 📊 **Dashboard** — Linked statistics and analytics that jump straight to the matching filtered task list
 * 🎨 **Modern UI** — Responsive interface built with Tailwind CSS
 * 🔄 **Dynamic Data Management** — Application state handled with React
 * 📱 **Responsive Design** — Works across desktop and mobile devices

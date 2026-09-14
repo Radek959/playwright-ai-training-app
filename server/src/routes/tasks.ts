@@ -11,7 +11,6 @@ import {
 } from "../validation.js";
 import {
   APPROVAL_COMMENT_MAX_LENGTH,
-  applyAllowedUpdate,
   applyApprovalDecision,
   applyApprovalTransition,
   findApprovalBlocker,
@@ -20,6 +19,7 @@ import {
   resolveCompletedAt,
   significantFieldsChanged
 } from "../taskLifecycle.js";
+import { applyAllowedUpdate } from "../updateUtils.js";
 import { findDependencyCycle } from "../taskDependencyGraph.js";
 import { searchTasks } from "../taskSearch.js";
 import { buildComment, removeCommentsForTask, sortComments } from "../commentLifecycle.js";

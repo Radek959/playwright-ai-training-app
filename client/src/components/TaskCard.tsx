@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { useAppError } from "../context/AppErrorContext";
+import { useAppError } from "../context/useAppError";
 import { DueDateLabel } from "./DueDateLabel";
 import type { TaskWithAssignee } from "../types";
 
