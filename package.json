@@ -16,7 +16,9 @@
     "lint": "eslint client/src server/src",
     "typecheck": "npm --prefix server run typecheck && npm --prefix client run typecheck",
     "test": "npm --prefix server run test && npm --prefix client run test",
-    "check": "npm run lint && npm run typecheck && npm run test && npm run build",
+    "test:scripts": "node --test scripts/*.test.mjs",
+    "check:module-case": "node scripts/check-module-case-collisions.mjs .",
+    "check": "npm run check:module-case && npm run lint && npm run typecheck && npm run test && npm run test:scripts && npm run build",
     "audit:all": "npm audit --audit-level=moderate && npm --prefix server audit --audit-level=moderate && npm --prefix client audit --audit-level=moderate"
   },
   "devDependencies": {
