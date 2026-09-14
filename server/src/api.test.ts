@@ -1,14 +1,16 @@
 import { describe, expect, it, beforeEach, beforeAll } from "vitest";
 import request from "supertest";
 import { app } from "./app.js";
-import { tasks, users, Task, User } from "./data.js";
+import { tasks, users, comments, Task, User, Comment } from "./data.js";
 
 let initialTasks: Task[];
 let initialUsers: User[];
+let initialComments: Comment[];
 
 beforeAll(() => {
   initialTasks = JSON.parse(JSON.stringify(tasks));
   initialUsers = JSON.parse(JSON.stringify(users));
+  initialComments = JSON.parse(JSON.stringify(comments));
 });
 
 beforeEach(() => {
@@ -16,6 +18,8 @@ beforeEach(() => {
   tasks.push(...JSON.parse(JSON.stringify(initialTasks)));
   users.length = 0;
   users.push(...JSON.parse(JSON.stringify(initialUsers)));
+  comments.length = 0;
+  comments.push(...JSON.parse(JSON.stringify(initialComments)));
 });
 
 describe("API Integration Tests", () => {
@@ -948,6 +952,264 @@ describe("API Integration Tests", () => {
       const response = await request(app).delete("/api/users/non-existent-id");
       expect(response.status).toBe(404);
       expect(response.body).toEqual({ error: "User not found" });
+    });
+  });
+
+  describe("Task Comments API", () => {
+    describe("GET /api/tasks/:id/comments", () => {
+      it("returns 404 for a non-existent task", async () => {
+        const response = await request(app).get("/api/tasks/non-existent-id/comments");
+        expect(response.status).toBe(404);
+        expect(response.body).toEqual({ error: "not found" });
+      });
+
+      it("returns an empty array for a task with no comments", async () => {
+        const task = tasks.find((t) => !comments.some((c) => c.taskId === t.id));
+        expect(task).toBeDefined();
+        const response = await request(app).get(`/api/tasks/${task!.id}/comments`);
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual([]);
+      });
+
+      it("lists comments oldest to newest", async () => {
+        const response = await request(app).get("/api/tasks/t1/comments");
+        expect(response.status).toBe(200);
+        expect(response.body).toHaveLength(2);
+        expect(response.body[0].id).toBe("c1");
+        expect(response.body[1].id).toBe("c2");
+        expect(new Date(response.body[0].createdAt).getTime()).toBeLessThanOrEqual(
+          new Date(response.body[1].createdAt).getTime()
+        );
+      });
+
+      it("breaks ties on identical createdAt by id, for a deterministic order regardless of insertion order", async () => {
+        const tiedTimestamp = "2026-01-01T00:00:00.000Z";
+        comments.length = 0;
+        comments.push(
+          { id: "z-comment", taskId: "t3", content: "second alphabetically last", authorId: "u1", authorName: "Alice Johnson", createdAt: tiedTimestamp },
+          { id: "a-comment", taskId: "t3", content: "first alphabetically", authorId: "u2", authorName: "Bob Smith", createdAt: tiedTimestamp }
+        );
+        const response = await request(app).get("/api/tasks/t3/comments");
+        expect(response.status).toBe(200);
+        expect(response.body.map((c: { id: string }) => c.id)).toEqual(["a-comment", "z-comment"]);
+      });
+    });
+
+    describe("POST /api/tasks/:id/comments", () => {
+      it("returns 404 for a non-existent task", async () => {
+        const response = await request(app)
+          .post("/api/tasks/non-existent-id/comments")
+          .send({ authorId: "u1", content: "hello" });
+        expect(response.status).toBe(404);
+        expect(response.body).toEqual({ error: "not found" });
+      });
+
+      it("creates a comment and returns 201 with the full record", async () => {
+        const response = await request(app)
+          .post("/api/tasks/t3/comments")
+          .send({ authorId: "u1", content: "Looks good to me." });
+        expect(response.status).toBe(201);
+        expect(response.body).toMatchObject({
+          taskId: "t3",
+          content: "Looks good to me.",
+          authorId: "u1",
+          authorName: "Alice Johnson"
+        });
+        expect(typeof response.body.id).toBe("string");
+        expect(response.body.id.length).toBeGreaterThan(0);
+        expect(Number.isNaN(new Date(response.body.createdAt).getTime())).toBe(false);
+
+        const fetchRes = await request(app).get("/api/tasks/t3/comments");
+        expect(fetchRes.body).toHaveLength(1);
+        expect(fetchRes.body[0].id).toBe(response.body.id);
+      });
+
+      it("ignores any client-supplied id/taskId/authorName/createdAt by rejecting the request outright", async () => {
+        const response = await request(app)
+          .post("/api/tasks/t3/comments")
+          .send({ authorId: "u1", content: "hi", id: "client-id" });
+        expect(response.status).toBe(400);
+        expect(response.body.error).toBe("Validation failed");
+        expect(response.body.details).toEqual([{ field: "id", message: "id is not a creatable field" }]);
+      });
+
+      it("rejects unknown fields with the offending field name, and does not create a comment", async () => {
+        const response = await request(app)
+          .post("/api/tasks/t3/comments")
+          .send({ authorId: "u1", content: "hi", extra: "nope" });
+        expect(response.status).toBe(400);
+        expect(response.body.details).toEqual([{ field: "extra", message: "extra is not a creatable field" }]);
+
+        const fetchRes = await request(app).get("/api/tasks/t3/comments");
+        expect(fetchRes.body).toEqual([]);
+      });
+
+      it("rejects server-controlled fields even when the rest of the body is valid, naming each offending field", async () => {
+        const response = await request(app)
+          .post("/api/tasks/t3/comments")
+          .send({ authorId: "u1", content: "hi", authorName: "Someone Else", createdAt: "2020-01-01T00:00:00.000Z" });
+        expect(response.status).toBe(400);
+        const fields = response.body.details.map((d: { field: string }) => d.field).sort();
+        expect(fields).toEqual(["authorName", "createdAt"]);
+      });
+
+      it("trims content before storing it", async () => {
+        const response = await request(app)
+          .post("/api/tasks/t3/comments")
+          .send({ authorId: "u1", content: "  padded content  " });
+        expect(response.status).toBe(201);
+        expect(response.body.content).toBe("padded content");
+      });
+
+      it("rejects a missing authorId", async () => {
+        const response = await request(app).post("/api/tasks/t3/comments").send({ content: "hi" });
+        expect(response.status).toBe(400);
+        expect(response.body.details).toEqual([{ field: "authorId", message: "authorId is required" }]);
+      });
+
+      it("rejects an empty/whitespace-only authorId", async () => {
+        const response = await request(app)
+          .post("/api/tasks/t3/comments")
+          .send({ authorId: "   ", content: "hi" });
+        expect(response.status).toBe(400);
+        expect(response.body.details).toEqual([{ field: "authorId", message: "authorId is required" }]);
+      });
+
+      it("rejects an authorId with a non-string type", async () => {
+        const response = await request(app)
+          .post("/api/tasks/t3/comments")
+          .send({ authorId: 42, content: "hi" });
+        expect(response.status).toBe(400);
+        expect(response.body.details).toEqual([{ field: "authorId", message: "authorId is required" }]);
+      });
+
+      it("rejects an authorId that does not reference an existing user", async () => {
+        const response = await request(app)
+          .post("/api/tasks/t3/comments")
+          .send({ authorId: "no-such-user", content: "hi" });
+        expect(response.status).toBe(400);
+        expect(response.body.details).toEqual([
+          { field: "authorId", message: "authorId does not reference an existing user" }
+        ]);
+      });
+
+      it("rejects a missing content", async () => {
+        const response = await request(app).post("/api/tasks/t3/comments").send({ authorId: "u1" });
+        expect(response.status).toBe(400);
+        expect(response.body.details).toEqual([{ field: "content", message: "content is required" }]);
+      });
+
+      it("rejects a non-string content", async () => {
+        const response = await request(app)
+          .post("/api/tasks/t3/comments")
+          .send({ authorId: "u1", content: 123 });
+        expect(response.status).toBe(400);
+        expect(response.body.details).toEqual([{ field: "content", message: "content must be a string" }]);
+      });
+
+      it("rejects an empty content", async () => {
+        const response = await request(app).post("/api/tasks/t3/comments").send({ authorId: "u1", content: "" });
+        expect(response.status).toBe(400);
+        expect(response.body.details).toEqual([{ field: "content", message: "content is required" }]);
+      });
+
+      it("rejects a whitespace-only content", async () => {
+        const response = await request(app)
+          .post("/api/tasks/t3/comments")
+          .send({ authorId: "u1", content: "   " });
+        expect(response.status).toBe(400);
+        expect(response.body.details).toEqual([{ field: "content", message: "content is required" }]);
+      });
+
+      it("rejects content over 1000 characters after trim", async () => {
+        const tooLong = `  ${"a".repeat(1001)}  `;
+        const response = await request(app)
+          .post("/api/tasks/t3/comments")
+          .send({ authorId: "u1", content: tooLong });
+        expect(response.status).toBe(400);
+        expect(response.body.details).toEqual([
+          { field: "content", message: "content must be at most 1000 characters" }
+        ]);
+      });
+
+      it("accepts content at exactly 1000 characters after trim", async () => {
+        const exactlyMax = `  ${"a".repeat(1000)}  `;
+        const response = await request(app)
+          .post("/api/tasks/t3/comments")
+          .send({ authorId: "u1", content: exactlyMax });
+        expect(response.status).toBe(201);
+        expect(response.body.content).toHaveLength(1000);
+      });
+
+      it("rejects a malformed (non-object) body", async () => {
+        const response = await request(app)
+          .post("/api/tasks/t3/comments")
+          .set("Content-Type", "application/json")
+          .send(JSON.stringify(["not", "an", "object"]));
+        expect(response.status).toBe(400);
+        expect(response.body).toEqual({
+          error: "Validation failed",
+          details: [{ field: "body", message: "request body must be a JSON object" }]
+        });
+      });
+    });
+
+    describe("cascading deletes", () => {
+      it("deleting a task removes all of its comments", async () => {
+        const before = await request(app).get("/api/tasks/t1/comments");
+        expect(before.body.length).toBeGreaterThan(0);
+
+        const deleteRes = await request(app).delete("/api/tasks/t1");
+        expect(deleteRes.status).toBe(204);
+
+        // The comments are gone even though the task itself no longer exists
+        // to ask about directly (a 404 there does not tell us about orphans),
+        // so check the underlying store instead.
+        expect(comments.some((c) => c.taskId === "t1")).toBe(false);
+      });
+
+      it("deleting a task's comments does not touch other tasks' comments", async () => {
+        const deleteRes = await request(app).delete("/api/tasks/t1");
+        expect(deleteRes.status).toBe(204);
+        expect(comments.some((c) => c.taskId === "t2")).toBe(true);
+      });
+
+      it("deleting a user preserves their comments but clears authorId, keeping authorName", async () => {
+        const commentBefore = comments.find((c) => c.id === "c1");
+        expect(commentBefore?.authorId).toBe("u1");
+
+        // Comment authorship is independent from task assignment, so clear
+        // u1's active task assignments first (the standard active-tasks
+        // guard, unrelated to comments, would otherwise block the delete).
+        for (const t of tasks.filter((t) => t.assigneeId === "u1" && t.status !== "done")) {
+          await request(app).put(`/api/tasks/${t.id}`).send({ assigneeId: null });
+        }
+
+        const deleteRes = await request(app).delete("/api/users/u1");
+        expect(deleteRes.status).toBe(204);
+
+        const fetchRes = await request(app).get("/api/tasks/t1/comments");
+        expect(fetchRes.status).toBe(200);
+        const preserved = fetchRes.body.find((c: { id: string }) => c.id === "c1");
+        expect(preserved).toBeDefined();
+        expect(preserved.authorId).toBeUndefined();
+        expect(preserved.authorName).toBe("Alice Johnson");
+      });
+    });
+
+    describe("atomicity", () => {
+      it("does not create a partial comment when validation fails on multiple fields", async () => {
+        const before = await request(app).get("/api/tasks/t3/comments");
+        expect(before.body).toEqual([]);
+
+        const response = await request(app)
+          .post("/api/tasks/t3/comments")
+          .send({ authorId: "no-such-user", content: "" });
+        expect(response.status).toBe(400);
+
+        const after = await request(app).get("/api/tasks/t3/comments");
+        expect(after.body).toEqual([]);
+      });
     });
   });
 });

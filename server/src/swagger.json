@@ -177,12 +177,58 @@
       },
       "delete": {
         "summary": "Delete task",
-        "description": "Deleting a task removes its ID from the dependencies of all remaining tasks.",
+        "description": "Deleting a task removes its ID from the dependencies of all remaining tasks, and deletes all of that task's comments.",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
         "responses": {
           "204": { "description": "Deleted" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/tasks/{id}/comments": {
+      "get": {
+        "summary": "List a task's comments",
+        "description": "Comments are returned oldest to newest by 'createdAt'. Comments with an identical 'createdAt' are then ordered by 'id', so the order is always deterministic.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "The task's comments, oldest first (empty array if it has none)",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Comment" } }
+              }
+            }
+          },
+          "404": { "description": "Not found" }
+        }
+      },
+      "post": {
+        "summary": "Add a comment to a task",
+        "description": "There is no login in this app: 'authorId' is picked explicitly from the existing user list by whoever submits the form, and the comment is recorded on that user's behalf — the endpoint never authenticates the caller as that user. Only 'authorId' and 'content' may be sent; 'id', 'taskId', 'authorName' and 'createdAt' are always server-controlled and, like any other unknown field, are rejected with 400 if present. 'content' is trimmed before storage; empty or whitespace-only content is rejected, as is content over 1000 characters after trimming.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CommentCreateInput" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created comment",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Comment" } } }
+          },
+          "400": {
+            "description": "Validation error (missing/invalid authorId, authorId not referencing an existing user, missing/invalid/empty/too-long content, an unknown field, or a server-controlled field such as id/taskId/authorName/createdAt)",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ValidationErrorResponse" } }
+            }
+          },
           "404": { "description": "Not found" }
         }
       }
@@ -266,7 +312,7 @@
       },
       "delete": {
         "summary": "Delete user",
-        "description": "Deleting a user succeeds only if none of their assigned tasks has status 'todo' or 'in-progress'. On success, assigneeId is cleared on every remaining task that was assigned to this user (i.e. their completed tasks become unassigned).",
+        "description": "Deleting a user succeeds only if none of their assigned tasks has status 'todo' or 'in-progress'. On success, assigneeId is cleared on every remaining task that was assigned to this user (i.e. their completed tasks become unassigned). Comments this user authored are kept — including their 'authorName' snapshot — but their now-dangling 'authorId' is cleared to absent.",
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
@@ -445,6 +491,29 @@
           }
         },
         "required": ["error", "blockingDependencies"]
+      },
+      "Comment": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "taskId": { "type": "string" },
+          "content": { "type": "string", "description": "Trimmed before storage; at most 1000 characters." },
+          "authorId": { "type": "string", "description": "The field itself is omitted (not present, and never null) once the authoring user has been deleted (see DELETE /api/users/{id}); 'authorName' still identifies them." },
+          "authorName": { "type": "string", "description": "Snapshot of the author's name at the time the comment was created. Kept even after the author is deleted." },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "taskId", "content", "authorName", "createdAt"],
+        "description": "There is no login in this app: a comment is recorded on behalf of the explicitly chosen 'authorId', never as a verified identity."
+      },
+      "CommentCreateInput": {
+        "type": "object",
+        "properties": {
+          "authorId": { "type": "string", "description": "Must reference an existing user (see GET /api/users)." },
+          "content": { "type": "string", "maxLength": 1000, "description": "Trimmed before storage; empty or whitespace-only after trim is rejected." }
+        },
+        "required": ["authorId", "content"],
+        "additionalProperties": false,
+        "description": "id, taskId, authorName and createdAt are always server-controlled and rejected with 400 if sent, the same as any other unknown field."
       },
       "User": {
         "type": "object",

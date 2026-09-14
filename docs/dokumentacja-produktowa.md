@@ -41,6 +41,19 @@ Pole | Typ / dozwolone wartości | Uwagi
 `avatar` | `string` | Opcjonalne, ustawiane przez formularz tworzenia użytkownika.
 `avatarUrl` | `string` | Pole obecne tylko w danych startowych (część użytkowników seedowych je ma, część nie); formularz tworzenia użytkownika go nie ustawia.
 
+### 1.3 Komentarz (Comment)
+
+Pole | Typ / dozwolone wartości | Uwagi
+---|---|---
+`id` | `string` | Generowane przez backend przy tworzeniu; niemodyfikowalne.
+`taskId` | `string` | Identyfikator zadania, do którego należy komentarz. Ustawiane przez backend na podstawie parametru `:id` w URL — nie da się go przesłać w ciele żądania.
+`content` | `string` | Wymagane, niepuste po `trim`, maks. 1000 znaków po `trim`. Zawsze przycinane przed zapisem.
+`authorId` | `string` (`id` istniejącego użytkownika) lub brak | Wskazuje, w czyim imieniu zapisano komentarz. **Aplikacja nadal nie ma logowania ani sesji użytkownika** — `authorId` jest jawnie wybierany z listy istniejących użytkowników przez osobę dodającą komentarz, a nie identyfikatorem uwierzytelnionej osoby. Może zniknąć (stać się nieobecne) po usunięciu wskazanego użytkownika — patrz sekcja 2.10.
+`authorName` | `string` | Migawka nazwy autora zapisana w chwili tworzenia komentarza. Pozostaje niezmieniona nawet po usunięciu autora, dzięki czemu komentarz da się poprawnie zaprezentować (patrz sekcja 2.11) niezależnie od tego, czy `authorId` nadal istnieje.
+`createdAt` | `string` (data-czas ISO) | Generowane przez backend przy tworzeniu; niemodyfikowalne.
+
+Komentarze są przechowywane wyłącznie w pamięci procesu serwera (tak jak zadania i użytkownicy) i resetują się do wartości startowych po ponownym uruchomieniu serwera.
+
 ---
 
 ## 2. Zachowanie zadań — reguły wspólne dla UI i API
@@ -82,6 +95,7 @@ Sposób, w jaki `null` na tych polach jest obsługiwany, różni się jednak mi�
 ### 2.5 Usuwanie zadania (`DELETE /api/tasks/:id`)
 
 - Zadanie jest usuwane bezwarunkowo — **nie ma żadnej blokady** związanej z tym, że inne zadania mają je w swoich `dependencies`. Po usunięciu zadania, jego identyfikator jest automatycznie usuwany z tablic `dependencies` wszystkich pozostałych zadań (zachowanie spójności referencji).
+- Usunięcie zadania usuwa też **wszystkie jego komentarze** (patrz sekcja 2.11) — nie zostają osierocone.
 - Nieistniejące `id` zwraca `404`. Powodzenie zwraca `204` bez treści.
 
 ### 2.6 Zależności (`dependencies`) — czym są, a czym nie są
@@ -146,8 +160,35 @@ Sposób, w jaki `null` na tych polach jest obsługiwany, różni się jednak mi�
 - Reguła biznesowa: jeśli usuwany użytkownik ma przypisane zadania o statusie innym niż `"done"` (czyli `"todo"` lub `"in-progress"`), żądanie zwraca `409 Conflict` z ciałem `{ "error": "Cannot delete user with active tasks", "conflictingTasks": [{ "id", "title", "status" }, ...] }`, a użytkownik **nie** zostaje usunięty. `conflictingTasks` zawiera wyłącznie zadania o statusie `"todo"` lub `"in-progress"` — zadania `"done"` przypisane do tego użytkownika nigdy się tam nie pojawiają.
 - Jeśli wszystkie przypisane zadania mają status `"done"` (lub użytkownik nie ma żadnych przypisanych zadań), usunięcie się powiedzie (`204`, bez treści odpowiedzi).
 - Usunięcie użytkownika powoduje automatyczne wyczyszczenie pola `assigneeId` we wszystkich pozostałych zadaniach, które nadal na niego wskazywały (czyli w jego zadaniach o statusie `"done"`) — po ponownym pobraniu takie zadania pokazują brak przypisania.
+- Usunięcie użytkownika **nie usuwa** komentarzy, które napisał (patrz sekcja 2.11) — zostają zachowane razem z ich treścią i czasem utworzenia. Zamiast tego czyszczone jest wyłącznie pole `authorId` w tych komentarzach (staje się nieobecne), natomiast `authorName` (migawka nazwy zapisana przy tworzeniu komentarza) pozostaje bez zmian, więc komentarz nadal da się poprawnie wyświetlić.
 - Nieistniejące `id` zwraca `404` z ciałem `{ "error": "User not found" }` — zarówno przy próbie usunięcia użytkownika, który nigdy nie istniał, jak i przy ponownej próbie usunięcia użytkownika już wcześniej usuniętego.
 - Nie istnieje endpoint do edycji użytkownika (`PUT`/`PATCH`) — po utworzeniu nazwy, e-maila, roli ani awatara nie da się zmienić ani przez UI, ani przez udokumentowane API.
+
+### 2.11 Komentarze do zadania (`/api/tasks/:id/comments`)
+
+**Aplikacja nadal nie ma logowania ani sesji użytkownika.** Autor komentarza (`authorId`) jest jawnie wybierany z istniejącej listy użytkowników przez osobę wypełniającą formularz — zapisanie komentarza „w jego imieniu” nie jest w żaden sposób potwierdzeniem jego tożsamości, ani nie ogranicza, kto może dodać komentarz w czyimś imieniu.
+
+#### `GET /api/tasks/:id/comments` — lista komentarzy
+
+- `404` z `{ "error": "not found" }`, jeśli zadanie o podanym `id` nie istnieje.
+- `200` z tablicą komentarzy (pustą, jeśli zadanie nie ma żadnych) posortowaną od najstarszego do najnowszego według `createdAt`.
+- Komentarze o identycznym `createdAt` są dodatkowo sortowane po `id`, więc kolejność jest zawsze deterministyczna — nigdy nie zależy od kolejności wewnętrznego przechowywania.
+
+#### `POST /api/tasks/:id/comments` — dodanie komentarza
+
+- `404` z `{ "error": "not found" }`, jeśli zadanie o podanym `id` nie istnieje.
+- `400`, jeśli ciało żądania nie jest obiektem JSON.
+- Ciało żądania przyjmuje **wyłącznie** pola `authorId` i `content`. Każde inne pole — w tym `id`, `taskId`, `authorName` i `createdAt`, które są zawsze ustawiane przez serwer — powoduje `400` z ciałem `{ "error": "Validation failed", "details": [{ "field": "<pole>", "message": "<pole> is not a creatable field" }, ...] }`; żaden komentarz nie zostaje przy tym utworzony.
+- `authorId` jest wymagany, musi być niepustym stringiem i musi wskazywać istniejącego użytkownika; w przeciwnym razie zwracany jest `400` z odpowiednim komunikatem na polu `authorId`.
+- `content` jest wymagany, musi być stringiem, a po przycięciu (`trim`) — niepusty i nie dłuższy niż 1000 znaków; w przeciwnym razie zwracany jest `400` na polu `content`. Zapisywana treść to zawsze wersja po `trim`.
+- `authorName` jest ustawiane przez backend na podstawie aktualnego rekordu użytkownika wskazanego przez `authorId` w chwili tworzenia komentarza (migawka — patrz sekcja 1.3).
+- Powodzenie zwraca `201` z pełnym, zapisanym obiektem komentarza.
+- Operacja jest atomowa: każdy błąd walidacji odrzuca żądanie w całości i nie zapisuje żadnego częściowego stanu.
+
+#### Spójność przy usuwaniu
+
+- Usunięcie zadania (sekcja 2.5) usuwa też wszystkie jego komentarze.
+- Usunięcie użytkownika (sekcja 2.10) zachowuje komentarze, które napisał, ale czyści ich `authorId` (staje się nieobecne), zachowując `authorName`. Taki komentarz — bez `authorId` — powinien być prezentowany jako wpis zachowany po usuniętym użytkowniku (w UI: etykieta „Deleted user”, patrz sekcja 6.6, podsekcja „Comments”).
 
 ---
 
@@ -266,6 +307,29 @@ Osobna sekcja widoku szczegółów, poniżej „Dependencies”, nadaje `require
 - Gdy `approvalStatus` to `"pending"`: widoczna jest odznaka „Pending approval”, nazwa/etykieta `approver`, opcjonalne pole komentarza oraz przyciski „Approve” / „Reject”, które wywołują `PUT /api/tasks/:id/approval`. W trakcie zapisu oba przyciski są zablokowane (ochrona przed podwójnym kliknięciem) i pokazują stan pośredni („Approving…” / „Rejecting…”); wpisany komentarz **nie** jest czyszczony, dopóki żądanie się nie powiedzie, a decyzja nie jest pokazywana jako zapisana, zanim API faktycznie nie odpowie sukcesem.
 - Gdy `approvalStatus` to `"approved"` lub `"rejected"`: widoczna jest odznaka statusu odróżnialna nie tylko kolorem (inny tekst, atrybut `role="status"`), nazwa/etykieta `approver`, czas decyzji (`approvalDecidedAt`) oraz komentarz, jeśli został podany. Brak jakichkolwiek aktywnych przycisków do zmiany decyzji końcowej — jedyny sposób jej zmiany to reset przez istotną edycję zadania (sekcja 2.7).
 - Jeśli istotna edycja (przez modal edycji) zresetuje decyzję z powrotem do `"pending"`, sekcja odzwierciedla to natychmiast na podstawie odpowiedzi API z zapisu — bez zmiany adresu URL i bez dodatkowego przeładowania.
+
+#### Sekcja „Comments”
+
+Osobna sekcja widoku szczegółów, poniżej „Approval”, dająca `POST`/`GET /api/tasks/:id/comments` (sekcja 2.11) interfejs użytkownika. Ładowanie komentarzy, ich prezentacja i formularz dodawania nowego komentarza są obsługiwane **niezależnie** od reszty widoku szczegółów — błąd pobrania komentarzy nigdy nie powoduje błędu całego widoku (tak jak błąd pobrania pełnej listy zadań na potrzeby selektora zależności w modalu edycji).
+
+- **Ładowanie**: podczas pobierania komentarzy (`GET`) sekcja pokazuje stan ładowania.
+- **Błąd pobrania**: jeśli `GET /api/tasks/:id/comments` się nie powiedzie, sekcja pokazuje komunikat błędu wraz z przyciskiem „Retry”, który ponawia wyłącznie to zapytanie — bez przeładowania strony i bez wpływu na resztę widoku.
+- **Pusta lista**: jeśli zadanie nie ma komentarzy, sekcja pokazuje komunikat „No comments yet” zamiast pustej listy.
+- **Lista komentarzy**: każdy komentarz prezentuje `authorName`, czas utworzenia (`createdAt`) oraz treść (`content`) jako zwykły tekst — nigdy jako HTML i bez żadnej obsługi Markdownu. Komentarz bez `authorId` (bo autor został usunięty — patrz sekcja 2.10/2.11) jest dodatkowo oznaczony etykietą „Deleted user”, obok wciąż widocznego `authorName`.
+- **Formularz dodawania komentarza** zawiera:
+  - pole wyboru (`select`) autora, zbudowane z tej samej listy użytkowników co reszta aplikacji (`GET /api/users`), z początkową opcją „Select author” — autor **nie** jest wybierany automatycznie;
+  - pole tekstowe (`textarea`) na treść komentarza, ograniczone do 1000 znaków;
+  - informację, że komentarz zostanie zapisany w imieniu wybranego użytkownika, bez potwierdzania jego tożsamości (tak jak w sekcji „Approval” — patrz jej opis wyżej);
+  - przycisk „Add comment”.
+  - Podczas zapisu (`POST`) pole wyboru autora, pole tekstowe i przycisk są zablokowane, a przycisk pokazuje stan pośredni „Adding…” — chroni to przed wysłaniem tego samego komentarza dwukrotnie przez wielokrotne kliknięcie.
+  - Komentarz **nie** jest dodawany do listy optymistycznie — dopiero odpowiedź API (`201` z pełnym obiektem komentarza) jest dopisywana do widocznej listy.
+  - Po udanym zapisie treść formularza jest czyszczona, ale wybrany autor **pozostaje** wybrany (ułatwia dodanie kolejnego komentarza w jego imieniu) — adres URL się nie zmienia i strona się nie przeładowuje.
+  - Przy błędzie zapisu (w tym walidacji — np. pusta treść) formularz pokazuje komunikat błędu, a wpisana treść i wybrany autor **pozostają** widoczne, żeby nie trzeba było wpisywać komentarza od nowa.
+- **Blokada zapisu, dopóki lista komentarzy nie jest znana**: pole wyboru autora, pole tekstowe i przycisk „Add comment” są zablokowane nie tylko podczas samego zapisu, ale też zawsze wtedy, gdy `GET /api/tasks/:id/comments` jeszcze trwa (pierwsze ładowanie) albo zakończył się błędem — dopóki „Retry” tej listy nie zakończy się sukcesem. Chroni to przed dwoma problemami: nowo utworzony komentarz zniknąłby z widoku, gdyby lista była akurat w stanie błędu (bo w tym stanie lista w ogóle nie jest renderowana), a wcześniej rozpoczęte pobieranie mogłoby zakończyć się już **po** zapisie i nadpisać stan starszą odpowiedzią. Zabezpieczenie działa również na poziomie samej obsługi wysyłki formularza (nie tylko atrybutu `disabled` na kontrolkach) — programowe wywołanie wysyłki formularza nie wyśle żądania, dopóki lista komentarzy nie została poprawnie pobrana. Błąd pobrania komentarzy nadal nie powoduje błędu całego widoku szczegółów zadania.
+- **Kolejność po dodaniu komentarza**: po otrzymaniu odpowiedzi `201` nowy komentarz nie jest dopisywany bezwarunkowo na końcu widocznej listy — zamiast tego jest łączony z dotychczasowymi komentarzami, a cała lista jest ponownie sortowana według tego samego kontraktu co `GET /api/tasks/:id/comments` (sekcja 2.11): rosnąco po `createdAt`, a przy identycznym `createdAt` — rosnąco po `id`. Ta sama reguła sortowania jest też stosowana do każdej odpowiedzi `GET`, więc kolejność pozostaje spójna niezależnie od tego, czy komentarz właśnie dodano, czy lista została odświeżona (np. po ponownym wejściu na stronę).
+- **Zależność od listy użytkowników**: jeśli pobranie listy użytkowników (`GET /api/users`) na potrzeby selektora autora się nie powiedzie, formularz dodawania komentarza staje się niedostępny, a sekcja pokazuje czytelną informację o braku listy autorów wraz z możliwością ponowienia tego pobrania (bez przeładowania całej strony) — natomiast już wczytane komentarze pozostają widoczne (bo korzystają wyłącznie z zapisanego w nich `authorName`, a nie z listy użytkowników).
+- Nie ma możliwości edycji ani usuwania pojedynczych komentarzy z poziomu UI (poza usunięciem całego zadania, patrz sekcja 2.5/2.11).
+
 - Dostęp do widoku realizowany jest za pomocą dedykowanego linku "View details" dodanego obok głównej akcji "Edit" / "Delete" na elementach listy (np. Table, TaskCard).
 - Bezpiecznie obsługuje brak istnienia zadania – gdy API zwróci błąd `404`, aplikacja (SPA) wyświetli odpowiedni stan widoku „Task not found” informujący jasno o problemie, przy zachowaniu spójności nawigacji i możliwości powrotu do listy. Błędy sieciowe (np. 500) prezentują stosowny komunikat z opcją ponowienia.
 

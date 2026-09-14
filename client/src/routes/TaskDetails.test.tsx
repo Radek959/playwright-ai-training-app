@@ -670,4 +670,50 @@ describe("TaskDetails", () => {
       expect(screen.getByTestId("current-path")).toHaveTextContent("/tasks/task-1");
     });
   });
+
+  describe("Comments section", () => {
+    it("renders below Approval, loading and showing the task's comments without breaking the rest of the view", async () => {
+      const taskComments = [
+        { id: "c1", taskId: "task-1", content: "Looks good", authorId: "user-1", authorName: "Alice", createdAt: "2026-01-01T00:00:00.000Z" }
+      ];
+      fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+        const url = input.toString();
+        if (url === "/api/tasks/task-1") return Promise.resolve(new Response(JSON.stringify(mockTask)));
+        if (url === "/api/tasks/task-1/comments") return Promise.resolve(new Response(JSON.stringify(taskComments)));
+        if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify(mockUsers)));
+        if (url === "/api/tasks/task-2") return Promise.resolve(new Response(JSON.stringify(mockDepTask)));
+        return Promise.resolve(new Response(null, { status: 404 }));
+      });
+
+      renderComponent();
+      await waitFor(() => expect(screen.getByTestId("comment-c1")).toBeInTheDocument());
+
+      // Approval section still renders correctly alongside Comments.
+      expect(screen.getByTestId("approval-section")).toBeInTheDocument();
+      expect(screen.getByTestId("comment-c1")).toHaveTextContent("Looks good");
+
+      // Comments comes after Approval in document order.
+      const approvalEl = screen.getByTestId("approval-section");
+      const commentsEl = screen.getByTestId("comments-section");
+      expect(approvalEl.compareDocumentPosition(commentsEl) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it("a comments-fetch failure does not break the rest of the task details view", async () => {
+      fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+        const url = input.toString();
+        if (url === "/api/tasks/task-1") return Promise.resolve(new Response(JSON.stringify(mockTask)));
+        if (url === "/api/tasks/task-1/comments") return Promise.resolve(new Response(null, { status: 500 }));
+        if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify(mockUsers)));
+        if (url === "/api/tasks/task-2") return Promise.resolve(new Response(JSON.stringify(mockDepTask)));
+        return Promise.resolve(new Response(null, { status: 404 }));
+      });
+
+      renderComponent();
+      await waitFor(() => expect(screen.getByText("Test Task")).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByTestId("comments-error")).toBeInTheDocument());
+      // The rest of the details view (and Approval) is unaffected.
+      expect(screen.getByTestId("approval-section")).toBeInTheDocument();
+      expect(screen.queryByText("Failed to load task")).not.toBeInTheDocument();
+    });
+  });
 });

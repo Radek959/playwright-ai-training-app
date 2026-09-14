@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
-import { tasks, users, Task } from "../data.js";
+import { tasks, users, comments, Comment, Task } from "../data.js";
 import {
   NULLABLE_TASK_FIELDS,
   TASK_UPDATE_FIELDS,
   ValidationError,
   buildTaskCreateCandidate,
+  validateCommentCreateFields,
   validateTaskFields
 } from "../validation.js";
 import {
@@ -19,6 +20,7 @@ import {
   resolveCompletedAt,
   significantFieldsChanged
 } from "../taskLifecycle.js";
+import { buildComment, removeCommentsForTask, sortComments } from "../commentLifecycle.js";
 
 export const tasksRouter = Router();
 
@@ -231,15 +233,51 @@ tasksRouter.delete("/:id", (req, res) => {
   const taskId = req.params.id;
   const idx = tasks.findIndex((t) => t.id === taskId);
   if (idx === -1) return res.status(404).json({ error: "not found" });
-  
+
   tasks.splice(idx, 1);
-  
+
   // Remove deleted task ID from dependencies of all other tasks
   for (const t of tasks) {
     if (t.dependencies) {
       t.dependencies = t.dependencies.filter((depId) => depId !== taskId);
     }
   }
-  
+
+  removeCommentsForTask(comments, taskId);
+
   res.status(204).end();
+});
+
+tasksRouter.get("/:id/comments", (req, res) => {
+  const task = tasks.find((t) => t.id === req.params.id);
+  if (!task) return res.status(404).json({ error: "not found" });
+
+  const taskComments = comments.filter((c) => c.taskId === task.id);
+  res.json(sortComments(taskComments));
+});
+
+tasksRouter.post("/:id/comments", (req, res) => {
+  const task = tasks.find((t) => t.id === req.params.id);
+  if (!task) return res.status(404).json({ error: "not found" });
+
+  if (!isPlainObject(req.body)) {
+    return res.status(400).json(badBodyResponse());
+  }
+  const body = req.body;
+
+  const errors = validateCommentCreateFields(body, { users });
+  if (errors.length > 0) {
+    return res.status(400).json({ error: "Validation failed", details: errors });
+  }
+
+  const author = users.find((u) => u.id === body.authorId);
+  const comment: Comment = buildComment({
+    taskId: task.id,
+    authorId: author!.id,
+    authorName: author!.name,
+    content: (body.content as string).trim()
+  });
+
+  comments.push(comment);
+  res.status(201).json(comment);
 });
