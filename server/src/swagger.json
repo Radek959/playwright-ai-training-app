@@ -498,7 +498,7 @@
           "id": { "type": "string" },
           "taskId": { "type": "string" },
           "content": { "type": "string", "description": "Trimmed before storage; at most 1000 characters." },
-          "authorId": { "type": "string", "nullable": true, "description": "Absent if the authoring user has since been deleted (see DELETE /api/users/{id}); 'authorName' still identifies them." },
+          "authorId": { "type": "string", "description": "The field itself is omitted (not present, and never null) once the authoring user has been deleted (see DELETE /api/users/{id}); 'authorName' still identifies them." },
           "authorName": { "type": "string", "description": "Snapshot of the author's name at the time the comment was created. Kept even after the author is deleted." },
           "createdAt": { "type": "string", "format": "date-time" }
         },

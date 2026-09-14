@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { toApiError } from "../utils/apiError";
+import { sortComments } from "../utils/comments";
 import type { Comment, User } from "../types";
 
 type FetchState = "loading" | "success" | "error";
@@ -40,7 +41,7 @@ export function CommentsSection({ taskId }: Props) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (!Array.isArray(data)) throw new Error("Unexpected payload");
-      setComments(data as Comment[]);
+      setComments(sortComments(data as Comment[]));
       setCommentsState("success");
     } catch (err) {
       console.warn("Failed to fetch comments", err);
@@ -74,6 +75,13 @@ export function CommentsSection({ taskId }: Props) {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (submitting) return;
+    // Defense in depth: the form controls are already disabled whenever the
+    // comment list isn't known to be in sync (still loading, or the last GET
+    // failed), but a programmatic submit must not bypass that — sending a
+    // comment while the list state is unknown risks the create response
+    // being hidden by an in-flight GET resolving afterwards with stale data,
+    // or simply never being shown because the list is in its error state.
+    if (commentsState !== "success" || usersState !== "success") return;
 
     if (!authorId) {
       setFormError("Select an author before adding a comment.");
@@ -96,7 +104,10 @@ export function CommentsSection({ taskId }: Props) {
         throw await toApiError(res, `Failed to add comment: ${res.status}`);
       }
       const created = (await res.json()) as Comment;
-      setComments((prev) => [...prev, created]);
+      // Merge (never blindly append) and re-sort using the same createdAt,
+      // then id contract the server applies, so the new comment lands in its
+      // correct position rather than always at the end.
+      setComments((prev) => sortComments([...prev, created]));
       setContent("");
       // authorId is intentionally kept selected for the next comment.
     } catch (err) {
@@ -106,7 +117,13 @@ export function CommentsSection({ taskId }: Props) {
     }
   };
 
-  const formDisabled = usersState !== "success";
+  // The form is only ever usable once both the comment list and the author
+  // list are known-good (a successful GET each) and no submit is in flight.
+  // While comments are still loading, or the last GET failed, submitting
+  // would risk a race with that GET (which could resolve after the POST and
+  // overwrite the freshly created comment with a stale/errored snapshot) or
+  // simply hide the created comment behind the error view.
+  const formDisabled = usersState !== "success" || commentsState !== "success" || submitting;
 
   return (
     <section className="mt-8" data-testid="comments-section">
@@ -199,7 +216,7 @@ export function CommentsSection({ taskId }: Props) {
             <select
               id="comment-author-select"
               value={authorId}
-              disabled={formDisabled || submitting}
+              disabled={formDisabled}
               onChange={(e) => setAuthorId(e.target.value)}
               data-testid="comment-author-select"
               className="border rounded px-3 py-2 w-full max-w-xs disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
@@ -222,7 +239,7 @@ export function CommentsSection({ taskId }: Props) {
               rows={3}
               maxLength={1000}
               value={content}
-              disabled={formDisabled || submitting}
+              disabled={formDisabled}
               onChange={(e) => setContent(e.target.value)}
               data-testid="comment-content-input"
               className="border rounded px-3 py-2 w-full disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
@@ -236,7 +253,7 @@ export function CommentsSection({ taskId }: Props) {
           <div>
             <button
               type="submit"
-              disabled={formDisabled || submitting}
+              disabled={formDisabled}
               data-testid="add-comment-btn"
               className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-800"
             >
