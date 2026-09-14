@@ -381,10 +381,6 @@ export default function Tasks() {
     return deletedIds;
   };
 
-  const handleSearchSelect = (task: Task) => {
-    setEditing(task);
-  };
-
   const assigneeFilterOptions = useMemo(
     () => [
       { key: "all" as const, label: "All assignees" },
@@ -418,7 +414,10 @@ export default function Tasks() {
         </div>
 
         <div className="w-full md:max-w-md">
-          <TaskSearch onSelect={handleSearchSelect} />
+          {/* A transient navigation widget: picking a result goes to that
+              task's detail page. It is independent of the list's own filters
+              below, and never writes the typed text into the URL. */}
+          <TaskSearch />
         </div>
       </div>
 
