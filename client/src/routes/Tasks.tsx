@@ -13,6 +13,7 @@ import { isArchived } from "../utils/taskArchive";
 import { toApiError } from "../utils/apiError";
 import { getTaskDueStatus } from "../utils/taskDueDate";
 import { effectiveAvatar } from "../utils/avatar";
+import { isAbortError, useLatestRequest } from "../hooks/useLatestRequest";
 import type { Task, TaskUpdateInput, TaskWithAssignee, User } from "../types";
 import {
   TAB_ORDER,
@@ -80,7 +81,11 @@ export default function Tasks() {
   const [usersLoadState, setUsersLoadState] = useState<LoadState>("loading");
   const [tasksErrorMessage, setTasksErrorMessage] = useState<string | null>(null);
   const [usersErrorMessage, setUsersErrorMessage] = useState<string | null>(null);
-  const mountedRef = useRef(true);
+  // Guards against an older in-flight request's response overwriting a newer
+  // one's result (React.StrictMode's double effect invocation in dev, a fast
+  // Retry click, etc.) - see useLatestRequest for details.
+  const beginTasksRequest = useLatestRequest();
+  const beginUsersRequest = useLatestRequest();
   const [search, _setSearch] = useState<string>("");
   const pageSize = 5;
   const [editing, setEditing] = useState<Task | null>(null);
@@ -195,13 +200,6 @@ export default function Tasks() {
 
   const endpoint = "/api/tasks";
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
   // Tasks and users are fetched independently (not joined behind a single
   // Promise.all) so the assignee filter's validation against the user list
   // (see isAssigneeFilterValid) can genuinely observe "users not loaded yet"
@@ -211,42 +209,40 @@ export default function Tasks() {
   const loadTasks = useCallback(async () => {
     setTasksLoadState("loading");
     setTasksErrorMessage(null);
+    const { signal, isCurrent } = beginTasksRequest();
     try {
-      const res = await fetch(endpoint);
+      const res = await fetch(endpoint, { signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (!Array.isArray(data)) throw new Error("Unexpected payload");
-      if (mountedRef.current) {
-        setTasks(data.map(normalizeTask));
-        setTasksLoadState("success");
-      }
+      if (!isCurrent()) return;
+      setTasks(data.map(normalizeTask));
+      setTasksLoadState("success");
     } catch (err) {
-      if (mountedRef.current) {
-        setTasksErrorMessage(err instanceof Error ? err.message : "Fetch error");
-        setTasksLoadState("error");
-      }
+      if (isAbortError(err) || !isCurrent()) return;
+      setTasksErrorMessage(err instanceof Error ? err.message : "Fetch error");
+      setTasksLoadState("error");
     }
-  }, [endpoint]);
+  }, [endpoint, beginTasksRequest]);
 
   const loadUsers = useCallback(async () => {
     setUsersLoadState("loading");
     setUsersErrorMessage(null);
+    const { signal, isCurrent } = beginUsersRequest();
     try {
-      const res = await fetch("/api/users");
+      const res = await fetch("/api/users", { signal });
       if (!res.ok) throw new Error(`Users HTTP ${res.status}`);
       const data = await res.json();
       if (!Array.isArray(data)) throw new Error("Unexpected payload");
-      if (mountedRef.current) {
-        setUsers(data);
-        setUsersLoadState("success");
-      }
+      if (!isCurrent()) return;
+      setUsers(data);
+      setUsersLoadState("success");
     } catch (err) {
-      if (mountedRef.current) {
-        setUsersErrorMessage(err instanceof Error ? err.message : "Fetch error");
-        setUsersLoadState("error");
-      }
+      if (isAbortError(err) || !isCurrent()) return;
+      setUsersErrorMessage(err instanceof Error ? err.message : "Fetch error");
+      setUsersLoadState("error");
     }
-  }, []);
+  }, [beginUsersRequest]);
 
   useEffect(() => {
     loadTasks();
@@ -883,91 +879,145 @@ export default function Tasks() {
       >
         <div className="space-y-6">
             <h2 className="text-2xl font-bold text-gray-900">Task Analytics</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <Link
-                to="/tasks?tab=table"
-                aria-label={`View all tasks (${tasks.length})`}
-                data-testid="analytics-link-all"
-                className="block bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-              >
-                <h3 className="font-semibold mb-2 text-sm text-blue-900">All Tasks</h3>
-                <p className="text-4xl font-bold text-blue-600">{tasks.length}</p>
-              </Link>
-              <Link
-                to="/tasks?tab=table&status=done"
-                aria-label={`View completed tasks (${tasks.filter((t) => t.status === "done").length})`}
-                data-testid="analytics-link-completed"
-                className="block bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-              >
-                <h3 className="font-semibold mb-2 text-sm text-green-900">Completed</h3>
-                <p className="text-4xl font-bold text-green-600">
-                  {tasks.filter(t => t.status === "done").length}
-                </p>
-              </Link>
-              <Link
-                to="/tasks?tab=table&status=in-progress"
-                aria-label={`View in-progress tasks (${tasks.filter((t) => t.status === "in-progress").length})`}
-                data-testid="analytics-link-in-progress"
-                className="block bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-              >
-                <h3 className="font-semibold mb-2 text-sm text-yellow-900">In Progress</h3>
-                <p className="text-4xl font-bold text-yellow-600">
-                  {tasks.filter(t => t.status === "in-progress").length}
-                </p>
-              </Link>
-              <Link
-                to="/tasks?tab=table&priority=high"
-                aria-label={`View high-priority tasks (${tasks.filter((t) => t.priority === "high").length})`}
-                data-testid="analytics-link-high-priority"
-                className="block bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-              >
-                <h3 className="font-semibold mb-2 text-sm text-red-900">High Priority</h3>
-                <p className="text-4xl font-bold text-red-600">
-                  {tasks.filter(t => t.priority === "high").length}
-                </p>
-              </Link>
-            </div>
 
-            <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
-              <h3 className="text-xl font-bold text-gray-900 mb-6">Tasks by Team Member</h3>
-              <div className="space-y-3">
-                {users.map(user => {
-                  const userTasks = tasks.filter(t => t.assigneeId === user.id);
-                  const percentage = tasks.length > 0 ? Math.round((userTasks.length / tasks.length) * 100) : 0;
-                  return (
-                    <Link
-                      key={user.id}
-                      to={`/users/${user.id}`}
-                      aria-label={`View profile: ${user.name} (${userTasks.length} tasks)`}
-                      data-testid={`analytics-link-user-${user.id}`}
-                      className="block p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-semibold text-gray-900">{user.name}</span>
-                        <span className="font-bold text-indigo-600">{userTasks.length} tasks</span>
+            {/* Task-dependent stats never render from the empty initial
+                array: while the tasks fetch is in flight or has failed,
+                nothing here pretends to be a real count. */}
+            {tasksLoadState === "loading" && (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 md:p-12 text-center" aria-live="polite">
+                <p className="text-gray-500">Loading analytics...</p>
+              </div>
+            )}
+
+            {tasksLoadState === "error" && (
+              <div role="alert" className="bg-red-50 border border-red-300 rounded-lg p-3 md:p-4 text-sm text-red-700 flex items-center justify-between gap-4">
+                <span>Failed to load analytics: {tasksErrorMessage}</span>
+                <button
+                  type="button"
+                  onClick={loadTasks}
+                  className="bg-red-600 text-white rounded px-3 py-1.5 text-sm font-medium hover:bg-red-700 whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {tasksLoadState === "success" && (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <Link
+                    to="/tasks?tab=table"
+                    aria-label={`View all tasks (${tasks.length})`}
+                    data-testid="analytics-link-all"
+                    className="block bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                  >
+                    <h3 className="font-semibold mb-2 text-sm text-blue-900">All Tasks</h3>
+                    <p className="text-4xl font-bold text-blue-600">{tasks.length}</p>
+                  </Link>
+                  <Link
+                    to="/tasks?tab=table&status=done"
+                    aria-label={`View completed tasks (${tasks.filter((t) => t.status === "done").length})`}
+                    data-testid="analytics-link-completed"
+                    className="block bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                  >
+                    <h3 className="font-semibold mb-2 text-sm text-green-900">Completed</h3>
+                    <p className="text-4xl font-bold text-green-600">
+                      {tasks.filter(t => t.status === "done").length}
+                    </p>
+                  </Link>
+                  <Link
+                    to="/tasks?tab=table&status=in-progress"
+                    aria-label={`View in-progress tasks (${tasks.filter((t) => t.status === "in-progress").length})`}
+                    data-testid="analytics-link-in-progress"
+                    className="block bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                  >
+                    <h3 className="font-semibold mb-2 text-sm text-yellow-900">In Progress</h3>
+                    <p className="text-4xl font-bold text-yellow-600">
+                      {tasks.filter(t => t.status === "in-progress").length}
+                    </p>
+                  </Link>
+                  <Link
+                    to="/tasks?tab=table&priority=high"
+                    aria-label={`View high-priority tasks (${tasks.filter((t) => t.priority === "high").length})`}
+                    data-testid="analytics-link-high-priority"
+                    className="block bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                  >
+                    <h3 className="font-semibold mb-2 text-sm text-red-900">High Priority</h3>
+                    <p className="text-4xl font-bold text-red-600">
+                      {tasks.filter(t => t.priority === "high").length}
+                    </p>
+                  </Link>
+                </div>
+
+                <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
+                  <h3 className="text-xl font-bold text-gray-900 mb-6">Tasks by Team Member</h3>
+                  <div className="space-y-3">
+                    {/* Per-member breakdown needs the user list; it fails or
+                        loads independently of the task-only stats above, so
+                        its own loading/error state is contained to this
+                        section instead of blanking the whole Analytics tab. */}
+                    {usersLoadState === "loading" && (
+                      <p className="text-gray-500 text-sm" aria-live="polite">
+                        Loading team members...
+                      </p>
+                    )}
+
+                    {usersLoadState === "error" && (
+                      <div role="alert" className="bg-red-50 border border-red-300 rounded p-3 text-sm text-red-700 flex items-center justify-between gap-4">
+                        <span>Failed to load team members: {usersErrorMessage}</span>
+                        <button
+                          type="button"
+                          onClick={loadUsers}
+                          className="bg-red-600 text-white rounded px-3 py-1.5 text-sm font-medium hover:bg-red-700 whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800"
+                        >
+                          Retry
+                        </button>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div
-                          className="bg-gradient-to-r from-indigo-600 to-purple-600 h-2 rounded-full transition-all"
-                          style={{ width: `${percentage}%` }}
-                        />
+                    )}
+
+                    {usersLoadState === "success" && users.map(user => {
+                      const userTasks = tasks.filter(t => t.assigneeId === user.id);
+                      const percentage = tasks.length > 0 ? Math.round((userTasks.length / tasks.length) * 100) : 0;
+                      return (
+                        <Link
+                          key={user.id}
+                          to={`/users/${user.id}`}
+                          aria-label={`View profile: ${user.name} (${userTasks.length} tasks)`}
+                          data-testid={`analytics-link-user-${user.id}`}
+                          className="block p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-semibold text-gray-900">{user.name}</span>
+                            <span className="font-bold text-indigo-600">{userTasks.length} tasks</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-gradient-to-r from-indigo-600 to-purple-600 h-2 rounded-full transition-all"
+                              style={{ width: `${percentage}%` }}
+                            />
+                          </div>
+                        </Link>
+                      );
+                    })}
+
+                    {/* Unassigned only depends on tasks (already known
+                        successful here), so it stays visible even while/if
+                        the user-dependent rows above are loading or failed. */}
+                    <Link
+                      to="/tasks?tab=table&assignee=unassigned"
+                      aria-label={`View unassigned tasks (${tasks.filter((t) => !t.assigneeId).length})`}
+                      data-testid="analytics-link-unassigned"
+                      className="block p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 hover:bg-gray-100 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-gray-600">Unassigned</span>
+                        <span className="font-bold text-gray-600">{tasks.filter(t => !t.assigneeId).length} tasks</span>
                       </div>
                     </Link>
-                  );
-                })}
-                <Link
-                  to="/tasks?tab=table&assignee=unassigned"
-                  aria-label={`View unassigned tasks (${tasks.filter((t) => !t.assigneeId).length})`}
-                  data-testid="analytics-link-unassigned"
-                  className="block p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 hover:bg-gray-100 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-gray-600">Unassigned</span>
-                    <span className="font-bold text-gray-600">{tasks.filter(t => !t.assigneeId).length} tasks</span>
                   </div>
-                </Link>
-              </div>
-            </div>
+                </div>
+              </>
+            )}
           </div>
       </div>
 

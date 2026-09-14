@@ -107,3 +107,31 @@ export function removeActivitiesForTask(
     }
   }
 }
+
+/**
+ * Returns the activities for one task, newest first by createdAt.
+ *
+ * Activities can share the exact same createdAt timestamp (e.g. several
+ * updates recorded within the same millisecond), so createdAt alone is not
+ * enough to produce a stable order. Ties are broken by each activity's
+ * position in the passed-in `activities` array, which is always appended to
+ * in creation order (see routes/tasks.ts) — that position acts as a
+ * monotonic insertion sequence number without needing to store one on the
+ * activity itself or expose one in the API response. A later insertion
+ * (higher position) is treated as newer, matching the newest-first order.
+ */
+export function sortActivitiesForTask(
+  activities: TaskActivity[],
+  taskId: string
+): TaskActivity[] {
+  return activities
+    .map((activity, sequence) => ({ activity, sequence }))
+    .filter((entry) => entry.activity.taskId === taskId)
+    .sort((a, b) => {
+      if (a.activity.createdAt !== b.activity.createdAt) {
+        return a.activity.createdAt > b.activity.createdAt ? -1 : 1;
+      }
+      return b.sequence - a.sequence;
+    })
+    .map((entry) => entry.activity);
+}

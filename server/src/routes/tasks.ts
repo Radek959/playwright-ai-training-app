@@ -28,6 +28,7 @@ import {
   recordTaskCreated,
   recordTaskUpdated,
   recordApprovalDecided,
+  sortActivitiesForTask,
   removeActivitiesForTask
 } from "../taskActivityLifecycle.js";
 
@@ -64,17 +65,9 @@ tasksRouter.get("/:id/activity", (req, res) => {
   const task = tasks.find((t) => t.id === req.params.id);
   if (!task) return res.status(404).json({ error: "not found" });
 
-  const taskActivities = activities.filter((a) => a.taskId === task.id);
-  
-  // Sort from newest to oldest. If same createdAt, apply deterministic sort by id desc.
-  taskActivities.sort((a, b) => {
-    if (a.createdAt !== b.createdAt) {
-      return a.createdAt > b.createdAt ? -1 : 1;
-    }
-    return a.id > b.id ? -1 : 1;
-  });
-
-  res.json(taskActivities);
+  // Newest first by createdAt; ties broken deterministically by insertion
+  // order (see sortActivitiesForTask), not by the activity's random id.
+  res.json(sortActivitiesForTask(activities, task.id));
 });
 
 tasksRouter.post("/", (req, res) => {

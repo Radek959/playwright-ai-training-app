@@ -6,6 +6,7 @@ import { DeleteUserDialog } from "../components/DeleteUserDialog";
 import { EditUserDialog } from "../components/EditUserDialog";
 import { toApiError } from "../utils/apiError";
 import { effectiveAvatar } from "../utils/avatar";
+import { isAbortError, useLatestRequest } from "../hooks/useLatestRequest";
 import type { Task, User, UserUpdateInput } from "../types";
 
 // Distinguishes "still fetching" and "fetch failed" from an actually-empty
@@ -30,41 +31,55 @@ export function UserDetails() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
+  // Guards against an older in-flight request's response overwriting a newer
+  // one's result (e.g. React.StrictMode's double effect invocation in dev, a
+  // fast Retry click, or navigating from one user's page to another's before
+  // the first user's fetch has settled) - see useLatestRequest for details.
+  const beginUserRequest = useLatestRequest();
+  const beginTasksRequest = useLatestRequest();
+
   const loadUser = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     setNotFound(false);
     setUserFetchError(null);
+    const { signal, isCurrent } = beginUserRequest();
     try {
-      const res = await fetch(`/api/users/${id}`);
+      const res = await fetch(`/api/users/${id}`, { signal });
       if (res.status === 404) {
+        if (!isCurrent()) return;
         setNotFound(true);
         setUser(null);
         return;
       }
       if (!res.ok) throw new Error(`Failed to load user: ${res.status}`);
       const data = (await res.json()) as User;
+      if (!isCurrent()) return;
       setUser(data);
     } catch (err) {
+      if (isAbortError(err) || !isCurrent()) return;
       setUser(null);
       setUserFetchError(err instanceof Error ? err.message : "Failed to load user");
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [id]);
+  }, [id, beginUserRequest]);
 
   const loadTasks = useCallback(async () => {
     setTasksState({ status: "loading" });
+    const { signal, isCurrent } = beginTasksRequest();
     try {
-      const res = await fetch("/api/tasks");
+      const res = await fetch("/api/tasks", { signal });
       if (!res.ok) throw new Error(`Failed to load tasks: ${res.status}`);
       const data = await res.json();
       if (!Array.isArray(data)) throw new Error("Unexpected tasks payload");
+      if (!isCurrent()) return;
       setTasksState({ status: "ready", tasks: data as Task[] });
     } catch (err) {
+      if (isAbortError(err) || !isCurrent()) return;
       setTasksState({ status: "error", message: err instanceof Error ? err.message : "Failed to load tasks" });
     }
-  }, []);
+  }, [beginTasksRequest]);
 
   useEffect(() => {
     loadUser();
