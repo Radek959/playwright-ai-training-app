@@ -67,7 +67,7 @@ Check out the free [Playwright Starter Pack](https://starter.rwasik.pl/) with us
 
 Before running the application, make sure you have installed:
 
-* **Node.js 22.x** (LTS) — the officially supported version, pinned in [`.nvmrc`](./.nvmrc) and `engines.node`
+* **Node.js 22.12 or newer, within the 22.x line** (LTS) — the officially supported version range, pinned in [`.nvmrc`](./.nvmrc) and `engines.node`
 * npm (bundled with Node.js)
 * Git
 
