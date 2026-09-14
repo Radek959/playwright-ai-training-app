@@ -3,6 +3,8 @@ export type TaskPriority = "low" | "medium" | "high";
 export type TaskType = "bug" | "feature" | "research";
 export type TaskSeverity = "critical" | "major" | "minor";
 
+export type ApprovalStatus = "pending" | "approved" | "rejected";
+
 export type Task = {
   id: string;
   title: string;
@@ -20,6 +22,20 @@ export type Task = {
   severity?: TaskSeverity;
   requiresApproval?: boolean;
   approver?: string;
+  /**
+   * The state of the approval process started when requiresApproval is/was
+   * true. Absent whenever requiresApproval is false — there is no active
+   * process to have a state. Set and moved only by taskLifecycle.ts's
+   * approval helpers (POST/PUT /api/tasks, and PUT /api/tasks/:id/approval);
+   * never accepted directly from a plain task PUT body. No login exists in
+   * this app: a decision is recorded on behalf of `approver`, not made by an
+   * authenticated person.
+   */
+  approvalStatus?: ApprovalStatus;
+  /** Optional, max 500 chars after trim. Only ever set alongside a terminal (approved/rejected) approvalStatus. */
+  approvalComment?: string;
+  /** ISO timestamp. Only ever set alongside a terminal (approved/rejected) approvalStatus. */
+  approvalDecidedAt?: string;
 };
 
 export type UserRole = "admin" | "editor" | "viewer";
@@ -75,7 +91,8 @@ export const tasks: Task[] = [
     tags: ["frontend", "design"],
     dependencies: [],
     requiresApproval: true,
-    approver: "manager-a"
+    approver: "manager-a",
+    approvalStatus: "pending"
   },
   {
     id: "t3",
@@ -198,7 +215,8 @@ export const tasks: Task[] = [
     tags: ["frontend", "ux"],
     dependencies: [],
     requiresApproval: true,
-    approver: "manager-b"
+    approver: "manager-b",
+    approvalStatus: "pending"
   },
   {
     id: "t11",
@@ -271,6 +289,42 @@ export const tasks: Task[] = [
     tags: ["frontend"],
     dependencies: ["t1"],
     requiresApproval: false
+  },
+  {
+    id: "t16",
+    title: "Migrate billing service to new payment provider",
+    description: "Cut over recurring billing to the new provider once contracts are signed",
+    status: "in-progress",
+    priority: "high",
+    dueDate: daysFromNow(15),
+    assigneeId: "u1",
+    taskType: "feature",
+    estimatedHours: 18,
+    tags: ["backend", "billing"],
+    dependencies: [],
+    requiresApproval: true,
+    approver: "manager-c",
+    approvalStatus: "approved",
+    approvalComment: "Budget confirmed, go ahead.",
+    approvalDecidedAt: daysAgo(3)
+  },
+  {
+    id: "t17",
+    title: "Enable public signups without invite codes",
+    description: "Remove the invite-code gate so anyone can self-register",
+    status: "todo",
+    priority: "medium",
+    dueDate: daysFromNow(20),
+    assigneeId: "u2",
+    taskType: "feature",
+    estimatedHours: 6,
+    tags: ["backend", "growth"],
+    dependencies: [],
+    requiresApproval: true,
+    approver: "manager-a",
+    approvalStatus: "rejected",
+    approvalComment: "Needs abuse-prevention measures first.",
+    approvalDecidedAt: daysAgo(1)
   }
 ];
 

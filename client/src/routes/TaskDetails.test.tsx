@@ -578,4 +578,96 @@ describe("TaskDetails", () => {
     expect(screen.queryByText("Overdue")).not.toBeInTheDocument();
     expect(screen.queryByText("Due soon")).not.toBeInTheDocument();
   });
+
+  describe("Approval section", () => {
+    it("sends decision + comment to PUT /api/tasks/:id/approval and refreshes from the response", async () => {
+      const approvalPuts: unknown[] = [];
+      const approvedTask = { ...mockTask, approvalStatus: "approved", approvalComment: "Ship it", approvalDecidedAt: "2026-09-14T08:00:00.000Z" };
+      fetchSpy.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = input.toString();
+        if (url === "/api/tasks/task-1/approval" && init?.method === "PUT") {
+          approvalPuts.push(JSON.parse(String(init.body)));
+          return Promise.resolve(new Response(JSON.stringify(approvedTask), { status: 200 }));
+        }
+        if (url === "/api/tasks") return Promise.resolve(new Response(JSON.stringify([mockTask, mockDepTask, mockOtherTask])));
+        if (url === "/api/tasks/task-1") return Promise.resolve(new Response(JSON.stringify(mockTask)));
+        if (url === "/api/tasks/task-2") return Promise.resolve(new Response(JSON.stringify(mockDepTask)));
+        if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify(mockUsers)));
+        return Promise.resolve(new Response(null, { status: 404 }));
+      });
+
+      renderComponent();
+      await waitFor(() => expect(screen.getByTestId("approve-task-btn")).toBeInTheDocument());
+
+      fireEvent.change(screen.getByTestId("approval-comment-input"), { target: { value: "Ship it" } });
+      fireEvent.click(screen.getByTestId("approve-task-btn"));
+
+      await waitFor(() => expect(screen.getByTestId("approval-status-badge")).toHaveTextContent("Approved"));
+      expect(approvalPuts).toEqual([{ decision: "approved", comment: "Ship it" }]);
+      expect(screen.getByTestId("current-path")).toHaveTextContent("/tasks/task-1");
+    });
+
+    it("shows a conflict error and does not update the badge when the decision endpoint returns 409", async () => {
+      fetchSpy.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = input.toString();
+        if (url === "/api/tasks/task-1/approval" && init?.method === "PUT") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ error: "Approval decision conflict", currentApproval: { status: "approved", comment: "ok", decidedAt: "2026-01-01T00:00:00.000Z" } }),
+              { status: 409 }
+            )
+          );
+        }
+        if (url === "/api/tasks") return Promise.resolve(new Response(JSON.stringify([mockTask, mockDepTask, mockOtherTask])));
+        if (url === "/api/tasks/task-1") return Promise.resolve(new Response(JSON.stringify(mockTask)));
+        if (url === "/api/tasks/task-2") return Promise.resolve(new Response(JSON.stringify(mockDepTask)));
+        if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify(mockUsers)));
+        return Promise.resolve(new Response(null, { status: 404 }));
+      });
+
+      renderComponent();
+      await waitFor(() => expect(screen.getByTestId("reject-task-btn")).toBeInTheDocument());
+      fireEvent.click(screen.getByTestId("reject-task-btn"));
+
+      await waitFor(() => expect(screen.getByTestId("approval-error")).toHaveTextContent("Approval decision conflict"));
+      expect(screen.getByTestId("approval-status-badge")).toHaveTextContent("Pending approval");
+    });
+
+    it("reflects a reset to pending immediately after a significant edit, without a URL change", async () => {
+      const resetTask = { ...mockTask, approvalStatus: "pending", approvalComment: undefined, approvalDecidedAt: undefined, title: "Renamed task" };
+      const { puts } = mockEditableTask({ putResponse: () => new Response(JSON.stringify(resetTask), { status: 200 }) });
+
+      renderComponent();
+      await openEditModal();
+      fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Renamed task" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+      await waitFor(() => expect(screen.queryByTestId("task-edit-modal")).not.toBeInTheDocument());
+      expect(puts.length).toBe(1);
+      expect(screen.getByTestId("approval-status-badge")).toHaveTextContent("Pending approval");
+      expect(screen.getByTestId("current-path")).toHaveTextContent("/tasks/task-1");
+    });
+
+    it("reverts the edit modal's status to the real value and keeps it open on an approval-blocked completion attempt", async () => {
+      const { puts } = mockEditableTask({
+        putResponse: () =>
+          new Response(
+            JSON.stringify({ error: "Cannot complete task without approval", approvalBlocker: { status: "pending", approver: "manager-a" } }),
+            { status: 409 }
+          )
+      });
+
+      renderComponent();
+      await openEditModal();
+      fireEvent.change(screen.getByLabelText("Status"), { target: { value: "done" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+      await waitFor(() => expect(document.getElementById("task-edit-modal-error")).toHaveTextContent("Cannot complete task without approval"));
+      expect(puts.length).toBe(1);
+      // Modal stays open, status field reverted to the task's real (unsaved) status.
+      expect(screen.getByTestId("task-edit-modal")).toBeInTheDocument();
+      expect(screen.getByLabelText("Status")).toHaveValue(mockTask.status);
+      expect(screen.getByTestId("current-path")).toHaveTextContent("/tasks/task-1");
+    });
+  });
 });
