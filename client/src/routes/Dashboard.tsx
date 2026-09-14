@@ -21,93 +21,26 @@ function normalizeTask(raw: Partial<Task>): Task {
 
 export default function Dashboard() {
   const { setError, clearError } = useAppError();
-  const [tasksState, setTasksState] = useState<{status: 'loading' | 'success' | 'error', data: Task[]}>({status: 'loading', data: []});
-  const [usersState, setUsersState] = useState<{status: 'loading' | 'success' | 'error', data: User[]}>({status: 'loading', data: []});
-
-  const loadTasks = async () => {
-    setTasksState(prev => ({ ...prev, status: 'loading' }));
-    try {
-      const res = await fetch("/api/tasks");
-      if (!res.ok) throw new Error(`Tasks HTTP ${res.status}`);
-      const data = await res.json();
-      if (!Array.isArray(data)) throw new Error("Unexpected payload");
-      setTasksState({ status: 'success', data: data.map(normalizeTask) });
-      clearError();
-    } catch (err) {
-      setTasksState(prev => ({ ...prev, status: 'error' }));
-      setError(err instanceof Error ? err.message : "Tasks load failed");
-    }
-  };
-
-  const loadUsers = async () => {
-    setUsersState(prev => ({ ...prev, status: 'loading' }));
-    try {
-      const res = await fetch("/api/users");
-      if (!res.ok) throw new Error(`Users HTTP ${res.status}`);
-      const data = await res.json();
-      if (!Array.isArray(data)) throw new Error("Unexpected payload");
-      setUsersState({ status: 'success', data });
-      clearError();
-    } catch (err) {
-      setUsersState(prev => ({ ...prev, status: 'error' }));
-      setError(err instanceof Error ? err.message : "Users load failed");
-    }
-  };
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
 
   useEffect(() => {
-    let mounted = true;
-    const fetchAll = async () => {
+    const load = async () => {
       try {
-        const [tRes, uRes] = await Promise.all([
-          fetch("/api/tasks").catch(e => e),
-          fetch("/api/users").catch(e => e)
-        ]);
-
-        if (!mounted) return;
-
-        let tasksError = false;
-        if (tRes instanceof Error || !tRes.ok) {
-           tasksError = true;
-           setTasksState(prev => ({ ...prev, status: 'error' }));
-        } else {
-           const tData = await tRes.json();
-           if (Array.isArray(tData)) {
-              setTasksState({ status: 'success', data: tData.map(normalizeTask) });
-           } else {
-              tasksError = true;
-              setTasksState(prev => ({ ...prev, status: 'error' }));
-           }
-        }
-
-        let usersError = false;
-        if (uRes instanceof Error || !uRes.ok) {
-           usersError = true;
-           setUsersState(prev => ({ ...prev, status: 'error' }));
-        } else {
-           const uData = await uRes.json();
-           if (Array.isArray(uData)) {
-              setUsersState({ status: 'success', data: uData });
-           } else {
-              usersError = true;
-              setUsersState(prev => ({ ...prev, status: 'error' }));
-           }
-        }
-
-        if (tasksError || usersError) {
-          setError("Dashboard load failed partially");
-        } else {
-          clearError();
-        }
+        const [tRes, uRes] = await Promise.all([fetch("/api/tasks"), fetch("/api/users")]);
+        if (!tRes.ok) throw new Error(`Tasks HTTP ${tRes.status}`);
+        if (!uRes.ok) throw new Error(`Users HTTP ${uRes.status}`);
+        const tData = await tRes.json();
+        const uData = await uRes.json();
+        if (!Array.isArray(tData) || !Array.isArray(uData)) throw new Error("Unexpected payload");
+        setTasks(tData.map(normalizeTask));
+        setUsers(uData);
+        clearError();
       } catch (err) {
-         if (mounted) {
-           setTasksState(prev => ({ ...prev, status: 'error' }));
-           setUsersState(prev => ({ ...prev, status: 'error' }));
-           setError("Dashboard load failed");
-         }
+        setError(err instanceof Error ? err.message : "Dashboard load failed");
       }
     };
-    fetchAll();
-    return () => { mounted = false; };
+    load();
   }, [setError, clearError]);
 
   const totals = useMemo(() => {
