@@ -1,5 +1,5 @@
 import { useMemo, useCallback, useState, ReactNode } from "react";
-import { AppErrorContext, AppErrorState } from "./appErrorContext";
+import { AppErrorContext, AppErrorState } from "./appErrorContextDefinition";
 
 export const AppErrorProvider = ({ children }: { children: ReactNode }) => {
   const [error, setError] = useState<string>();
