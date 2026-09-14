@@ -1,5 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { TaskDetails } from "./TaskDetails";
 import { AppErrorProvider } from "../context/AppErrorContext";
 import { vi, describe, it, expect, beforeEach, MockInstance } from "vitest";
@@ -28,21 +28,66 @@ const mockUsers = [
 
 const mockDepTask = {
   id: "task-2",
-  title: "Dependency Task"
+  title: "Dependency Task",
+  status: "todo",
+  priority: "low"
+};
+
+const mockOtherTask = {
+  id: "task-3",
+  title: "Third task",
+  status: "todo",
+  priority: "low"
 };
 
 let fetchSpy: MockInstance;
+
+function CurrentPath() {
+  const location = useLocation();
+  return <span data-testid="current-path">{location.pathname}</span>;
+}
 
 function renderComponent(id = "task-1") {
   return render(
     <AppErrorProvider>
       <MemoryRouter initialEntries={[`/tasks/${id}`]}>
+        <CurrentPath />
         <Routes>
           <Route path="/tasks/:id" element={<TaskDetails />} />
         </Routes>
       </MemoryRouter>
     </AppErrorProvider>
   );
+}
+
+/**
+ * Serves task-1 (plus the user list, the full task list for the dependency
+ * picker, and the dependency itself) and records every PUT body sent.
+ */
+function mockEditableTask(options: { putResponse?: () => Response } = {}) {
+  const puts: unknown[] = [];
+  fetchSpy.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = input.toString();
+    if (init?.method === "PUT") {
+      puts.push(JSON.parse(String(init.body)));
+      const response = options.putResponse?.() ?? new Response(JSON.stringify(mockTask), { status: 200 });
+      return Promise.resolve(response);
+    }
+    if (url === "/api/tasks") {
+      return Promise.resolve(new Response(JSON.stringify([mockTask, mockDepTask, mockOtherTask])));
+    }
+    if (url === "/api/tasks/task-1") return Promise.resolve(new Response(JSON.stringify(mockTask)));
+    if (url === "/api/tasks/task-2") return Promise.resolve(new Response(JSON.stringify(mockDepTask)));
+    if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify(mockUsers)));
+    return Promise.resolve(new Response(null, { status: 404 }));
+  });
+  return { puts };
+}
+
+async function openEditModal() {
+  await waitFor(() => expect(screen.getByTestId("open-edit-task-btn")).toBeInTheDocument());
+  fireEvent.click(screen.getByTestId("open-edit-task-btn"));
+  await waitFor(() => expect(screen.getByTestId("task-edit-modal")).toBeInTheDocument());
 }
 
 describe("TaskDetails", () => {
@@ -292,6 +337,219 @@ describe("TaskDetails", () => {
     // dependencies/completedAt here to add another).
     const timeElements = container.querySelectorAll("time");
     expect(timeElements).toHaveLength(1);
+  });
+
+  it("opens the shared edit modal from the details view with every field pre-filled", async () => {
+    mockEditableTask();
+    renderComponent();
+    await openEditModal();
+
+    const modal = screen.getByTestId("task-edit-modal");
+    expect(within(modal).getByRole("heading", { name: "Edit task" })).toBeInTheDocument();
+    expect((screen.getByLabelText("Title") as HTMLInputElement).value).toBe("Test Task");
+    expect((screen.getByLabelText("Task type") as HTMLSelectElement).value).toBe("bug");
+    expect((screen.getByLabelText("Severity") as HTMLSelectElement).value).toBe("critical");
+    expect((screen.getByLabelText("Estimated hours") as HTMLInputElement).value).toBe("5");
+    expect((screen.getByLabelText("Tags (comma separated)") as HTMLInputElement).value).toBe("frontend, urgent");
+    expect((screen.getByLabelText("Requires manager approval") as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText("Approver") as HTMLSelectElement).value).toBe("manager-a");
+    expect(screen.getByTestId("edit-task-dependency-task-2")).toBeInTheDocument();
+  });
+
+  it("offers the other existing tasks as dependencies, excluding the task being edited", async () => {
+    mockEditableTask();
+    renderComponent();
+    await openEditModal();
+
+    const options = Array.from((screen.getByLabelText("Add dependency") as HTMLSelectElement).options);
+    // task-1 is the task itself and task-2 is already a dependency.
+    expect(options.map((o) => o.value)).toEqual(["", "task-3"]);
+    expect(options.map((o) => o.textContent)).toContain("Third task (task-3)");
+  });
+
+  it("saves with a PUT carrying only the changed field and shows the API's response without leaving the URL", async () => {
+    const { puts } = mockEditableTask({
+      putResponse: () =>
+        new Response(JSON.stringify({ ...mockTask, title: "Renamed task", dependencies: [] }), { status: 200 })
+    });
+    renderComponent();
+    await openEditModal();
+
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Renamed task" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(screen.queryByTestId("task-edit-modal")).not.toBeInTheDocument());
+    expect(puts).toEqual([{ title: "Renamed task" }]);
+
+    // The response — not an optimistic guess — is what gets rendered, and
+    // the dependency list is refreshed from it.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Renamed task");
+    expect(screen.queryByTestId("dependency-task-2")).not.toBeInTheDocument();
+    expect(screen.getByTestId("current-path")).toHaveTextContent("/tasks/task-1");
+  });
+
+  it("sends the explicit clearing values when extended fields are emptied", async () => {
+    const { puts } = mockEditableTask();
+    renderComponent();
+    await openEditModal();
+
+    fireEvent.change(screen.getByLabelText("Task type"), { target: { value: "feature" } });
+    fireEvent.change(screen.getByLabelText("Estimated hours"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Tags (comma separated)"), { target: { value: "" } });
+    fireEvent.click(screen.getByLabelText("Requires manager approval"));
+    fireEvent.click(screen.getByRole("button", { name: "Remove dependency Dependency Task" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({
+      taskType: "feature",
+      severity: null,
+      estimatedHours: null,
+      tags: [],
+      dependencies: [],
+      requiresApproval: false,
+      approver: null
+    });
+  });
+
+  it("still saves an unrelated field when the task list could not be fetched, without touching dependencies", async () => {
+    const puts: unknown[] = [];
+    let listRequests = 0;
+    fetchSpy.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (init?.method === "PUT") {
+        puts.push(JSON.parse(String(init.body)));
+        return Promise.resolve(new Response(JSON.stringify({ ...mockTask, title: "Renamed task" }), { status: 200 }));
+      }
+      // The task itself and its dependency load fine; only the list used by
+      // the dependency picker fails.
+      if (url === "/api/tasks") {
+        listRequests += 1;
+        return Promise.resolve(new Response(null, { status: 500, statusText: "Internal Server Error" }));
+      }
+      if (url === "/api/tasks/task-1") return Promise.resolve(new Response(JSON.stringify(mockTask)));
+      if (url === "/api/tasks/task-2") return Promise.resolve(new Response(JSON.stringify(mockDepTask)));
+      if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify(mockUsers)));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+
+    renderComponent();
+
+    // The read-only view still works, dependencies included.
+    await waitFor(() => expect(screen.getByText("Dependency Task")).toBeInTheDocument());
+
+    await openEditModal();
+
+    // A failed list is not "an empty list": dependency editing is blocked
+    // and explained, with a way to retry, while the saved dependency stays
+    // visible and is never reported as unknown.
+    const status = screen.getByTestId("edit-task-dependency-status");
+    expect(status).toHaveTextContent(/task list could not be loaded/i);
+    expect(screen.getByLabelText("Add dependency")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Remove dependency task-2" })).toBeDisabled();
+    expect(screen.getByTestId("edit-task-dependency-task-2")).toBeInTheDocument();
+    expect(listRequests).toBe(1);
+    fireEvent.click(screen.getByTestId("edit-task-dependency-retry"));
+    await waitFor(() => expect(listRequests).toBe(2));
+
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Renamed task" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({ title: "Renamed task" });
+    expect(screen.queryByText(/Unknown dependency ids/)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId("task-edit-modal")).not.toBeInTheDocument());
+  });
+
+  it("does not send a change or a clear for a dueDate stored in a non-ISO format the API accepts", async () => {
+    const puts: unknown[] = [];
+    const textDueDateTask = { ...mockTask, id: "task-text-date", dueDate: "May 1, 2026 00:00:00 GMT", dependencies: [] };
+    fetchSpy.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (init?.method === "PUT") {
+        puts.push(JSON.parse(String(init.body)));
+        return Promise.resolve(new Response(JSON.stringify({ ...textDueDateTask, title: "Renamed task" }), { status: 200 }));
+      }
+      if (url === "/api/tasks") return Promise.resolve(new Response(JSON.stringify([textDueDateTask])));
+      if (url === "/api/tasks/task-text-date") return Promise.resolve(new Response(JSON.stringify(textDueDateTask)));
+      if (url === "/api/users") return Promise.resolve(new Response(JSON.stringify(mockUsers)));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+
+    renderComponent("task-text-date");
+    await openEditModal();
+
+    expect((screen.getByLabelText("Due date") as HTMLInputElement).value).toBe("2026-05-01");
+
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Renamed task" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({ title: "Renamed task" });
+  });
+
+  it("leaves the displayed data untouched when the edit is cancelled", async () => {
+    const { puts } = mockEditableTask();
+    renderComponent();
+    await openEditModal();
+
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Never saved" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => expect(screen.queryByTestId("task-edit-modal")).not.toBeInTheDocument());
+    expect(puts).toHaveLength(0);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Test Task");
+  });
+
+  it("keeps the modal open and the last saved data on screen when the save fails", async () => {
+    mockEditableTask({
+      putResponse: () =>
+        new Response(JSON.stringify({ error: "Validation failed", details: [{ field: "title", message: "title must be at least 3 characters" }] }), { status: 400 })
+    });
+    renderComponent();
+    await openEditModal();
+
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Rejected title" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(screen.getAllByText("title must be at least 3 characters").length).toBeGreaterThan(0)
+    );
+    expect(screen.getByTestId("task-edit-modal")).toBeInTheDocument();
+    // The details view still shows the last successfully saved version.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Test Task");
+    expect(screen.getByTestId("current-path")).toHaveTextContent("/tasks/task-1");
+  });
+
+  it("reports a 409 naming the blocking dependencies and does not present 'done' as saved", async () => {
+    mockEditableTask({
+      putResponse: () =>
+        new Response(
+          JSON.stringify({
+            error: "Cannot complete task with incomplete dependencies",
+            blockingDependencies: [{ id: "task-2", title: "Dependency Task", status: "todo" }]
+          }),
+          { status: 409 }
+        )
+    });
+    renderComponent();
+    await openEditModal();
+
+    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "done" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getAllByText(/Cannot complete task with incomplete dependencies: Dependency Task \(todo\)/).length
+      ).toBeGreaterThan(0)
+    );
+    expect(screen.getByTestId("task-edit-modal")).toBeInTheDocument();
+    // The rejected status is not shown as if it had been stored, in the form
+    // or in the details view behind it.
+    expect((screen.getByLabelText("Status") as HTMLSelectElement).value).toBe("in-progress");
+    const statusDd = Array.from(document.querySelectorAll("dt")).find((dt) => dt.textContent === "Status")
+      ?.nextElementSibling;
+    expect(statusDd?.textContent).toBe("in-progress");
   });
 
   it("does not show an overdue/soon label for a done task with a past dueDate", async () => {

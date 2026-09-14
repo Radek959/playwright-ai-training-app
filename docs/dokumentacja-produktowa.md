@@ -125,6 +125,13 @@ Poniższe reguły są sprawdzane zarówno przy `POST /api/tasks`, jak i przy `PU
 3. **Zadania o priorytecie `high` nie mogą mieć `estimatedHours > 24`.** Jeśli `estimatedHours` jest podane i przekracza 24, a `priority === "high"`, zwracany jest błąd: „high priority tasks cannot exceed 24 estimated hours”.
 4. **`requiresApproval: true` wymaga niepustego `approver`.** Patrz sekcja 2.7.
 
+Reguły te działają **tylko w jedną stronę**. API nie wymaga, żeby wartości warunkowe znikały razem z warunkiem, który je uzasadniał:
+
+- zadanie o `taskType` innym niż `"bug"` (lub bez typu) **może** mieć zapisane `severity` — nie trzeba wysyłać `severity: null` razem ze zmianą typu;
+- zadanie z `requiresApproval: false` **może** mieć zapisanego `approver` — nie trzeba wysyłać `approver: null` razem z `requiresApproval: false`.
+
+Czyszczenie takich wartości jest więc zachowaniem formularza edycji (sekcja 7.2a), a nie wymogiem kontraktu API.
+
 Dodatkowe reguły pól (niezależne od kontekstu innych pól):
 
 - `title`: wymagany, string, min. 3 znaki po `trim`.
@@ -213,7 +220,8 @@ Cały odtwarzalny stan tego widoku (aktywna zakładka, filtry, strona, sortowani
 - Przy każdej zależności pokazywany jest jej aktualny status. Zależności o statusie innym niż `"done"` są dodatkowo oznaczone jako blokujące ukończenie zadania (zgodnie z regułą opisaną w sekcji 2.6) — link do szczegółów danej zależności pozostaje dostępny niezależnie od jej statusu.
 - Puste pola opcjonalne są jawnie oznaczane jako brak wartości ("Not set"), zamiast być ukrywane.
 - Prezentuje adres URL miniatury `coverImage` (w formie klikalnego linku), oprócz wyświetlenia samego obrazu.
-- Służy wyłącznie do odczytu – wszelka edycja realizowana jest z innych widoków przez akcje przypisane kartom lub wierszom tabel.
+- Zawiera przycisk „Edit task”, który otwiera **ten sam modal edycji**, co lista zadań (sekcja 7.2a) — nie jest to osobny formularz. Modal pozwala zmienić pełny zestaw pól zadania, w tym `taskType`, `severity`, `estimatedHours`, `tags`, `dependencies`, `requiresApproval` i `approver`.
+- Po udanym zapisie: modal się zamyka, widok pokazuje dane **zwrócone przez API** (a nie zgadywany lokalnie stan), sekcja zależności jest odświeżana, a adres pozostaje ten sam (`/tasks/:id`) — nie następuje żadne przekierowanie ani powrót na listę. Przy błędzie zapisu modal pozostaje otwarty z komunikatem, a widok szczegółów nadal pokazuje ostatnią poprawnie zapisaną wersję zadania.
 - Dostęp do widoku realizowany jest za pomocą dedykowanego linku "View details" dodanego obok głównej akcji "Edit" / "Delete" na elementach listy (np. Table, TaskCard).
 - Bezpiecznie obsługuje brak istnienia zadania – gdy API zwróci błąd `404`, aplikacja (SPA) wyświetli odpowiedni stan widoku „Task not found” informujący jasno o problemie, przy zachowaniu spójności nawigacji i możliwości powrotu do listy. Błędy sieciowe (np. 500) prezentują stosowny komunikat z opcją ponowienia.
 
@@ -282,24 +290,37 @@ Przykłady: `/tasks?status=in-progress&priority=high&assignee=user-1&page=2` (za
 
 Trzykrokowy formularz (Basic information → Assignment and details → Summary):
 
-- **Krok 1** ustawia: `taskType` (domyślnie `feature`), `title` (wymagane, min. 3 znaki — walidacja po stronie klienta odzwierciedla regułę API), `description`, `priority` (wymagane w UI). Wybranie priorytetu `high` pokazuje ostrzeżenie informacyjne „High priority tasks should be completed within 24h” — to tylko komunikat w interfejsie, nie reguła egzekwowana automatycznie na `dueDate`.
-- **Krok 2** ustawia: `assigneeId` — **w kreatorze pole to jest wymagane** (mimo że API pozwala tworzyć zadania bez przypisania); `estimatedHours` (walidacja klienta: min. 1, jeśli podane); `dueDate`; `severity` — pole pojawia się tylko, gdy `taskType === "bug"`, i jest wtedy wymagane; checkbox „Requires manager approval” i wybór `approver` z zamkniętej listy (Manager A/B/C), pole `approver` pojawia się i jest wymagane tylko, gdy checkbox jest zaznaczony; `tags` i `dependencies` jako pola tekstowe rozdzielane przecinkami (bez podpowiedzi/autouzupełniania — pod polem `dependencies` wypisane są dostępne identyfikatory istniejących zadań jako podpowiedź tekstowa).
+- **Krok 1** ustawia: `taskType` (domyślnie `feature`), `title` (wymagane, min. 3 znaki **po przycięciu białych znaków** — walidacja po stronie klienta odzwierciedla regułę API), `description`, `priority` (wymagane w UI). Wybranie priorytetu `high` pokazuje ostrzeżenie informacyjne „High priority tasks should be completed within 24h” — to tylko komunikat w interfejsie, nie reguła egzekwowana automatycznie na `dueDate`.
+- **Krok 2** ustawia: `assigneeId` — **pole opcjonalne**, dokładnie tak jak w API i w Swaggerze: zadanie można utworzyć nieprzypisane (opcja „-- unassigned --”) i przypisać je później; `estimatedHours` (walidacja klienta: wartość musi być liczbą dodatnią — dokładnie tak, jak wymaga tego API; zadania typu `research` wymagają dodatkowo co najmniej 1 godziny, a zadania o priorytecie `high` nie mogą przekroczyć 24 godzin); `dueDate`; `severity` — pole pojawia się tylko, gdy `taskType === "bug"`, i jest wtedy wymagane; checkbox „Requires manager approval” i wybór `approver` z zamkniętej listy (Manager A/B/C), pole `approver` pojawia się i jest wymagane tylko, gdy checkbox jest zaznaczony; `tags` jako pole tekstowe rozdzielane przecinkami; `dependencies` jako **wybór z listy istniejących zadań** (każda pozycja pokazuje tytuł i identyfikator zadania) — zależności dodaje się przyciskiem „Add” i usuwa przyciskiem „Remove” przy konkretnej pozycji; nie da się dodać tego samego zadania dwa razy ani (w edycji) wskazać edytowanego zadania jako jego własnej zależności. Wpisywanie identyfikatorów ręcznie nie jest już możliwe.
 - **Krok 3** to tylko podgląd wprowadzonych danych przed wysłaniem — nie ma tu żadnych dodatkowych pól ani walidacji.
 - Wysłanie formularza wykonuje `POST /api/tasks`. Puste pola opcjonalne pozostawione po wcześniejszych krokach nie są wysyłane jako niepoprawne wartości techniczne: wyczyszczone pole `dueDate` (puste `""`) jest pomijane w wysyłanym payloadzie zamiast wysłania pustego stringa, a wyczyszczone pole `estimatedHours` jest pomijane zamiast wysłania `0`. Podobnie, jeśli `requiresApproval` zostanie odznaczone po wcześniejszym wybraniu `approver`, wartość `approver` nie jest wysyłana; a jeśli typ zadania zostanie zmieniony z `"bug"` na inny po wcześniejszym wybraniu `severity`, wartość `severity` nie jest wysyłana. Błędy walidacji zwrócone przez API są pokazywane jako ogólny komunikat na kroku podsumowania (nie są mapowane na konkretne pola formularza wewnątrz kreatora).
 - Po utworzeniu zadania kreator zamyka się automatycznie tylko przy sukcesie.
 
-### 7.2 Szybkie dodawanie (Quick Add, w zakładce Active) i modal edycji zadania
+### 7.2 Szybkie dodawanie (Quick Add, w zakładce Active)
 
-Oba te formularze operują na dokładnie tym samym, węższym zestawie pól: `title`, `description`, `status`, `priority`, `dueDate`, `assigneeId`. Nie dają możliwości ustawienia ani zmiany: `taskType`, `severity`, `estimatedHours`, `tags`, `dependencies`, `requiresApproval`, `approver`, `coverImage`.
+Formularz Quick Add operuje na węższym zestawie pól: `title`, `description`, `status`, `priority`, `dueDate`, `assigneeId`. Nie daje możliwości ustawienia: `taskType`, `severity`, `estimatedHours`, `tags`, `dependencies`, `requiresApproval`, `approver`, `coverImage`.
 
 - Formularz Quick Add tworzy zadanie przez `POST /api/tasks` — pola spoza tej listy pozostają nieustawione (nie dziedziczą żadnych wartości domyślnych poza tymi, które i tak nadaje backend, patrz sekcja 2.1).
-- Modal edycji zadania aktualizuje istniejące zadanie przez `PUT /api/tasks/:id`, wysyłając wszystkie sześć pól z formularza za każdym razem (nie tylko zmienione) — reszta pól zadania (m.in. `taskType`, `severity`, `estimatedHours`, `tags`, `dependencies`, `requiresApproval`, `approver`) pozostaje bez zmian, bo backend scala patch tylko z przesłanymi kluczami.
-- Ustawienie `status` na `"done"` w tych formularzach uruchamia tę samą automatyczną logikę `completedAt`, co przy każdej innej ścieżce aktualizacji (sekcja 2.3) — formularze same nie wysyłają `completedAt`.
-- Błędy walidacji z API są mapowane na konkretne pola formularza (czerwony komunikat pod danym polem), o ile pole błędu należy do tego zestawu sześciu pól; błędy dotyczące innych pól (np. reguł z sekcji 3, jeśli aktualizacja naruszy je pośrednio) trafiają tylko do ogólnego komunikatu błędu.
+
+### 7.2a Modal edycji zadania
+
+Modal edycji jest **jednym, wspólnym komponentem** używanym zarówno z listy zadań (karty, Grid View, wynik wyszukiwania), jak i z widoku szczegółów `/tasks/:id` (przycisk „Edit task”, patrz sekcja 6.6). Obejmuje **pełny zestaw edytowalnych pól**: `title`, `description`, `status`, `priority`, `dueDate`, `assigneeId`, `taskType`, `severity`, `estimatedHours`, `tags`, `dependencies`, `requiresApproval`, `approver`. Poza zasięgiem edycji pozostaje jedynie `coverImage` (patrz sekcja 1.1) oraz `completedAt` (wyliczane z `status`, sekcja 2.3).
+
+- Wszystkie pola są wypełniane wartościami aktualnie zapisanego zadania w momencie otwarcia modalu. Pola warunkowe działają tak samo jak w kreatorze: `severity` pokazuje się tylko dla `taskType === "bug"`, a `approver` tylko przy zaznaczonym „Requires manager approval”.
+- Walidacja po stronie klienta pochodzi z **tego samego, współdzielonego modułu co kreator** (reguły: min. 3 znaki tytułu po przycięciu, dodatnia liczba godzin, `research` wymaga co najmniej 1 godziny, `bug` wymaga `severity`, `high` nie przekracza 24 godzin, `requiresApproval` wymaga `approver`, `dependencies` muszą wskazywać istniejące zadania). Dzięki temu reguły klienta nie mogą rozjechać się z regułami API (sekcja 3).
+- Zapis wykonuje `PUT /api/tasks/:id` i wysyła **wyłącznie pola, które faktycznie się zmieniły** — pozostałe wartości zadania zostają nietknięte, bo backend scala patch tylko z przesłanymi kluczami. Wyczyszczone pole jest wysyłane jawną wartością czyszczącą zgodną z kontraktem API: `null` dla `description`, `dueDate`, `assigneeId`, `taskType`, `estimatedHours`, `severity` i `approver`, oraz `[]` dla `tags` i `dependencies` (pola tablicowe nie przyjmują `null`).
+- Formularz nigdy nie modyfikuje pól, których użytkownik nie zmienił. W szczególności: opis złożony wyłącznie z białych znaków zostaje zachowany w dokładnie takiej postaci, dopóki nie zostanie zmieniony; `severity` zapisane przy zadaniu o typie innym niż `"bug"` oraz `approver` zapisany przy `requiresApproval: false` (oba dozwolone przez API — patrz sekcja 3) **nie** są kasowane przy edycji innego pola.
+- Dwie pary pól warunkowych są wysyłane razem, ale **wyłącznie wtedy, gdy użytkownik faktycznie wykonał odpowiednią zmianę** — jest to decyzja formularza (żeby zapisane zadanie odpowiadało temu, co pokazuje UI), a nie wymóg API: zmiana `taskType` z `"bug"` na inny wysyła dodatkowo `severity: null`, a odznaczenie wcześniej włączonego „Requires manager approval” wysyła `{"requiresApproval": false, "approver": null}`. API nie odrzuca żądań, które tych par nie wysyłają (patrz sekcja 3).
+- `dueDate` zapisany w dowolnym formacie akceptowanym przez API (np. `"May 1, 2026"`, a nie tylko ISO 8601) jest pokazywany w polu daty jako właściwy dzień kalendarzowy **w UTC** — tą samą konwencją, co klasyfikacja terminu z sekcji 11. Dzięki temu edycja innego pola nigdy nie wysyła zmiany ani wyczyszczenia nietkniętego terminu. Wartość, której nie da się sparsować jako daty, pokazuje puste pole i również nie jest przy zapisie czyszczona.
+- Pole `dependencies` wymaga poprawnie pobranej listy zadań (`GET /api/tasks`). Dopóki lista się ładuje albo jej pobranie **nie powiodło się**, wybór zależności jest zablokowany, a modal pokazuje odpowiedni komunikat (przy błędzie — z możliwością ponowienia pobrania). Zapisane zależności zadania są wtedy nadal widoczne, nie są uznawane za nieistniejące i nie są wysyłane w `PUT` — zmianę innego pola (np. tytułu) można zapisać normalnie.
+- Ustawienie `status` na `"done"` uruchamia tę samą automatyczną logikę `completedAt`, co przy każdej innej ścieżce aktualizacji (sekcja 2.3) — formularz sam nie wysyła `completedAt`.
+- Błędy walidacji z API są mapowane na konkretne pola formularza (czerwony komunikat pod danym polem); błędy dotyczące pól spoza formularza trafiają tylko do ogólnego komunikatu błędu.
+- Odrzucenie zmiany statusu na `"done"` z powodu nieukończonych zależności (`409`, sekcja 2.6) pokazuje komunikat z nazwami blokujących zadań, a pole `status` wraca do rzeczywistej, zapisanej wartości — modal nie prezentuje statusu, który nigdy nie został zapisany.
+- Anulowanie edycji (przycisk „Cancel”, Escape, kliknięcie w tło) nie zmienia żadnych wyświetlanych danych.
 
 ### 7.3 API bezpośrednio
 
-- API nie narzuca żadnego z ograniczeń opisanych w 7.1–7.2 dotyczących tego, „które pola można ustawić w danym formularzu” — przez `POST`/`PUT` można ustawić dowolne pole z sekcji 1.1, w tym `taskType`, `severity`, `estimatedHours`, `tags`, `dependencies`, `requiresApproval` i `approver`, których UI (poza samym kreatorem przy tworzeniu) nie pozwala zmienić.
+- API nie narzuca żadnego z ograniczeń opisanych w 7.1–7.2a dotyczących tego, „które pola można ustawić w danym formularzu” — przez `POST`/`PUT` można ustawić dowolne pole z sekcji 1.1. UI pokrywa dziś ten zestaw w kreatorze (tworzenie) i w modalu edycji (aktualizacja); jedynie Quick Add operuje na węższym zestawie pól.
 - Jedyne pole, którego nie da się ustawić przez żaden udokumentowany endpoint, to `coverImage` — występuje wyłącznie w danych startowych.
 - Dokumentacja Swagger/OpenAPI dla wszystkich endpointów jest dostępna pod `/api-docs` po uruchomieniu backendu.
 

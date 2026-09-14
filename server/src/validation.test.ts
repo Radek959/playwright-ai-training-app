@@ -127,6 +127,30 @@ describe("validateTaskFields", () => {
       expect(errors).toEqual([]);
     });
 
+    // The conditional rules only work in one direction. This is the actual
+    // contract Swagger documents: clearing a leftover severity/approver is a
+    // client-side convenience, never something the API demands.
+    it("accepts a severity on a task whose type is not bug", () => {
+      const errors = validateTaskFields(validTask({ taskType: "feature", severity: "major" }), {
+        users: baseUsers,
+        tasks: baseTasks
+      });
+      expect(errors).toEqual([]);
+    });
+
+    it("accepts a severity on a task with no taskType at all", () => {
+      const errors = validateTaskFields(validTask({ severity: "critical" }), { users: baseUsers, tasks: baseTasks });
+      expect(errors).toEqual([]);
+    });
+
+    it("accepts an approver while requiresApproval is false", () => {
+      const errors = validateTaskFields(validTask({ requiresApproval: false, approver: "manager-a" }), {
+        users: baseUsers,
+        tasks: baseTasks
+      });
+      expect(errors).toEqual([]);
+    });
+
     it("requires estimatedHours >= 1 on research tasks", () => {
       const errors = validateTaskFields(validTask({ taskType: "research" }), { users: baseUsers, tasks: baseTasks });
       expect(errors).toContainEqual({

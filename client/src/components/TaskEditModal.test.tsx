@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { TaskEditModal } from "./TaskEditModal";
 import { ApiError } from "../utils/apiError";
-import type { Task } from "../types";
+import type { Task, User } from "../types";
 
 function makeTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -13,6 +13,216 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     ...overrides
   };
 }
+
+const users: User[] = [
+  { id: "u1", name: "Alice", email: "alice@example.com", role: "editor" },
+  { id: "u2", name: "Bob", email: "bob@example.com", role: "viewer" }
+];
+
+const otherTasks: Task[] = [
+  { id: "t2", title: "Second task", status: "todo", priority: "low" },
+  { id: "t3", title: "Third task", status: "done", priority: "low" }
+];
+
+const richTask = makeTask({
+  title: "Fully populated task",
+  description: "Some description",
+  status: "in-progress",
+  priority: "medium",
+  dueDate: "2026-05-01T00:00:00.000Z",
+  assigneeId: "u1",
+  taskType: "bug",
+  severity: "critical",
+  estimatedHours: 8,
+  tags: ["backend", "urgent"],
+  dependencies: ["t2"],
+  requiresApproval: true,
+  approver: "manager-a"
+});
+
+function renderModal(task: Task, onSave = vi.fn().mockResolvedValue(undefined), onClose = vi.fn()) {
+  render(
+    <TaskEditModal
+      task={task}
+      open
+      users={users}
+      existingTasks={[task, ...otherTasks]}
+      onClose={onClose}
+      onSave={onSave}
+    />
+  );
+  return { onSave, onClose };
+}
+
+const save = () => fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+describe("TaskEditModal extended fields", () => {
+  it("pre-fills every extended field from the task being edited", () => {
+    renderModal(richTask);
+
+    expect((screen.getByLabelText("Title") as HTMLInputElement).value).toBe("Fully populated task");
+    expect((screen.getByLabelText("Description") as HTMLTextAreaElement).value).toBe("Some description");
+    expect((screen.getByLabelText("Status") as HTMLSelectElement).value).toBe("in-progress");
+    expect((screen.getByLabelText("Priority") as HTMLSelectElement).value).toBe("medium");
+    expect((screen.getByLabelText("Due date") as HTMLInputElement).value).toBe("2026-05-01");
+    expect((screen.getByLabelText("Assignee") as HTMLSelectElement).value).toBe("u1");
+    expect((screen.getByLabelText("Task type") as HTMLSelectElement).value).toBe("bug");
+    expect((screen.getByLabelText("Severity") as HTMLSelectElement).value).toBe("critical");
+    expect((screen.getByLabelText("Estimated hours") as HTMLInputElement).value).toBe("8");
+    expect((screen.getByLabelText("Tags (comma separated)") as HTMLInputElement).value).toBe("backend, urgent");
+    expect((screen.getByLabelText("Requires manager approval") as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText("Approver") as HTMLSelectElement).value).toBe("manager-a");
+    expect(screen.getByTestId("edit-task-dependency-t2")).toBeInTheDocument();
+  });
+
+  it("sends only the changed field, leaving all other saved values alone", async () => {
+    const { onSave } = renderModal(richTask);
+
+    fireEvent.change(screen.getByLabelText("Estimated hours"), { target: { value: "12" } });
+    save();
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith({ estimatedHours: 12 });
+  });
+
+  it("clears severity, approver, estimate, tags and dependencies with the API's clearing values", async () => {
+    const { onSave } = renderModal(richTask);
+
+    fireEvent.change(screen.getByLabelText("Task type"), { target: { value: "feature" } });
+    fireEvent.change(screen.getByLabelText("Estimated hours"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Tags (comma separated)"), { target: { value: "" } });
+    fireEvent.click(screen.getByLabelText("Requires manager approval"));
+    fireEvent.click(screen.getByRole("button", { name: "Remove dependency Second task" }));
+    save();
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith({
+      taskType: "feature",
+      severity: null,
+      estimatedHours: null,
+      tags: [],
+      dependencies: [],
+      requiresApproval: false,
+      approver: null
+    });
+  });
+
+  it("clears the assignee, description and due date with an explicit null", async () => {
+    const { onSave } = renderModal(richTask);
+
+    fireEvent.change(screen.getByLabelText("Assignee"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Description"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Due date"), { target: { value: "" } });
+    save();
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith({ assigneeId: null, description: null, dueDate: null });
+  });
+
+  it("hides severity and approver once their conditions no longer hold", () => {
+    renderModal(richTask);
+
+    expect(screen.getByTestId("edit-task-severity-field")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Task type"), { target: { value: "research" } });
+    expect(screen.queryByTestId("edit-task-severity-field")).not.toBeInTheDocument();
+
+    expect(screen.getByTestId("edit-task-approver-field")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Requires manager approval"));
+    expect(screen.queryByTestId("edit-task-approver-field")).not.toBeInTheDocument();
+  });
+});
+
+describe("TaskEditModal client-side validation", () => {
+  it("blocks a bug without a severity", async () => {
+    const { onSave } = renderModal(makeTask({ taskType: "feature" }));
+
+    fireEvent.change(screen.getByLabelText("Task type"), { target: { value: "bug" } });
+    save();
+
+    expect(await screen.findByText("Bugs require a severity level")).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("blocks a research task without an estimate", async () => {
+    const { onSave } = renderModal(makeTask());
+
+    fireEvent.change(screen.getByLabelText("Task type"), { target: { value: "research" } });
+    save();
+
+    expect(await screen.findByText("Research tasks require a time estimate of at least 1 hour")).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("blocks a high priority task estimated at more than 24 hours", async () => {
+    const { onSave } = renderModal(makeTask());
+
+    fireEvent.change(screen.getByLabelText("Priority"), { target: { value: "high" } });
+    fireEvent.change(screen.getByLabelText("Estimated hours"), { target: { value: "30" } });
+    save();
+
+    expect(await screen.findByText("High priority tasks cannot exceed 24h")).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("blocks a non-positive estimate", async () => {
+    const { onSave } = renderModal(makeTask());
+
+    fireEvent.change(screen.getByLabelText("Estimated hours"), { target: { value: "0" } });
+    save();
+
+    expect(await screen.findByText("Estimated hours must be a positive number")).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("blocks required approval without an approver", async () => {
+    const { onSave } = renderModal(makeTask());
+
+    fireEvent.click(screen.getByLabelText("Requires manager approval"));
+    save();
+
+    expect(await screen.findByText("Select an approver")).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("blocks a title shorter than 3 characters after trimming", async () => {
+    const { onSave } = renderModal(makeTask());
+
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: " ab " } });
+    save();
+
+    expect(await screen.findByText("Title must be at least 3 characters")).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+});
+
+describe("TaskEditModal dependency picker", () => {
+  it("never offers the edited task itself or an already-selected dependency", () => {
+    renderModal(richTask);
+
+    const options = Array.from((screen.getByLabelText("Add dependency") as HTMLSelectElement).options).map((o) => o.value);
+    expect(options).toEqual(["", "t3"]);
+    expect(options).not.toContain("t1");
+    expect(options).not.toContain("t2");
+  });
+
+  it("adds a dependency picked from the existing task list", async () => {
+    const { onSave } = renderModal(richTask);
+
+    fireEvent.change(screen.getByLabelText("Add dependency"), { target: { value: "t3" } });
+    fireEvent.click(screen.getByTestId("edit-task-dependency-add"));
+    expect(screen.getByTestId("edit-task-dependency-t3")).toBeInTheDocument();
+
+    save();
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenCalledWith({ dependencies: ["t2", "t3"] });
+  });
+
+  it("shows each option with its title and id", () => {
+    renderModal(richTask);
+    const select = screen.getByLabelText("Add dependency") as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.textContent)).toContain("Third task (t3)");
+  });
+});
 
 describe("TaskEditModal status handling on a rejected save", () => {
   it("reverts the status field to the task's real status after a blocking-dependency 409", async () => {
