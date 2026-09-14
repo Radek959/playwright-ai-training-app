@@ -154,7 +154,7 @@ Sposób, w jaki `null` na tych polach jest obsługiwany, różni się jednak mi�
 
 ### 2.8 Role użytkowników — czym są, a czym nie są
 
-- Rola (`admin` / `editor` / `viewer`) jest ustawiana raz, przy tworzeniu użytkownika, i wyświetlana jako etykieta (kolorowy „chip”) na liście użytkowników.
+- Rola (`admin` / `editor` / `viewer`) może zostać ustawiona przy tworzeniu użytkownika, a później zmieniona przy edycji użytkownika (`PUT /api/users/:id`, sekcja 2.9a) — zarówno przez API, jak i przez formularz edycji w UI. W obu wypadkach jest wyświetlana jako etykieta (kolorowy „chip”) na liście użytkowników.
 - **Rola nie wpływa na to, co dany użytkownik może zrobić w aplikacji** — nie ma logowania ani sesji użytkownika, więc nie ma też pojęcia „zalogowanego” użytkownika, którego rola mogłaby cokolwiek ograniczać. Wszystkie akcje (tworzenie, edycja, usuwanie zadań i użytkowników) są dostępne dla każdego, kto korzysta z aplikacji lub API, niezależnie od ról przypisanych do użytkowników w systemie.
 
 ### 2.9 Szczegóły użytkownika (`GET /api/users/:id`)
