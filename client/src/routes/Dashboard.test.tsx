@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi, beforeEach, afterEach, MockInstance } from "vitest";
 import Dashboard from "./Dashboard";
@@ -138,14 +138,129 @@ describe("Dashboard main stat links", () => {
     });
     renderDashboard();
 
+    // The malformed payload must be treated as a load failure, not silently
+    // coerced into "zero tasks" and rendered as if it were a real, trustworthy
+    // count - so neither a genuine "0" task count nor a fabricated "0%"
+    // completion rate may ever appear for it.
     const link = await screen.findByRole("link", { name: "View all tasks" });
-    // The malformed payload must never be treated as "zero tasks" and
-    // rendered as if it were a real, trustworthy count.
-    expect(link).toHaveTextContent("0");
-    // A 0-task state must not produce a divide-by-zero NaN% on Completion.
+    expect(link).not.toHaveTextContent("0");
+    expect(screen.getByRole("alert")).toHaveTextContent(/Failed to load task statistics/);
+
     const completionLink = screen.getByRole("link", { name: "View completed tasks" });
     expect(completionLink).not.toHaveTextContent("NaN");
-    expect(completionLink).toHaveTextContent("0%");
+    expect(completionLink).not.toHaveTextContent("0%");
+  });
+
+  it("shows a Retry control on task-stat failure that reloads the stats on click", async () => {
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/users")) return jsonResponse(users);
+      if (url.includes("/api/tasks")) return jsonResponse({ not: "a list" });
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    renderDashboard();
+
+    await screen.findByRole("alert");
+
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/users")) return jsonResponse(users);
+      if (url.includes("/api/tasks")) return jsonResponse(tasks);
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    const link = screen.getByRole("link", { name: "View all tasks" });
+    expect(link).toHaveTextContent(String(tasks.length));
+  });
+});
+
+describe("Dashboard independent tasks/users load states", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+  });
+
+  it("shows a local error and Retry for Team Overview when only users fails, while task stats still render", async () => {
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/users")) return Promise.resolve(new Response("Server error", { status: 500 }));
+      if (url.includes("/api/tasks")) return jsonResponse(tasks);
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    renderDashboard();
+
+    const link = await screen.findByRole("link", { name: "View all tasks" });
+    expect(link).toHaveTextContent(String(tasks.length));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/Failed to load team members/);
+    expect(screen.queryByText(/Active Members/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("shows a local error and Retry for task stats when only tasks fails, while Team Overview still renders", async () => {
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/users")) return jsonResponse(users);
+      if (url.includes("/api/tasks")) return Promise.resolve(new Response("Server error", { status: 500 }));
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    renderDashboard();
+
+    await waitFor(() => expect(screen.getByText("1 Active Members")).toBeInTheDocument());
+    expect(screen.getByRole("alert")).toHaveTextContent(/Failed to load task statistics/);
+  });
+
+  it("keeps the users error standing after a tasks-only retry succeeds (one section's success does not clear the other's error)", async () => {
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/users")) return Promise.resolve(new Response("Server error", { status: 500 }));
+      if (url.includes("/api/tasks")) return Promise.resolve(new Response("Server error", { status: 500 }));
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    renderDashboard();
+
+    await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(2));
+
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/users")) return Promise.resolve(new Response("Server error", { status: 500 }));
+      if (url.includes("/api/tasks")) return jsonResponse(tasks);
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    const tasksAlert = screen.getAllByRole("alert").find((el) => /Failed to load task statistics/.test(el.textContent ?? ""));
+    fireEvent.click(within(tasksAlert!).getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => {
+      const link = screen.getByRole("link", { name: "View all tasks" });
+      expect(link).toHaveTextContent(String(tasks.length));
+    });
+    // The users section's error must still be visible - a tasks-only retry
+    // succeeding must never silently clear it.
+    expect(screen.getByRole("alert")).toHaveTextContent(/Failed to load team members/);
+  });
+
+  it("shows a loading indicator for Team Overview and never a real-looking member count before users has loaded", () => {
+    fetchSpy.mockImplementation(() => new Promise(() => {})); // never resolves
+    renderDashboard();
+
+    expect(screen.queryByText(/Active Members/)).not.toBeInTheDocument();
+    expect(screen.getByText("Loading team members...")).toBeInTheDocument();
+  });
+
+  it("does not update state after unmount when a fetch resolves late", async () => {
+    let resolveTasks!: (value: Response) => void;
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/users")) return jsonResponse(users);
+      if (url.includes("/api/tasks")) return new Promise<Response>((resolve) => (resolveTasks = resolve));
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+    const { unmount } = renderDashboard();
+    unmount();
+
+    expect(() => resolveTasks(new Response(JSON.stringify(tasks)))).not.toThrow();
   });
 });
 

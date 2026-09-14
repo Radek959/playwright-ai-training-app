@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { TaskCard } from "../components/TaskCard";
 import { TaskForm } from "../components/TaskForm";
@@ -78,6 +78,9 @@ export default function Tasks() {
   // would otherwise strip a perfectly valid URL parameter.
   const [tasksLoadState, setTasksLoadState] = useState<LoadState>("loading");
   const [usersLoadState, setUsersLoadState] = useState<LoadState>("loading");
+  const [tasksErrorMessage, setTasksErrorMessage] = useState<string | null>(null);
+  const [usersErrorMessage, setUsersErrorMessage] = useState<string | null>(null);
+  const mountedRef = useRef(true);
   const [search, _setSearch] = useState<string>("");
   const pageSize = 5;
   const [editing, setEditing] = useState<Task | null>(null);
@@ -192,65 +195,78 @@ export default function Tasks() {
 
   const endpoint = "/api/tasks";
 
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   // Tasks and users are fetched independently (not joined behind a single
   // Promise.all) so the assignee filter's validation against the user list
   // (see isAssigneeFilterValid) can genuinely observe "users not loaded yet"
   // as a distinct, real state rather than something that always resolves in
-  // lockstep with the task list.
+  // lockstep with the task list, and so either one can be retried on its own
+  // without refetching the other.
+  const loadTasks = useCallback(async () => {
+    setTasksLoadState("loading");
+    setTasksErrorMessage(null);
+    try {
+      const res = await fetch(endpoint);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!Array.isArray(data)) throw new Error("Unexpected payload");
+      if (mountedRef.current) {
+        setTasks(data.map(normalizeTask));
+        setTasksLoadState("success");
+      }
+    } catch (err) {
+      if (mountedRef.current) {
+        setTasksErrorMessage(err instanceof Error ? err.message : "Fetch error");
+        setTasksLoadState("error");
+      }
+    }
+  }, [endpoint]);
+
+  const loadUsers = useCallback(async () => {
+    setUsersLoadState("loading");
+    setUsersErrorMessage(null);
+    try {
+      const res = await fetch("/api/users");
+      if (!res.ok) throw new Error(`Users HTTP ${res.status}`);
+      const data = await res.json();
+      if (!Array.isArray(data)) throw new Error("Unexpected payload");
+      if (mountedRef.current) {
+        setUsers(data);
+        setUsersLoadState("success");
+      }
+    } catch (err) {
+      if (mountedRef.current) {
+        setUsersErrorMessage(err instanceof Error ? err.message : "Fetch error");
+        setUsersLoadState("error");
+      }
+    }
+  }, []);
+
   useEffect(() => {
-    let cancelled = false;
-    let tasksOk = false;
-    let usersOk = false;
-    const clearErrorIfBothOk = () => {
-      if (tasksOk && usersOk) clearError();
-    };
-
-    const loadTasks = async () => {
-      try {
-        const res = await fetch(endpoint);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        if (!Array.isArray(data)) throw new Error("Unexpected payload");
-        if (!cancelled) {
-          setTasks(data.map(normalizeTask));
-          setTasksLoadState("success");
-          tasksOk = true;
-          clearErrorIfBothOk();
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Fetch error");
-          setTasksLoadState("error");
-        }
-      }
-    };
-
-    const loadUsers = async () => {
-      try {
-        const res = await fetch("/api/users");
-        if (!res.ok) throw new Error(`Users HTTP ${res.status}`);
-        const data = await res.json();
-        if (!Array.isArray(data)) throw new Error("Unexpected payload");
-        if (!cancelled) {
-          setUsers(data);
-          setUsersLoadState("success");
-          usersOk = true;
-          clearErrorIfBothOk();
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Fetch error");
-          setUsersLoadState("error");
-        }
-      }
-    };
-
     loadTasks();
     loadUsers();
-    return () => {
-      cancelled = true;
-    };
-  }, [setError, clearError]);
+  }, [loadTasks, loadUsers]);
+
+  // Derived from both sections' current state on every render, rather than
+  // each load function calling setError/clearError on its own - that would
+  // let a success on one request wipe out an error still standing from the
+  // other. Each section also shows its own local error and Retry below.
+  useEffect(() => {
+    const messages: string[] = [];
+    if (tasksLoadState === "error" && tasksErrorMessage) messages.push(`Tasks: ${tasksErrorMessage}`);
+    if (usersLoadState === "error" && usersErrorMessage) messages.push(`Users: ${usersErrorMessage}`);
+    if (messages.length > 0) {
+      setError(messages.join(" | "));
+    } else {
+      clearError();
+    }
+  }, [tasksLoadState, usersLoadState, tasksErrorMessage, usersErrorMessage, setError, clearError]);
 
   const enriched: TaskWithAssignee[] = useMemo(() => {
     const byUser = new Map(users.map((u) => [u.id, { name: u.name, avatarUrl: effectiveAvatar(u) }] as const));
@@ -502,6 +518,18 @@ export default function Tasks() {
                       {opt.label}
                     </button>
                   ))}
+                  {usersLoadState === "error" && (
+                    <span role="alert" className="flex items-center gap-2 text-xs md:text-sm text-red-700">
+                      Assignee names unavailable: {usersErrorMessage}
+                      <button
+                        type="button"
+                        onClick={loadUsers}
+                        className="underline font-medium hover:no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800"
+                      >
+                        Retry
+                      </button>
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap gap-2 md:gap-3 md:ml-auto">
@@ -568,13 +596,34 @@ export default function Tasks() {
               </div>
             )}
 
-            <div className="space-y-3 md:space-y-4">
-              {paginated.map((t) => (
-                <TaskCard key={t.id} task={t} onDelete={handleDelete} onEdit={setEditing} />
-              ))}
-            </div>
+            {tasksLoadState === "loading" && (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 md:p-12 text-center" aria-live="polite">
+                <p className="text-gray-500">Loading tasks...</p>
+              </div>
+            )}
 
-            {filtered.length === 0 && (
+            {tasksLoadState === "error" && (
+              <div role="alert" className="bg-red-50 border border-red-300 rounded-lg p-3 md:p-4 text-sm text-red-700 flex items-center justify-between gap-4">
+                <span>Failed to load tasks: {tasksErrorMessage}</span>
+                <button
+                  type="button"
+                  onClick={loadTasks}
+                  className="bg-red-600 text-white rounded px-3 py-1.5 text-sm font-medium hover:bg-red-700 whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {tasksLoadState === "success" && (
+              <div className="space-y-3 md:space-y-4">
+                {paginated.map((t) => (
+                  <TaskCard key={t.id} task={t} onDelete={handleDelete} onEdit={setEditing} />
+                ))}
+              </div>
+            )}
+
+            {tasksLoadState === "success" && filtered.length === 0 && (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 md:p-12 text-center">
                 <svg className="w-12 h-12 md:w-16 md:h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -584,7 +633,7 @@ export default function Tasks() {
             )}
 
             {/* Pagination */}
-            {filtered.length > 0 && (
+            {tasksLoadState === "success" && filtered.length > 0 && (
               <div className="flex flex-col sm:flex-row items-center justify-between bg-white rounded-lg shadow-sm border border-gray-200 p-3 md:p-4 gap-3">
                 <span className="text-xs md:text-sm text-gray-600">
                   Page {pageClamped} of {totalPages} ({filtered.length} tasks)
@@ -622,17 +671,38 @@ export default function Tasks() {
         hidden={activeTab !== "grid"}
       >
         <div className="space-y-4 md:space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-              {filtered.map((t) => (
-                <TaskGridItem
-                  key={t.id}
-                  task={t}
-                  onClick={() => setEditing(t)}
-                />
-              ))}
-            </div>
+            {tasksLoadState === "loading" && (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 md:p-12 text-center" aria-live="polite">
+                <p className="text-gray-500">Loading tasks...</p>
+              </div>
+            )}
 
-            {filtered.length === 0 && (
+            {tasksLoadState === "error" && (
+              <div role="alert" className="bg-red-50 border border-red-300 rounded-lg p-3 md:p-4 text-sm text-red-700 flex items-center justify-between gap-4">
+                <span>Failed to load tasks: {tasksErrorMessage}</span>
+                <button
+                  type="button"
+                  onClick={loadTasks}
+                  className="bg-red-600 text-white rounded px-3 py-1.5 text-sm font-medium hover:bg-red-700 whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {tasksLoadState === "success" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+                {filtered.map((t) => (
+                  <TaskGridItem
+                    key={t.id}
+                    task={t}
+                    onClick={() => setEditing(t)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {tasksLoadState === "success" && filtered.length === 0 && (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 md:p-12 text-center">
                 <p className="text-gray-500 text-base md:text-lg">No tasks to display</p>
               </div>
@@ -704,19 +774,52 @@ export default function Tasks() {
                   </option>
                 ))}
               </select>
+              {usersLoadState === "error" && (
+                <span role="alert" className="flex items-center gap-2 text-xs md:text-sm text-red-700">
+                  Assignee names unavailable: {usersErrorMessage}
+                  <button
+                    type="button"
+                    onClick={loadUsers}
+                    className="underline font-medium hover:no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800"
+                  >
+                    Retry
+                  </button>
+                </span>
+              )}
             </div>
           </div>
 
-          <TaskTable
-            tasks={filtered}
-            users={users}
-            sortKey={sortKey}
-            sortDir={sortDir}
-            onSortChange={handleSortToggle}
-            onUpdate={handleUpdate}
-            onDelete={handleDelete}
-            onBulkDelete={handleBulkDelete}
-          />
+          {tasksLoadState === "loading" && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 md:p-12 text-center" aria-live="polite">
+              <p className="text-gray-500">Loading tasks...</p>
+            </div>
+          )}
+
+          {tasksLoadState === "error" && (
+            <div role="alert" className="bg-red-50 border border-red-300 rounded-lg p-3 md:p-4 text-sm text-red-700 flex items-center justify-between gap-4">
+              <span>Failed to load tasks: {tasksErrorMessage}</span>
+              <button
+                type="button"
+                onClick={loadTasks}
+                className="bg-red-600 text-white rounded px-3 py-1.5 text-sm font-medium hover:bg-red-700 whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {tasksLoadState === "success" && (
+            <TaskTable
+              tasks={filtered}
+              users={users}
+              sortKey={sortKey}
+              sortDir={sortDir}
+              onSortChange={handleSortToggle}
+              onUpdate={handleUpdate}
+              onDelete={handleDelete}
+              onBulkDelete={handleBulkDelete}
+            />
+          )}
         </div>
       </div>
 
@@ -730,20 +833,41 @@ export default function Tasks() {
         hidden={activeTab !== "archived"}
       >
         <div className="space-y-4">
-            {filtered.length === 0 ? (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-20 w-20 mx-auto mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                </svg>
-                <p className="text-xl font-semibold text-gray-900 mb-2">Archive is Empty</p>
-                <p className="text-gray-600">Completed tasks are automatically archived after 30 days.</p>
+            {tasksLoadState === "loading" && (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 md:p-12 text-center" aria-live="polite">
+                <p className="text-gray-500">Loading tasks...</p>
               </div>
-            ) : (
-              <div className="space-y-3 md:space-y-4">
-                {filtered.map((t) => (
-                  <TaskCard key={t.id} task={t} onDelete={handleDelete} onEdit={setEditing} />
-                ))}
+            )}
+
+            {tasksLoadState === "error" && (
+              <div role="alert" className="bg-red-50 border border-red-300 rounded-lg p-3 md:p-4 text-sm text-red-700 flex items-center justify-between gap-4">
+                <span>Failed to load tasks: {tasksErrorMessage}</span>
+                <button
+                  type="button"
+                  onClick={loadTasks}
+                  className="bg-red-600 text-white rounded px-3 py-1.5 text-sm font-medium hover:bg-red-700 whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800"
+                >
+                  Retry
+                </button>
               </div>
+            )}
+
+            {tasksLoadState === "success" && (
+              filtered.length === 0 ? (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-20 w-20 mx-auto mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                  </svg>
+                  <p className="text-xl font-semibold text-gray-900 mb-2">Archive is Empty</p>
+                  <p className="text-gray-600">Completed tasks are automatically archived after 30 days.</p>
+                </div>
+              ) : (
+                <div className="space-y-3 md:space-y-4">
+                  {filtered.map((t) => (
+                    <TaskCard key={t.id} task={t} onDelete={handleDelete} onEdit={setEditing} />
+                  ))}
+                </div>
+              )
             )}
           </div>
       </div>

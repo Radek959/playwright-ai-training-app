@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAppError } from "../context/AppErrorContext";
 import { StatCard } from "../components/StatCard";
@@ -6,6 +6,12 @@ import { UserAvatar } from "../components/UserAvatar";
 import { isTaskOverdue } from "../utils/taskDueDate";
 import { effectiveAvatar } from "../utils/avatar";
 import type { Task, User } from "../types";
+
+// Stable empty-array references so a "not ready yet" fallback never causes
+// downstream useMemo hooks to see a new array (and thus a changed
+// dependency) on every render.
+const EMPTY_TASKS: Task[] = [];
+const EMPTY_USERS: User[] = [];
 
 function normalizeTask(raw: Partial<Task>): Task {
   return {
@@ -19,29 +25,81 @@ function normalizeTask(raw: Partial<Task>): Task {
   };
 }
 
+// Distinguishes "still fetching" and "fetch failed" from an actually-empty
+// array, so the dashboard never shows a real-looking 0/0%/empty chart (or
+// "0 Active Members") for data it doesn't actually have yet, and one
+// section's failure never hides the other's successfully-loaded data.
+type FetchState<T> =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; data: T };
+
 export default function Dashboard() {
   const { setError, clearError } = useAppError();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
+  const [tasksState, setTasksState] = useState<FetchState<Task[]>>({ status: "loading" });
+  const [usersState, setUsersState] = useState<FetchState<User[]>>({ status: "loading" });
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const [tRes, uRes] = await Promise.all([fetch("/api/tasks"), fetch("/api/users")]);
-        if (!tRes.ok) throw new Error(`Tasks HTTP ${tRes.status}`);
-        if (!uRes.ok) throw new Error(`Users HTTP ${uRes.status}`);
-        const tData = await tRes.json();
-        const uData = await uRes.json();
-        if (!Array.isArray(tData) || !Array.isArray(uData)) throw new Error("Unexpected payload");
-        setTasks(tData.map(normalizeTask));
-        setUsers(uData);
-        clearError();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Dashboard load failed");
-      }
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
     };
-    load();
-  }, [setError, clearError]);
+  }, []);
+
+  const loadTasks = useCallback(async () => {
+    setTasksState({ status: "loading" });
+    try {
+      const res = await fetch("/api/tasks");
+      if (!res.ok) throw new Error(`Tasks HTTP ${res.status}`);
+      const data = await res.json();
+      if (!Array.isArray(data)) throw new Error("Unexpected tasks payload");
+      if (mountedRef.current) setTasksState({ status: "ready", data: data.map(normalizeTask) });
+    } catch (err) {
+      if (mountedRef.current) {
+        setTasksState({ status: "error", message: err instanceof Error ? err.message : "Failed to load tasks" });
+      }
+    }
+  }, []);
+
+  const loadUsers = useCallback(async () => {
+    setUsersState({ status: "loading" });
+    try {
+      const res = await fetch("/api/users");
+      if (!res.ok) throw new Error(`Users HTTP ${res.status}`);
+      const data = await res.json();
+      if (!Array.isArray(data)) throw new Error("Unexpected users payload");
+      if (mountedRef.current) setUsersState({ status: "ready", data });
+    } catch (err) {
+      if (mountedRef.current) {
+        setUsersState({ status: "error", message: err instanceof Error ? err.message : "Failed to load users" });
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTasks();
+    loadUsers();
+  }, [loadTasks, loadUsers]);
+
+  // The global banner is derived from both sections' current state on every
+  // render, rather than one section's load callback calling setError/
+  // clearError on its own - that would let a success on one request wipe out
+  // an error still standing from the other. A message here is a summary
+  // only; each section below also shows its own local error and Retry.
+  useEffect(() => {
+    const messages: string[] = [];
+    if (tasksState.status === "error") messages.push(`Tasks: ${tasksState.message}`);
+    if (usersState.status === "error") messages.push(`Users: ${usersState.message}`);
+    if (messages.length > 0) {
+      setError(messages.join(" | "));
+    } else {
+      clearError();
+    }
+  }, [tasksState, usersState, setError, clearError]);
+
+  const tasks = tasksState.status === "ready" ? tasksState.data : EMPTY_TASKS;
+  const users = usersState.status === "ready" ? usersState.data : EMPTY_USERS;
 
   const totals = useMemo(() => {
     const statusCount = { todo: 0, "in-progress": 0, done: 0 } as Record<string, number>;
@@ -59,6 +117,14 @@ export default function Dashboard() {
   const completionRate = totalTasks > 0 ? Math.round(((totals.statusCount["done"] || 0) / totalTasks) * 100) : 0;
   const overdueTasks = useMemo(() => tasks.filter((t) => isTaskOverdue(t)).length, [tasks]);
 
+  // While tasks are loading or failed, the stat tiles show a neutral
+  // placeholder instead of a fake 0/0% derived from an empty array.
+  const statValue = (value: string | number): string | number => {
+    if (tasksState.status === "loading") return "…";
+    if (tasksState.status === "error") return "—";
+    return value;
+  };
+
   return (
     <div className="space-y-6 md:space-y-8 pb-20 md:pb-0">
       {/* Header */}
@@ -69,11 +135,27 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {tasksState.status === "error" && (
+        <div
+          role="alert"
+          className="bg-red-50 border border-red-300 rounded-lg p-3 md:p-4 text-sm text-red-700 flex items-center justify-between gap-4"
+        >
+          <span>Failed to load task statistics: {tasksState.message}</span>
+          <button
+            type="button"
+            onClick={loadTasks}
+            className="bg-red-600 text-white rounded px-3 py-1.5 text-sm font-medium hover:bg-red-700 whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 md:gap-6">
         <StatCard
           title="Total Tasks"
-          value={totalTasks}
+          value={statValue(totalTasks)}
           href="/tasks?tab=table"
           ariaLabel="View all tasks"
           icon={
@@ -85,7 +167,7 @@ export default function Dashboard() {
 
         <StatCard
           title="In Progress"
-          value={inProgressTasks}
+          value={statValue(inProgressTasks)}
           href="/tasks?tab=table&status=in-progress"
           ariaLabel="View in-progress tasks"
           icon={
@@ -97,7 +179,7 @@ export default function Dashboard() {
 
         <StatCard
           title="High Priority"
-          value={highPriorityTasks}
+          value={statValue(highPriorityTasks)}
           href="/tasks?tab=table&priority=high"
           ariaLabel="View high-priority tasks"
           icon={
@@ -109,7 +191,7 @@ export default function Dashboard() {
 
         <StatCard
           title="Completion"
-          value={`${completionRate}%`}
+          value={statValue(`${completionRate}%`)}
           href="/tasks?tab=table&status=done"
           ariaLabel="View completed tasks"
           icon={
@@ -121,7 +203,7 @@ export default function Dashboard() {
 
         <StatCard
           title="Overdue"
-          value={overdueTasks}
+          value={statValue(overdueTasks)}
           href="/tasks?due=overdue"
           icon={
             <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -132,92 +214,121 @@ export default function Dashboard() {
       </div>
 
       {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        {/* Status Distribution */}
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 md:p-6">
-          <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-4 md:mb-6">Task Status Distribution</h2>
-          <div className="space-y-4">
-            {[
-              { label: "To Do", status: "todo", value: totals.statusCount["todo"] || 0, color: "bg-gray-400", percentage: totalTasks > 0 ? Math.round(((totals.statusCount["todo"] || 0) / totalTasks) * 100) : 0 },
-              { label: "In Progress", status: "in-progress", value: totals.statusCount["in-progress"] || 0, color: "bg-blue-500", percentage: totalTasks > 0 ? Math.round(((totals.statusCount["in-progress"] || 0) / totalTasks) * 100) : 0 },
-              { label: "Done", status: "done", value: totals.statusCount["done"] || 0, color: "bg-green-500", percentage: totalTasks > 0 ? Math.round(((totals.statusCount["done"] || 0) / totalTasks) * 100) : 0 }
-            ].map((item) => (
-              <Link
-                key={item.label}
-                to={`/tasks?tab=table&status=${item.status}`}
-                aria-label={`View ${item.label} tasks (${item.value})`}
-                data-testid={`status-breakdown-${item.status}`}
-                className="block rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-700">{item.label}</span>
-                  <span className="text-sm font-bold text-gray-900">{item.value} ({item.percentage}%)</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-                  <div
-                    className={`h-full ${item.color} rounded-full transition-all duration-500 shadow-sm`}
-                    style={{ width: `${item.percentage}%` }}
-                  />
-                </div>
-              </Link>
-            ))}
+      {tasksState.status === "ready" && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+          {/* Status Distribution */}
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 md:p-6">
+            <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-4 md:mb-6">Task Status Distribution</h2>
+            <div className="space-y-4">
+              {[
+                { label: "To Do", status: "todo", value: totals.statusCount["todo"] || 0, color: "bg-gray-400", percentage: totalTasks > 0 ? Math.round(((totals.statusCount["todo"] || 0) / totalTasks) * 100) : 0 },
+                { label: "In Progress", status: "in-progress", value: totals.statusCount["in-progress"] || 0, color: "bg-blue-500", percentage: totalTasks > 0 ? Math.round(((totals.statusCount["in-progress"] || 0) / totalTasks) * 100) : 0 },
+                { label: "Done", status: "done", value: totals.statusCount["done"] || 0, color: "bg-green-500", percentage: totalTasks > 0 ? Math.round(((totals.statusCount["done"] || 0) / totalTasks) * 100) : 0 }
+              ].map((item) => (
+                <Link
+                  key={item.label}
+                  to={`/tasks?tab=table&status=${item.status}`}
+                  aria-label={`View ${item.label} tasks (${item.value})`}
+                  data-testid={`status-breakdown-${item.status}`}
+                  className="block rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700">{item.label}</span>
+                    <span className="text-sm font-bold text-gray-900">{item.value} ({item.percentage}%)</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                    <div
+                      className={`h-full ${item.color} rounded-full transition-all duration-500 shadow-sm`}
+                      style={{ width: `${item.percentage}%` }}
+                    />
+                  </div>
+                </Link>
+              ))}
+            </div>
           </div>
-        </div>
 
-        {/* Priority Breakdown */}
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 md:p-6">
-          <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-4 md:mb-6">Priority Breakdown</h2>
-          <div className="grid grid-cols-3 gap-3 md:gap-4">
-            {[
-              { label: "Low", priority: "low", value: totals.priorityCount["low"] || 0, color: "from-green-400 to-green-600", icon: "↓" },
-              { label: "Medium", priority: "medium", value: totals.priorityCount["medium"] || 0, color: "from-yellow-400 to-yellow-600", icon: "→" },
-              { label: "High", priority: "high", value: totals.priorityCount["high"] || 0, color: "from-red-400 to-red-600", icon: "↑" }
-            ].map((item) => (
-              <Link
-                key={item.label}
-                to={`/tasks?tab=table&priority=${item.priority}`}
-                aria-label={`View ${item.label} priority tasks (${item.value})`}
-                data-testid={`priority-breakdown-${item.priority}`}
-                className="block bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-4 border border-gray-200 hover:shadow-md transition-shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-              >
-                <div className={`w-10 h-10 bg-gradient-to-br ${item.color} rounded-lg flex items-center justify-center text-white text-xl font-bold mb-3 shadow-md`}>
-                  {item.icon}
-                </div>
-                <div className="text-2xl font-bold text-gray-900 mb-1">{item.value}</div>
-                <div className="text-xs font-medium text-gray-600 uppercase">{item.label}</div>
-              </Link>
-            ))}
+          {/* Priority Breakdown */}
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 md:p-6">
+            <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-4 md:mb-6">Priority Breakdown</h2>
+            <div className="grid grid-cols-3 gap-3 md:gap-4">
+              {[
+                { label: "Low", priority: "low", value: totals.priorityCount["low"] || 0, color: "from-green-400 to-green-600", icon: "↓" },
+                { label: "Medium", priority: "medium", value: totals.priorityCount["medium"] || 0, color: "from-yellow-400 to-yellow-600", icon: "→" },
+                { label: "High", priority: "high", value: totals.priorityCount["high"] || 0, color: "from-red-400 to-red-600", icon: "↑" }
+              ].map((item) => (
+                <Link
+                  key={item.label}
+                  to={`/tasks?tab=table&priority=${item.priority}`}
+                  aria-label={`View ${item.label} priority tasks (${item.value})`}
+                  data-testid={`priority-breakdown-${item.priority}`}
+                  className="block bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-4 border border-gray-200 hover:shadow-md transition-shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                >
+                  <div className={`w-10 h-10 bg-gradient-to-br ${item.color} rounded-lg flex items-center justify-center text-white text-xl font-bold mb-3 shadow-md`}>
+                    {item.icon}
+                  </div>
+                  <div className="text-2xl font-bold text-gray-900 mb-1">{item.value}</div>
+                  <div className="text-xs font-medium text-gray-600 uppercase">{item.label}</div>
+                </Link>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Team Overview */}
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 md:p-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-2">
           <h2 className="text-lg md:text-xl font-bold text-gray-900">Team Overview</h2>
-          <span className="text-xs md:text-sm font-medium text-gray-600">{users.length} Active Members</span>
+          {usersState.status === "ready" && (
+            <span className="text-xs md:text-sm font-medium text-gray-600">{users.length} Active Members</span>
+          )}
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
-          {users.slice(0, 4).map((user) => (
-            <Link
-              key={user.id}
-              to={`/users/${user.id}`}
-              aria-label={`View profile: ${user.name}`}
-              data-testid={`team-overview-user-${user.id}`}
-              className="block bg-gradient-to-br from-indigo-50 to-purple-50 rounded-lg p-4 border border-indigo-100 text-center hover:shadow-md transition-shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+
+        {usersState.status === "loading" && (
+          <p className="text-gray-500 text-sm" aria-live="polite">
+            Loading team members...
+          </p>
+        )}
+
+        {usersState.status === "error" && (
+          <div
+            role="alert"
+            className="bg-red-50 border border-red-300 rounded p-3 text-sm text-red-700 flex items-center justify-between gap-4"
+          >
+            <span>Failed to load team members: {usersState.message}</span>
+            <button
+              type="button"
+              onClick={loadUsers}
+              className="bg-red-600 text-white rounded px-3 py-1.5 text-sm font-medium hover:bg-red-700 whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800"
             >
-              <div className="flex justify-center mb-2">
-                <UserAvatar
-                  src={effectiveAvatar(user)}
-                  name={user.name}
-                  size="lg"
-                  className="shadow-lg"
-                />
-              </div>
-              <p className="text-sm font-semibold text-gray-900">{user.name}</p>
-            </Link>
-          ))}
-        </div>
+              Retry
+            </button>
+          </div>
+        )}
+
+        {usersState.status === "ready" && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
+            {users.slice(0, 4).map((user) => (
+              <Link
+                key={user.id}
+                to={`/users/${user.id}`}
+                aria-label={`View profile: ${user.name}`}
+                data-testid={`team-overview-user-${user.id}`}
+                className="block bg-gradient-to-br from-indigo-50 to-purple-50 rounded-lg p-4 border border-indigo-100 text-center hover:shadow-md transition-shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+              >
+                <div className="flex justify-center mb-2">
+                  <UserAvatar
+                    src={effectiveAvatar(user)}
+                    name={user.name}
+                    size="lg"
+                    className="shadow-lg"
+                  />
+                </div>
+                <p className="text-sm font-semibold text-gray-900">{user.name}</p>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
