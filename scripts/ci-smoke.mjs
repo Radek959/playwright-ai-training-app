@@ -17,6 +17,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // while the application is perfectly healthy for a browser.
 const BACKEND_HEALTH = "http://localhost:3001/api/health";
 const FRONTEND = "http://localhost:5173/";
+// The same health endpoint reached through Vite's /api proxy - the hop the UI
+// depends on. Worth checking separately: the dev server and the backend do not
+// necessarily listen on the same address family (the dev server follows
+// localhost, the backend binds 127.0.0.1), so this crosses from one to the
+// other and is the first thing to break if that ever stops resolving.
+const FRONTEND_API = "http://localhost:5173/api/health";
 // Overridable so the failure paths can be exercised without waiting minutes.
 const START_TIMEOUT_MS = Number(process.env.SMOKE_START_TIMEOUT_MS ?? 120_000);
 const SHUTDOWN_TIMEOUT_MS = Number(process.env.SMOKE_SHUTDOWN_TIMEOUT_MS ?? 20_000);
@@ -141,6 +147,13 @@ async function main() {
       throw new Error("The frontend answered but did not serve the application shell");
     }
     console.log("Frontend responded with the application shell.");
+
+    console.log(`Checking the API through the Vite proxy at ${FRONTEND_API} ...`);
+    const proxied = await waitForHttpOk(FRONTEND_API, { timeoutMs: START_TIMEOUT_MS });
+    if (!proxied.includes('"ok"')) {
+      throw new Error(`The API proxy answered with an unexpected payload: ${proxied.trim()}`);
+    }
+    console.log(`Proxied API responded: ${proxied.trim()}`);
 
     await reportInterfaces();
   } finally {
