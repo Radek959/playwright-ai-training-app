@@ -364,7 +364,7 @@ Every push and pull request targeting `main` runs the [`CI` workflow](./.github/
 8. waits for the backend (`http://localhost:3001/api/health`) and the frontend (`http://localhost:5173`) to become available, failing the build if either does not start;
 9. stops the application processes.
 
-A second job, `Clean install`, runs the participant's own path — a clean checkout, `npm install` (not `npm ci`) and `npm run check` — across a matrix of `ubuntu-latest`, `windows-latest` and `macos-latest` (Apple Silicon), each on Node 22 and Node 24. That job deliberately does not assert that the lockfiles are unchanged: npm rewrites some platform metadata depending on its own version, which is expected locally too (see [Troubleshooting](#troubleshooting)).
+A second job, `Clean install`, runs the participant's own path — a clean checkout, `npm install` (not `npm ci`), `npm run check` and finally [`scripts/ci-smoke.mjs`](./scripts/ci-smoke.mjs), which starts the application with `npm run dev`, checks that the backend and the frontend both answer, stops it and verifies that both ports were released — across a matrix of `ubuntu-latest`, `windows-latest` and `macos-latest` (Apple Silicon), each on Node 22 and Node 24. That job deliberately does not assert that the lockfiles are unchanged: npm rewrites some platform metadata depending on its own version, which is expected locally too (see [Troubleshooting](#troubleshooting)).
 
 This workflow intentionally does not run Playwright or install browsers — end-to-end tests are written by participants during the training and are not part of this baseline.
 

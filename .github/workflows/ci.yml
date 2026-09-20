@@ -47,6 +47,9 @@ jobs:
       - name: Lint, typecheck, test and build
         run: npm run check
 
+      - name: Start the application and smoke-test it
+        run: node scripts/ci-smoke.mjs
+
   build-and-smoke-test:
     name: Quality gates and smoke test
     runs-on: ubuntu-latest
