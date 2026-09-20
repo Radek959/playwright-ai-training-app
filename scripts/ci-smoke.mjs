@@ -10,8 +10,13 @@ import { spawn, spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const BACKEND_HEALTH = "http://127.0.0.1:3001/api/health";
-const FRONTEND = "http://127.0.0.1:5173/";
+// The addresses the README gives participants. Deliberately "localhost" and
+// not a hardcoded 127.0.0.1: the Vite dev server binds to whatever localhost
+// resolves to, and on hosts that answer ::1 first (the GitHub Linux and macOS
+// runners among them) it listens on IPv6 only, so an IPv4 probe is refused
+// while the application is perfectly healthy for a browser.
+const BACKEND_HEALTH = "http://localhost:3001/api/health";
+const FRONTEND = "http://localhost:5173/";
 // Overridable so the failure paths can be exercised without waiting minutes.
 const START_TIMEOUT_MS = Number(process.env.SMOKE_START_TIMEOUT_MS ?? 120_000);
 const SHUTDOWN_TIMEOUT_MS = Number(process.env.SMOKE_SHUTDOWN_TIMEOUT_MS ?? 20_000);
@@ -55,6 +60,22 @@ export async function waitForPortClosed(url, { timeoutMs, intervalMs = POLL_INTE
   }
 
   return false;
+}
+
+/**
+ * Reports which interfaces the dev server actually accepts. Never fails the
+ * run: browsers try both families, so IPv6-only is not a defect - but knowing
+ * it explains why a test hardcoding 127.0.0.1 might not connect.
+ */
+async function reportInterfaces() {
+  for (const url of ["http://127.0.0.1:5173/", "http://[::1]:5173/"]) {
+    try {
+      const res = await fetch(url);
+      console.log(`  ${url} -> HTTP ${res.status}`);
+    } catch (err) {
+      console.log(`  ${url} -> ${err.cause?.code ?? err.message}`);
+    }
+  }
 }
 
 function stopTree(child) {
@@ -120,6 +141,8 @@ async function main() {
       throw new Error("The frontend answered but did not serve the application shell");
     }
     console.log("Frontend responded with the application shell.");
+
+    await reportInterfaces();
   } finally {
     console.log("\nStopping the application ...");
     stopTree(child);

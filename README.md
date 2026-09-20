@@ -240,6 +240,8 @@ Check `git status` first and only run this when the lockfiles are the *only* cha
 
 **The frontend did not start.** The terminal must show `VITE … ready`. If the page does not load, check that line first; if it is missing, the frontend never started.
 
+**A test cannot connect to `127.0.0.1:5173`, but the browser opens the app fine.** The Vite dev server binds to whatever `localhost` resolves to on your machine, which on some systems is the IPv6 address `::1` only. Browsers try both families, so the app works; a test or script pointed at the IPv4 address specifically may not connect. Use `http://localhost:5173` (the address in this README) rather than hardcoding `127.0.0.1`.
+
 **The UI loads but shows no data.** That means the frontend is up and the backend is not. Open the browser DevTools (F12) → Network, reload, and look at `/api/tasks`. A failed request there points back to the backend — see the two entries above. A single 404 on `favicon.ico` is normal and harmless.
 
 ---
