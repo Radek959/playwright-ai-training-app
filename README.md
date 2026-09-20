@@ -23,9 +23,9 @@ npm run dev
 >
 > To expose the app to other devices on your local network:
 >
-> 1. Start the backend bound to all interfaces: `HOST=0.0.0.0 npm run dev:server`. This only opens the API — it does **not** expose the frontend.
+> 1. Start the backend bound to all interfaces: `HOST=0.0.0.0 npm run dev:server` (PowerShell: `$env:HOST="0.0.0.0"; npm run dev:server`). This only opens the API — it does **not** expose the frontend.
 > 2. In a separate terminal, start Vite with `--host` so it also accepts LAN connections: `npm run dev:client -- --host`.
-> 3. Allow the frontend's LAN origin in CORS with the `ALLOWED_ORIGINS` environment variable when starting the backend, e.g. `HOST=0.0.0.0 ALLOWED_ORIGINS=http://192.168.1.10:5173 npm run dev:server`.
+> 3. Allow the frontend's LAN origin in CORS with the `ALLOWED_ORIGINS` environment variable when starting the backend, e.g. `HOST=0.0.0.0 ALLOWED_ORIGINS=http://192.168.1.10:5173 npm run dev:server` (PowerShell: `$env:HOST="0.0.0.0"; $env:ALLOWED_ORIGINS="http://192.168.1.10:5173"; npm run dev:server`).
 >
 > Doing this exposes the application (with no login and no access control) to everyone on your network — only do it on a network you trust, and only for as long as you need it. Do not widen the default `npm run dev` setup, which stays local-only.
 
@@ -79,11 +79,19 @@ Check out the free [Playwright Starter Pack](https://starter.rwasik.pl/) with us
 
 Before running the application, make sure you have installed:
 
-* **Node.js 22.12 or newer, within the 22.x line** (LTS) — the officially supported version range, pinned in [`.nvmrc`](./.nvmrc) and `engines.node`
+* **Node.js 22.12+ (22.x) or 24.x** — both LTS lines are supported and verified. [`.nvmrc`](./.nvmrc) pins the recommended version, and `engines.node` declares the full supported range. Node 20 and older will not work: the application itself starts, but the unit tests do not run.
 * npm (bundled with Node.js)
 * Git
 
-If you use [nvm](https://github.com/nvm-sh/nvm), run `nvm use` in the repository root to pick up the pinned version automatically.
+Check what you have before installing anything:
+
+```bash
+node -v
+npm -v
+git --version
+```
+
+If you use [nvm](https://github.com/nvm-sh/nvm), run `nvm use` in the repository root to pick up the recommended version automatically.
 
 ---
 
@@ -129,6 +137,26 @@ http://localhost:5173
 
 ---
 
+## Stopping the Application
+
+Press **Ctrl+C** in the terminal running `npm run dev`. This stops both the backend and the frontend.
+
+Closing the terminal window (or killing it from Task Manager) can leave the `node` processes running in the background, still holding ports `3001` and `5173`. If the next `npm run dev` complains that a port is in use, free it:
+
+```powershell
+# Windows (PowerShell or CMD)
+netstat -ano | findstr ":3001 :5173"
+taskkill /PID <pid> /F
+```
+
+```bash
+# macOS / Linux
+lsof -i :3001 -i :5173
+kill <pid>
+```
+
+---
+
 ## Running Client and Server Separately
 
 Start only the backend:
@@ -166,6 +194,47 @@ http://localhost:3001/api/health
 ## Data Persistence
 
 The application does not use a database. Tasks and users are stored in memory on the backend and are seeded with fixed sample data on startup. Any changes made through the UI or API (creating, editing or deleting tasks and users) are lost when the backend restarts, and the original sample data is restored.
+
+---
+
+## Troubleshooting
+
+Start by collecting this — it answers most questions at once:
+
+```bash
+node -v
+npm -v
+git --version
+```
+
+**Wrong Node.js version.** `npm install` only prints an `EBADENGINE` warning and carries on, so an unsupported version shows up later as a confusing failure. Node 22.12+ (22.x) and 24.x are supported; on Node 20 the application starts but `npm run test` fails inside jsdom. Switch versions with `nvm use` (nvm / nvm-windows) or install a supported release.
+
+**A port is already in use.** The backend needs `3001` and the frontend needs `5173`; neither falls back to another port. The backend now says so explicitly and stops; Vite reports `Port 5173 is already in use`. Free the port using the commands in [Stopping the Application](#stopping-the-application) — the culprit is usually a leftover `node` process from an earlier run.
+
+**Incomplete or broken installation.** If `npm run dev` cannot find a package, reinstall from scratch:
+
+```bash
+npm cache clean --force
+rm -rf node_modules client/node_modules server/node_modules
+npm install
+```
+
+```powershell
+# Windows (PowerShell)
+npm cache clean --force
+Remove-Item -Recurse -Force node_modules, client/node_modules, server/node_modules
+npm install
+```
+
+**The install downloads blocked binaries.** Installation fetches prebuilt native binaries (`esbuild`, `rolldown`, `lightningcss`). Corporate antivirus or a proxy can block them, which shows up as a download or integrity error. Try a different network before debugging the repository.
+
+**`git status` shows a modified `package-lock.json` after installing.** This is expected and harmless: some lockfile metadata depends on the npm version you have. Leave it as it is, or restore it with `git checkout -- .` before starting an exercise.
+
+**The backend did not start.** Open http://localhost:3001/api/health. `{"status":"ok"}` means it is running. If there is no response, scroll the terminal **up**, past the Vite banner — the backend's error is printed above it.
+
+**The frontend did not start.** The terminal must show `VITE … ready`. If the page does not load, check that line first; if it is missing, the frontend never started.
+
+**The UI loads but shows no data.** That means the frontend is up and the backend is not. Open the browser DevTools (F12) → Network, reload, and look at `/api/tasks`. A failed request there points back to the backend — see the two entries above. A single 404 on `favicon.ico` is normal and harmless.
 
 ---
 
@@ -249,7 +318,7 @@ Runs the Vitest unit test suites for both the server (business-logic and validat
 npm run check
 ```
 
-Runs `lint`, `typecheck`, `test` and `build` in sequence. This is the command CI runs to validate the application.
+Runs the module-name collision check, `lint`, `typecheck`, the unit tests (application and scripts) and `build` in sequence. This is the command CI runs to validate the application.
 
 ### Client
 
@@ -257,10 +326,11 @@ Runs `lint`, `typecheck`, `test` and `build` in sequence. This is the command CI
 npm run dev
 npm run build
 npm run preview
-npm run lint
 npm run typecheck
 npm run test
 ```
+
+Lint the whole repository from the root with `npm run lint`.
 
 ### Server
 
@@ -283,7 +353,7 @@ Every push and pull request targeting `main` runs the [`CI` workflow](./.github/
 3. installs dependencies with separate, lockfile-respecting installs — `npm ci --ignore-scripts` at the root, `npm ci --prefix server` and `npm ci --prefix client` (this is not the same as the single `npm install` participants run locally; see [Installation](#installation));
 4. verifies that the install did not modify any of the three committed lockfiles;
 5. runs `npm run audit:all` (security audit);
-6. runs `npm run check` (lint, typecheck, unit tests, build);
+6. runs `npm run check` (module-name collision check, lint, typecheck, unit tests, build);
 7. starts the application with `npm run dev`;
 8. waits for the backend (`http://localhost:3001/api/health`) and the frontend (`http://localhost:5173`) to become available, failing the build if either does not start;
 9. stops the application processes.
