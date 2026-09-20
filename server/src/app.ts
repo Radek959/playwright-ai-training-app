@@ -3,7 +3,7 @@ import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 import swaggerUi from "swagger-ui-express";
-import swaggerDoc from "./swagger.json" assert { type: "json" };
+import swaggerDoc from "./swagger.json" with { type: "json" };
 import { tasksRouter } from "./routes/tasks.js";
 import { usersRouter } from "./routes/users.js";
 

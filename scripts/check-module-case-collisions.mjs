@@ -6,6 +6,7 @@
 // pick the wrong file at runtime.
 import { readdirSync } from "node:fs";
 import { dirname, join, relative, basename } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const IGNORED_DIRS = new Set([
   "node_modules",
@@ -106,7 +107,10 @@ function main() {
   return 1;
 }
 
-const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+// pathToFileURL (rather than a "file://" + path template) so the comparison
+// also holds for Windows paths and for paths containing spaces or non-ASCII
+// characters, which import.meta.url percent-encodes.
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   process.exit(main());
 }
