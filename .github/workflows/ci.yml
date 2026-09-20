@@ -7,6 +7,49 @@ on:
     branches: [main]
 
 jobs:
+  clean-install:
+    # The participant's own path - a clean checkout, `npm install` (not
+    # `npm ci`) and `npm run check` - on every OS and Node line the README
+    # claims to support. The smoke test in the job below cannot simply be
+    # reused here: it is written in bash (seq, curl, kill, pkill) and would
+    # not run on the Windows runner.
+    name: Clean install (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: ["22", "24"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Report toolchain versions
+        run: |
+          node -v
+          npm -v
+
+      - name: Install dependencies the way participants do
+        run: npm install
+
+      # No lockfile check here on purpose: npm rewrites some platform metadata
+      # depending on its own version, so a clean `npm install` legitimately
+      # touches the lockfiles. The npm ci job below is what pins them.
+
+      - name: Lint, typecheck, test and build
+        run: npm run check
+
+      - name: Start the application and smoke-test it
+        run: node scripts/ci-smoke.mjs
+
   build-and-smoke-test:
     name: Quality gates and smoke test
     runs-on: ubuntu-latest
