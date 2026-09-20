@@ -79,7 +79,7 @@ Check out the free [Playwright Starter Pack](https://starter.rwasik.pl/) with us
 
 Before running the application, make sure you have installed:
 
-* **Node.js 22.12+ (22.x) or 24.x** — both LTS lines are supported and verified. [`.nvmrc`](./.nvmrc) pins the recommended version, and `engines.node` declares the full supported range. Node 20 and older will not work: the application itself starts, but the unit tests do not run.
+* **Node.js 22.12+ (22.x) or 24.x** — both LTS lines are supported; CI installs and checks the project on each of them, on Linux, Windows and macOS. [`.nvmrc`](./.nvmrc) pins the recommended version, and `engines.node` declares the supported range. Node 20 and older will not work: the application itself starts, but the unit tests do not run.
 * npm (bundled with Node.js)
 * Git
 
@@ -91,7 +91,7 @@ npm -v
 git --version
 ```
 
-If you use [nvm](https://github.com/nvm-sh/nvm), run `nvm use` in the repository root to pick up the recommended version automatically.
+If you use [nvm](https://github.com/nvm-sh/nvm) on macOS or Linux, run `nvm use` in the repository root to pick up the recommended version automatically. [nvm-windows](https://github.com/coreybutler/nvm-windows) does not read `.nvmrc`, so name the version explicitly: `nvm use 22.23.2`.
 
 ---
 
@@ -207,28 +207,34 @@ npm -v
 git --version
 ```
 
-**Wrong Node.js version.** `npm install` only prints an `EBADENGINE` warning and carries on, so an unsupported version shows up later as a confusing failure. Node 22.12+ (22.x) and 24.x are supported; on Node 20 the application starts but `npm run test` fails inside jsdom. Switch versions with `nvm use` (nvm / nvm-windows) or install a supported release.
+**Wrong Node.js version.** `npm install` only prints an `EBADENGINE` warning and carries on, so an unsupported version shows up later as a confusing failure. Node 22.12+ (22.x) and 24.x are supported; on Node 20 the application starts but `npm run test` fails inside jsdom. Switch versions with `nvm use` (on Windows, nvm-windows needs the version spelled out: `nvm use 22.23.2`) or install a supported release.
 
 **A port is already in use.** The backend needs `3001` and the frontend needs `5173`; neither falls back to another port. The backend now says so explicitly and stops; Vite reports `Port 5173 is already in use`. Free the port using the commands in [Stopping the Application](#stopping-the-application) — the culprit is usually a leftover `node` process from an earlier run.
 
 **Incomplete or broken installation.** If `npm run dev` cannot find a package, reinstall from scratch:
 
 ```bash
-npm cache clean --force
 rm -rf node_modules client/node_modules server/node_modules
 npm install
 ```
 
 ```powershell
 # Windows (PowerShell)
-npm cache clean --force
 Remove-Item -Recurse -Force node_modules, client/node_modules, server/node_modules
 npm install
 ```
 
+Only if that still fails, clear the npm cache (`npm cache clean --force`) and repeat. The cache is rarely the cause, and clearing it makes the next install slower for every project on the machine.
+
 **The install downloads blocked binaries.** Installation fetches prebuilt native binaries (`esbuild`, `rolldown`, `lightningcss`). Corporate antivirus or a proxy can block them, which shows up as a download or integrity error. Try a different network before debugging the repository.
 
-**`git status` shows a modified `package-lock.json` after installing.** This is expected and harmless: some lockfile metadata depends on the npm version you have. Leave it as it is, or restore it with `git checkout -- .` before starting an exercise.
+**`git status` shows a modified `package-lock.json` after installing.** This is expected and harmless: some lockfile metadata depends on the npm version you have. Leave it as it is, or restore just those files:
+
+```bash
+git restore package-lock.json client/package-lock.json server/package-lock.json
+```
+
+Check `git status` first and only run this when the lockfiles are the *only* changes listed. Never use `git checkout -- .` for this — it would also throw away the tests and code you wrote during the workshop.
 
 **The backend did not start.** Open http://localhost:3001/api/health. `{"status":"ok"}` means it is running. If there is no response, scroll the terminal **up**, past the Vite banner — the backend's error is printed above it.
 
@@ -357,6 +363,8 @@ Every push and pull request targeting `main` runs the [`CI` workflow](./.github/
 7. starts the application with `npm run dev`;
 8. waits for the backend (`http://localhost:3001/api/health`) and the frontend (`http://localhost:5173`) to become available, failing the build if either does not start;
 9. stops the application processes.
+
+A second job, `Clean install`, runs the participant's own path — a clean checkout, `npm install` (not `npm ci`) and `npm run check` — across a matrix of `ubuntu-latest`, `windows-latest` and `macos-latest` (Apple Silicon), each on Node 22 and Node 24. That job deliberately does not assert that the lockfiles are unchanged: npm rewrites some platform metadata depending on its own version, which is expected locally too (see [Troubleshooting](#troubleshooting)).
 
 This workflow intentionally does not run Playwright or install browsers — end-to-end tests are written by participants during the training and are not part of this baseline.
 
