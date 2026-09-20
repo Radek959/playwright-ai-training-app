@@ -82,12 +82,15 @@ describe("Dashboard overdue stat", () => {
   it("counts only overdue, non-done tasks", async () => {
     renderDashboard();
 
+    // The stat tiles render their labels and links before /api/tasks resolves,
+    // so waiting for the label alone leaves the value racing the request. Wait
+    // for the value itself.
     await waitFor(() => expect(screen.getByText("Overdue")).toBeInTheDocument());
-    // t1 and t2 are overdue; t3 is excluded because it's done, t4 is due
-    // soon (not overdue), t5 has no dueDate at all.
     const overdueCard = screen.getByText("Overdue").closest("a");
     expect(overdueCard).not.toBeNull();
-    expect(overdueCard).toHaveTextContent("2");
+    // t1 and t2 are overdue; t3 is excluded because it's done, t4 is due
+    // soon (not overdue), t5 has no dueDate at all.
+    await waitFor(() => expect(overdueCard).toHaveTextContent("2"));
   });
 
   it("renders the Overdue stat as an accessible link to /tasks?due=overdue", async () => {
@@ -111,7 +114,7 @@ describe("Dashboard main stat links", () => {
     const link = await screen.findByRole("link", { name: "View all tasks" });
     expect(link).toHaveAttribute("href", "/tasks?tab=table");
     // The plain value must still be readable as text, not hidden behind the link.
-    expect(link).toHaveTextContent("5");
+    await waitFor(() => expect(link).toHaveTextContent("5"));
   });
 
   it("links In Progress to the table filtered to in-progress", async () => {
@@ -130,7 +133,7 @@ describe("Dashboard main stat links", () => {
     renderDashboard();
     const link = await screen.findByRole("link", { name: "View completed tasks" });
     expect(link).toHaveAttribute("href", "/tasks?tab=table&status=done");
-    expect(link).toHaveTextContent("%");
+    await waitFor(() => expect(link).toHaveTextContent("%"));
   });
 
   it("gives every stat link a keyboard-focusable, real anchor element", async () => {
@@ -155,9 +158,12 @@ describe("Dashboard main stat links", () => {
     // coerced into "zero tasks" and rendered as if it were a real, trustworthy
     // count - so neither a genuine "0" task count nor a fabricated "0%"
     // completion rate may ever appear for it.
-    const link = await screen.findByRole("link", { name: "View all tasks" });
+    // Wait for the failure to be reported first: asserting the negatives while
+    // the request is still in flight would pass for the wrong reason.
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Failed to load task statistics/);
+
+    const link = screen.getByRole("link", { name: "View all tasks" });
     expect(link).not.toHaveTextContent("0");
-    expect(screen.getByRole("alert")).toHaveTextContent(/Failed to load task statistics/);
 
     const completionLink = screen.getByRole("link", { name: "View completed tasks" });
     expect(completionLink).not.toHaveTextContent("NaN");
@@ -185,7 +191,7 @@ describe("Dashboard main stat links", () => {
 
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
     const link = screen.getByRole("link", { name: "View all tasks" });
-    expect(link).toHaveTextContent(String(tasks.length));
+    await waitFor(() => expect(link).toHaveTextContent(String(tasks.length)));
   });
 });
 
@@ -205,7 +211,7 @@ describe("Dashboard independent tasks/users load states", () => {
     renderDashboard();
 
     const link = await screen.findByRole("link", { name: "View all tasks" });
-    expect(link).toHaveTextContent(String(tasks.length));
+    await waitFor(() => expect(link).toHaveTextContent(String(tasks.length)));
 
     expect(screen.getByRole("alert")).toHaveTextContent(/Failed to load team members/);
     expect(screen.queryByText(/Active Members/)).not.toBeInTheDocument();
