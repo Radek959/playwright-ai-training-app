@@ -143,9 +143,13 @@ describe("TaskDetails", () => {
     const coverImageLink = screen.getByRole("link", { name: "http://example.com/image.png" });
     expect(coverImageLink).toHaveAttribute("href", "http://example.com/image.png");
 
-    // Check assignee and approver
-    expect(screen.getByText(/Alice/)).toBeInTheDocument();
-    expect(screen.getByText(/\(user-1\)/)).toBeInTheDocument();
+    // Check assignee and approver. The assignee's name also appears in the
+    // comments section's author <select> once its own /api/users request
+    // resolves, so match the assignee entry itself instead of any element
+    // containing "Alice" - otherwise the assertion passes or fails depending
+    // on which request settles first.
+    const assignee = screen.getByText(/\(user-1\)/).parentElement;
+    expect(assignee).toHaveTextContent("Alice");
     
     expect(screen.getByText("Manager A (manager-a)")).toBeInTheDocument();
 

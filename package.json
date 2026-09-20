@@ -8,18 +8,18 @@
   },
   "scripts": {
     "postinstall": "npm run install:all",
-    "install:all": "npm --prefix server install && npm --prefix client install",
+    "install:all": "node scripts/npm-in.mjs server install && node scripts/npm-in.mjs client install",
     "dev": "npm-run-all --parallel dev:server dev:client",
-    "dev:server": "npm --prefix server run dev",
-    "dev:client": "npm --prefix client run dev",
-    "build": "npm --prefix server run build && npm --prefix client run build",
+    "dev:server": "node scripts/npm-in.mjs server run dev",
+    "dev:client": "node scripts/npm-in.mjs client run dev",
+    "build": "node scripts/npm-in.mjs server run build && node scripts/npm-in.mjs client run build",
     "lint": "eslint client/src server/src",
-    "typecheck": "npm --prefix server run typecheck && npm --prefix client run typecheck",
-    "test": "npm --prefix server run test && npm --prefix client run test",
+    "typecheck": "node scripts/npm-in.mjs server run typecheck && node scripts/npm-in.mjs client run typecheck",
+    "test": "node scripts/npm-in.mjs server run test && node scripts/npm-in.mjs client run test",
     "test:scripts": "node --test scripts/*.test.mjs",
     "check:module-case": "node scripts/check-module-case-collisions.mjs .",
     "check": "npm run check:module-case && npm run lint && npm run typecheck && npm run test && npm run test:scripts && npm run build",
-    "audit:all": "npm audit --audit-level=moderate && npm --prefix server audit --audit-level=moderate && npm --prefix client audit --audit-level=moderate"
+    "audit:all": "npm audit --audit-level=moderate && node scripts/npm-in.mjs server audit --audit-level=moderate && node scripts/npm-in.mjs client audit --audit-level=moderate"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

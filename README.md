@@ -110,7 +110,7 @@ Install dependencies:
 npm install
 ```
 
-A single `npm install` at the repository root installs the root tooling and then automatically installs the dependencies for both `client/` and `server/` (via the `postinstall` script). You do not need to run `npm install` separately inside `client/` or `server/`.
+A single `npm install` at the repository root installs the root tooling and then automatically installs the dependencies for both `client/` and `server/` (via the `postinstall` script, which delegates to [`scripts/npm-in.mjs`](./scripts/npm-in.mjs)). You do not need to run `npm install` separately inside `client/` or `server/`.
 
 ---
 
