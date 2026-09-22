@@ -22,7 +22,6 @@ export function UserForm({ onCreated }: Props) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<UserRole>("viewer");
   const [avatar, setAvatar] = useState("");
-  const [avatarHost, setAvatarHost] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const clearFieldError = (field: string) => {
@@ -55,7 +54,6 @@ export function UserForm({ onCreated }: Props) {
       setEmail("");
       setRole("viewer");
       setAvatar("");
-      setAvatarHost(null);
       setFieldErrors({});
       clearError();
     } catch (err) {
@@ -146,13 +144,16 @@ export function UserForm({ onCreated }: Props) {
               clearFieldError("avatar");
             }}
             onBlur={() => {
-              setAvatarHost(avatar ? new URL(avatar).hostname : null);
+              // Normalize once the user is done typing (not on every
+              // keystroke), so a stray query string or duplicated slash
+              // doesn't reach the API in a slightly different form than what
+              // gets stored and echoed back on the next load.
+              if (avatar) setAvatar(new URL(avatar).href);
             }}
             aria-invalid={Boolean(fieldErrors.avatar)}
             aria-describedby={fieldErrors.avatar ? FIELD_ERROR_ID.avatar : undefined}
             autoComplete="photo"
           />
-          {avatarHost && <span className="text-xs text-gray-500">Image host: {avatarHost}</span>}
           {fieldErrors.avatar && (
             <span id={FIELD_ERROR_ID.avatar} role="alert" className="text-red-600 text-xs font-normal">
               {fieldErrors.avatar}
