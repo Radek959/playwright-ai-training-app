@@ -485,7 +485,7 @@ export function TaskWizard({ users, existingTasks, onComplete, onClose }: Props)
             className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-800"
             data-testid="wizard-submit-btn"
           >
-            {isSubmitting ? "Saving…" : "Create task"}
+            {isSubmitting ? "Saving…" : "Save task"}
           </button>
         )}
       </div>
