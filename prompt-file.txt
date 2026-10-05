@@ -63,3 +63,92 @@ Podaj:
 3. minimalny sposób użycia.
 
 Nie implementuj jeszcze zmian.
+
+PROMPT 5 - SKILL DO CODE REVIEW
+
+Stwórz plik:
+
+.github/skills/playwright-test-review/SKILL.md
+
+Plik ma zawierać YAML frontmatter:
+
+---
+name: playwright-test-review
+description: Review Playwright tests and test infrastructure for correctness, stability, maintainability, speed, debuggability, and isolation. Use when reviewing new tests, pull requests, refactors, flaky tests, fixtures, helpers, or Playwright configuration.
+---
+
+Po frontmatterze dodaj instrukcję skilla w języku angielskim.
+
+Skill ma wykonywać code review testów Playwright oraz powiązanej infrastruktury testowej.
+
+Przed review powinien analizować:
+- AGENTS.md,
+- playwright.config.ts,
+- istniejące testy,
+- fixtures,
+- helpery,
+- sposób przygotowania danych,
+- powiązany kod aplikacji.
+
+Oceniaj kod w kategoriach:
+- Correctness,
+- Stability,
+- Maintainability,
+- Speed,
+- Debuggability,
+- Isolation.
+
+Każdy finding oznacz jako:
+- Blocker,
+- Major,
+- Minor,
+- Suggestion.
+
+Sprawdzaj między innymi:
+- czy test sprawdza właściwe zachowanie,
+- czy posiada wartościowe asercje,
+- czy używa stabilnych locatorów,
+- czy poprawnie synchronizuje się z aplikacją,
+- czy może działać równolegle,
+- czy posiada izolowane dane,
+- czy setup i cleanup są deterministyczne,
+- czy nie duplikuje istniejących helperów lub fixtures,
+- czy nie zawiera zbędnych kroków UI,
+- czy będzie łatwy do zdiagnozowania po awarii.
+
+Wykrywaj również:
+- page.waitForTimeout,
+- force: true bez uzasadnienia,
+- duże timeouty lub retries ukrywające problem,
+- selektory zależne od klas CSS lub struktury DOM,
+- brak asercji,
+- zbyt ogólne asercje,
+- zależności między testami,
+- współdzielone dane,
+- brak cleanupu,
+- zbyt dużo logiki w teście,
+- nadmierne abstrakcje,
+- test obejmujący zbyt wiele niezależnych zachowań.
+
+Nie zgłaszaj uwag stylistycznych bez realnego wpływu na jakość testu.
+
+Każdy finding powinien zawierać:
+- severity,
+- lokalizację,
+- problem,
+- wpływ,
+- rekomendowaną poprawkę.
+
+Rekomenduj helper, fixture lub Page Object tylko wtedy, gdy rzeczywiście upraszcza kod i ogranicza duplikację.
+
+Nie modyfikuj kodu podczas review.
+
+Odpowiedź ma mieć układ:
+1. TL;DR
+2. Findings
+3. Proposed Fixes
+4. Quick Checklist Before Merge
+
+Mission: Keep Playwright tests deterministic, fast, and easy to maintain across the whole team.
+
+Nie twórz żadnych innych plików.
