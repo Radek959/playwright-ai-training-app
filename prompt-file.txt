@@ -15,3 +15,20 @@ Zwróć uwagę na:
 - istniejące testy i mechanizmy jakości.
 
 Na końcu przygotuj krótkie podsumowanie najważniejszych informacji, które powinien znać tester przed rozpoczęciem projektowania automatyzacji.
+
+PROMPT 2 - PLAN TESTÓW 
+
+Na podstawie wykonanej analizy zaproponuj plan przygotowania automatyzacji testów E2E dla tej aplikacji.
+
+Nie implementuj jeszcze testów.
+
+Plan powinien:
+- zaczynać się od minimalnego działającego zestawu,
+- rozwijać automatyzację krok po kroku,
+- unikać zbędnych abstrakcji na początku,
+- uwzględniać stabilność i łatwość utrzymania testów.
+
+Dla każdego kroku krótko napisz:
+1. co robimy,
+2. dlaczego robimy to na tym etapie,
+3. po czym poznamy, że krok jest zakończony.
