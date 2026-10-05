@@ -41,3 +41,25 @@ Dla każdego scenariusz podaj:
 - działanie usera 
 - oczekiwany rezultat
 - najważniejsze asercje
+
+PROMPT 4 - DOSTĘPNOŚĆ
+
+Chcę dodać automatyczne testy accessibility do istniejących testów Playwright.
+
+Najpierw przeanalizuj aktualną strukturę testów i package.json.
+
+Zaproponuj minimalną integrację z axe.
+
+Zasady:
+- nie twórz osobnego frameworka accessibility,
+- nie dodawaj helperów ani fixtures bez realnej potrzeby,
+- pierwszy test ma obejmować tylko jeden ekran,
+- wynik ma być czytelny,
+- integracja ma pasować do istniejącej struktury testów.
+
+Podaj:
+1. potrzebną zależność,
+2. plik, który trzeba utworzyć lub zmienić,
+3. minimalny sposób użycia.
+
+Nie implementuj jeszcze zmian.
