@@ -32,3 +32,12 @@ Dla każdego kroku krótko napisz:
 1. co robimy,
 2. dlaczego robimy to na tym etapie,
 3. po czym poznamy, że krok jest zakończony.
+
+PROMPT 3 - ROZPISANIE KONKRETNEGO TESTUU
+
+Dla kroku 3 przygotuj opis na poziomie zachowania usera. Nie używaj jeszcze kodu Playwright. 
+Dla każdego scenariusz podaj:
+- stan początkowy
+- działanie usera 
+- oczekiwany rezultat
+- najważniejsze asercje
