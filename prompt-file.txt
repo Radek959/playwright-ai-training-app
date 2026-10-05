@@ -152,3 +152,22 @@ Odpowiedź ma mieć układ:
 Mission: Keep Playwright tests deterministic, fast, and easy to maintain across the whole team.
 
 Nie twórz żadnych innych plików.
+
+PROMPT 6 - PODSTAWOWA STRUKTURA CI/CODE
+
+Przeanalizuj aktualną strukturę projektu i przygotuj prostą konfigurację CI/CD do automatycznego uruchamiania testów Playwright.
+
+Użyj GitHub Actions.
+
+Pipeline powinien:
+- uruchamiać się przy `push` i `pull_request`,
+- instalować Node.js i zależności projektu,
+- instalować wymagane przeglądarki Playwright,
+- uruchamiać wszystkie testy Playwright,
+- zapisywać raport Playwright jako artifact, żebym mógł go pobrać po zakończeniu pipeline.
+
+Najpierw sprawdź istniejące skrypty w `package.json` oraz konfigurację Playwright i dopasuj workflow do projektu.
+
+Utwórz potrzebny plik w `.github/workflows/`.
+
+Nie komplikuj rozwiązania — zależy mi na prostym, czytelnym pipeline, który można później rozbudować.
