@@ -1,1 +1,17 @@
 test
+
+PROMPT 1 - ANALIZA repozytorium
+
+Przeanalizuj to repozytorium pod kątem przyszłej automatyzacji testów w Playwright.
+
+Na tym etapie nie twórz ani nie modyfikuj żadnych plików.
+
+Zwróć uwagę na:
+- strukturę aplikacji,
+- najważniejsze funkcjonalności,
+- frontend i backend,
+- dostępne API,
+- dokumentację produktu,
+- istniejące testy i mechanizmy jakości.
+
+Na końcu przygotuj krótkie podsumowanie najważniejszych informacji, które powinien znać tester przed rozpoczęciem projektowania automatyzacji.
